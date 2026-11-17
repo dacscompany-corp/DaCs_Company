@@ -303,7 +303,7 @@ test('Item history is wired into the Requests section', () => {
   ok(/reqHistory:\s*'Item history'/.test(html), 'title');
   const core = html.indexOf('js/requests-admin-core.js'), hist = html.indexOf('js/requests-admin-history.js');
   ok(core > 0 && hist > core, 'the history script loads after the core');
-  ok(html.includes('css/requests-admin.css?v=20261114c') && html.includes('js/requests-admin-history.js?v=20261012a'), 'cache-busted');
+  ok(html.includes('css/requests-admin.css?v=20261114c') && html.includes('js/requests-admin-history.js?v=20261116b'), 'cache-busted');
   const start = nav.indexOf("id: 'requests'");
   const block = nav.slice(start, nav.indexOf(']', start));
   ok(block.includes("{ view: 'reqHistory'"), 'PRIMARY_NAV Requests lists reqHistory');
@@ -311,7 +311,8 @@ test('Item history is wired into the Requests section', () => {
 
 test('the history screen writes only through 0090 office RPCs and warns about reference text', () => {
   const s = src('js/requests-admin-history.js');
-  ok(s.includes('RA.views.reqHistory = render;'), 'registers the view');
+  ok(/RA\.views\.reqHistory = host => root\.SplitView\.render\(host, \{[\s\S]{0,500}onCustom: el => render\(el\)/.test(s),
+     'registers the view (office v5: inside the frame, its own content kept)');
   const rpcs = [...s.matchAll(/RA\.rpc\('([a-z_]+)'/g)].map(m => m[1]);
   const allowed = ['pr_office_projects', 'pr_office_catalog', 'pr_office_history_search', 'pr_office_history_item',
                    'pr_office_add_ref', 'pr_office_retire_ref'];
@@ -357,7 +358,7 @@ test('the gallery screen writes only through 0090 office RPCs', () => {
   ok(rpcs.length === allowed.length && allowed.every(r => rpcs.includes(r)), 'RPCs: ' + rpcs.join(', '));
   ok(!/\.from\('pr_/.test(s), 'no direct pr_ table access');
   const html = src('admin.html');
-  ok(html.indexOf('js/requests-admin-gallery.js?v=20261012a') > html.indexOf('js/requests-admin-core.js'), 'loaded after the core');
+  ok(html.indexOf('js/requests-admin-gallery.js?v=20261116b') > html.indexOf('js/requests-admin-core.js'), 'loaded after the core');
 });
 
 test('0092: an item already used in requests opens with kind and unit locked, and says why', () => {
@@ -367,6 +368,19 @@ test('0092: an item already used in requests opens with kind and unit locked, an
   ok(/id="reqUnit"[^\n]*\(locked \? ' disabled' : ''\)/.test(setup), 'unit disabled when locked');
   ok(setup.includes('kind and unit are locked'), 'the form says why');
   ok(ra.ERRORS.ITEM_IN_USE.includes('new item') && ra.ERRORS.ITEM_IN_USE.includes('deactivate'), 'the refusal tells the office what to do');
+});
+
+test('office v5: a batch pop-up shows the new dates after Change dates…', () => {
+  const s = src('js/requests-admin-setup.js');
+  const batches = s.slice(s.indexOf('async function renderBatches('), s.indexOf('// ── Teams'));
+  ok(/onDone: \(\) => renderBatches\(host, \{ refreshPanel: true \}\)/.test(batches), 'the save redraws the open batch');
+  ok(/refreshPanel: !!\(o && o\.refreshPanel\)/.test(batches), 'and the frame is told to reload it, with the new record');
+});
+
+test('office v5: the Item history count follows the photos the screen just loaded', () => {
+  const g = src('js/requests-admin-gallery.js');
+  const review = g.slice(g.indexOf('async function renderReview('), g.indexOf('RA.gallery = {'));
+  ok(/root\.NavCounts\.set\('history', queue\.length\)/.test(review), 'reviewing the last photo clears the badge without a reload');
 });
 
 console.log('\nrequests-admin: what the Teams screen says about a team with no leader');
@@ -430,7 +444,36 @@ test('a request opens in the Queue panel, never a page of its own', () => {
   ok(core.includes("views.reqDetail = () => root.switchView('reqQueue')"), 'old route redirects');
 });
 
-test('Queue keeps everything it had (split view)', () => {
+test('requestNextStep: a button only for exactly one existing next step', () => {
+  const today = '2026-11-16';
+  let s = ra.requestNextStep(req({}), today);
+  eq(s, { text: 'Nothing is arranged yet for this request.', label: 'Mark arranged', act: { act: 'arrange', portion: 'p' } });
+  s = ra.requestNextStep(req({ lines: [line({}), line({ id: 'l2', portions: [portion({ id: 'p2' })] })] }), today);
+  eq(s, { text: '2 portions are still to arrange. Mark each one arranged on its item.', label: null, act: null });
+  s = ra.requestNextStep(req({ lines: [line({ portions: [portion({ arranged: true })] }), line({ id: 'l2', portions: [portion({ id: 'p2' })] })] }), today);
+  eq(s, { text: 'One portion is still to arrange.', label: 'Mark arranged', act: { act: 'arrange', portion: 'p2' } });
+  s = ra.requestNextStep(req({ lines: [line({ urgent: true, needed_by: '2026-11-10' })] }), today);
+  eq(s.text, 'Needed Tue 10 Nov. Arrange it now or tell the worker when it will arrive.'); eq(s.label, 'Mark arranged');
+  s = ra.requestNextStep(req({ lines: [line({ position: 2, open_conflicts: [{ id: 'k' }] })] }), today);
+  eq(s, { text: 'One item has an offline edit that needs your decision. Choose Apply or Keep on item 3.', label: null, act: null });
+  s = ra.requestNextStep(req({ lines: [line({ unit: 'gal', portions: [portion({ id: 'p9', arranged: true, quantity: 4, pending_reduction: 2 })] })] }), today);
+  eq(s, { text: '4 gal was arranged; the request now needs 2 gal less. Say what happened to the order.', label: 'Resolve reduction…', act: { act: 'reduction', portion: 'p9', line: 'l' } });
+  eq(ra.requestNextStep(req({ lines: [line({ portions: [portion({ arranged: true })] })] }), today), null);
+  eq(ra.requestNextStep(req({ status: 'cancelled' }), today), null);
+});
+
+test('Queue cards carry the next step; the pop-up closes cleanly', () => {
+  const q = src('js/requests-admin-queue.js');
+  ok(/RA\.requestNextStep\(r, today\)/.test(q) && /nextLabel:/.test(q), 'rowOf asks the core');
+  ok(/onClose: \(\) => \{[^}]*ui\.selectedId = null/.test(q), 'closing forgets the request');
+  ok(/onSelect: \(id, panel, opts\)/.test(q) && /start: opts && opts\.start \?/.test(q), 'start passed to the item');
+  ok(/toolbar: batchSelect\(\)/.test(q) && /showing:/.test(q), 'toolbar and showing');
+  for (const s of ['What the labels on a request mean', 'Needed soonest first.', 'A reduction or an offline edit is waiting for your decision.',
+    'Nothing arranged yet, or only partly.', 'Closed requests load separately.', 'Requests with something still to arrange or to resolve.'])
+    ok(q.includes(s), 'missing: ' + s);
+});
+
+test('Queue keeps everything it had (v5)', () => {
   const q = src('js/requests-admin-queue.js');
   for (const s of ['Request queue', 'urgent first, then by weekly batch', 'Change batch dates',
     'Requests received after the cutoff go to the next week.', 'Showing the newest 300 requests',
@@ -458,6 +501,41 @@ test('one request keeps every action, now in the panel', () => {
   ok(!d.includes('RA.modal('), 'no pop-up forms left');
   ok((d.match(/SplitView\.form\(panel/g) || []).length === 6, 'six forms in the panel');
   ok(d.includes('RA.renderRequestPanel = '), 'exported for the queue');
+});
+
+test('one request: What to do now uses the real button, and start presses only that', () => {
+  const d = src('js/requests-admin-detail.js');
+  ok(/RA\.requestNextStep\(req, today\)/.test(d), 'the fresh request decides');
+  ok(/SV\.nextStep\(/.test(d) && /step:/.test(d), 'the box is drawn');
+  ok(/data-act="' \+ esc\(step\.act\.act\) \+ '"/.test(d), 'its button carries the same data-act as the real one');
+  ok(/hooks\.start[\s\S]{0,200}querySelector\('\.sv-step \[data-act\]'\)/.test(d), 'start presses the box button only');
+});
+
+test('sameStep: a card button only starts the exact step it showed', () => {
+  eq(ra.sameStep({ act: 'arrange', portion: 'p' }, { act: 'arrange', portion: 'p' }), true);
+  eq(ra.sameStep({ act: 'arrange', portion: 'p' }, { act: 'arrange', portion: 'p2' }), false);
+  eq(ra.sameStep({ act: 'reduction', portion: 'p' }, { act: 'arrange', portion: 'p' }), false);
+  eq(ra.sameStep(null, { act: 'arrange', portion: 'p' }), false);
+  eq(ra.sameStep({ act: 'arrange', portion: 'p' }, null), false);
+});
+
+test('review fixes: the card passes its step; a closed or replaced pop-up never runs it', () => {
+  const q = src('js/requests-admin-queue.js'), d = src('js/requests-admin-detail.js');
+  ok(/start: opts && opts\.start \? cardStep\(id\) : null/.test(q), 'the queue passes the step the card showed');
+  ok(/RA\.sameStep\(want, \{ act: go\.dataset\.act, portion: go\.dataset\.portion \}\)/.test(d), 'only that exact step is pressed');
+  ok(/ctx\.stillShowing\(\)/.test(d.slice(d.indexOf('if (hooks.start)'))), 'and only while the pop-up still shows this request');
+  ok(/stillShowing: \(\) => panel\.isConnected && panel\.dataset\.svId === req\.id/.test(d), 'a replaced or closed panel no longer counts');
+  const r = d.slice(d.indexOf('async function renderRequestPanel('));
+  ok(/if \(!panel\.isConnected \|\| panel\.dataset\.svId !== id\) return;/.test(r), 'a late answer for a closed pop-up is dropped');
+});
+
+test('every save says what it did', () => {
+  const d = src('js/requests-admin-detail.js');
+  ok((d.match(/doneText:/g) || []).length === 6, 'six forms with a toast');
+  for (const s of ['Quantity changed', 'Item cancelled', 'Reduction resolved', 'Moved to another weekly batch',
+    'Applied the offline edit', 'Kept the current quantity; offline edit not applied', 'Matched to a catalogue item'])
+    ok(d.includes(s), 'missing toast: ' + s);
+  ok(/SV\.toast\('Marked '/.test(d) && d.includes('Undid "arranged"'), 'one-press actions too');
 });
 
 console.log('\nrequests-admin: review fixes (Phase 1)');
@@ -489,7 +567,7 @@ test('Move… and Match open their form only if the panel still shows that reque
     const body = d.slice(d.indexOf('async function ' + fn), d.indexOf('root.SplitView.form(panel', d.indexOf('async function ' + fn)));
     ok(/if \(!ctx\.stillShowing\(\)\) return;/.test(body), fn + ' re-checks after its RPC');
   }
-  ok(/stillShowing: \(\) => panel\.dataset\.svId === req\.id/.test(d), 'stillShowing compares the panel with this request');
+  ok(/stillShowing: \(\) => panel\.isConnected && panel\.dataset\.svId === req\.id/.test(d), 'stillShowing compares the (still connected) panel with this request');
 });
 
 test('phones keep the stacked batch row inside the panel', () => {

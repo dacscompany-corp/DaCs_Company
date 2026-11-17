@@ -264,3 +264,23 @@
 }
 .wp-meeting .att-card-head { flex-wrap: nowrap; align-items: center; gap: 12px; }
 .wp-meeting .att-card-tools { flex: none; }
+/* ── Office v5: a task and a meeting in the pop-up are one column of the
+   frame's sections (.sv-sec, .sv-facts, .sv-hist, .sv-notice), as the
+   Requests pop-up; the task's buttons sit in the footer beside Next. ── */
+.sv-page-host .wp { padding-top: 0; display: flex; flex-direction: column; gap: 18px; }
+.wp-actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.sv-empty .wp-empty-body { padding: 0; }
+.wp-sec-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.wp-sec-tools { display: flex; gap: 8px; flex: none; flex-wrap: wrap; }
+.wp-sec-sub { font-size: 13.5px; line-height: 1.5; color: #6C6C70; }
+.wp-sec { font-size: 14.5px; line-height: 1.55; }
+.wp-meeting .wp-sec > .att-field + .att-field,
+.wp-meeting .wp-sec > .wp-notes-top + .att-field { margin-top: 10px; }
+.wp-sec .wp-pad { padding: 2px 0; }
+.wp-sec .wp-readline { padding: 8px 12px; border-radius: 8px; border-bottom: 0; }
+.wp-sec .wp-people li, .wp-sec .wp-mtasks li { padding-left: 0; padding-right: 0; }
+.wp-sec .wp-people li:first-child { border-top: 0; }
+.sv-hist .wp-versions { padding: 4px 0 6px; }
+.sv-hist .wp-versions li { padding: 8px 0; }
+/* An empty Board (v5): the short message, then both ways to start, centred. */
+.sv-empty .wp-empty-actions { justify-content: center; margin-top: 4px; }

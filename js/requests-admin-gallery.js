@@ -136,11 +136,16 @@
         });
     }
 
+    // The photos waiting for review (the screen and its red count read the same list).
+    function photoQueue() { return RA.rpc('pr_office_photo_queue'); }
+
     async function renderReview(host, nav) {
         host.innerHTML = '<div class="att-stack"><div class="att-empty">Loading photos to review…</div></div>';
         let queue;
-        try { queue = await RA.rpc('pr_office_photo_queue'); } catch (e) { RA.fail(host, e); return; }
+        try { queue = await photoQueue(); } catch (e) { RA.fail(host, e); return; }
         queue = queue || [];
+        // The badge follows what the screen just loaded (D5: gone at zero).
+        if (root.NavCounts) root.NavCounts.set('history', queue.length);
         const rerender = () => renderReview(host, nav);
         host.innerHTML =
             '<div class="att-stack">' +
@@ -182,4 +187,8 @@
     }
 
     RA.gallery = { uploadModal, setCover, retireModal, renderReview };
+
+    // D5: the red count on Item history — photos waiting for review (every
+    // account that sees the screen can review them).
+    if (root.NavCounts) root.NavCounts.register('history', async () => ((await photoQueue()) || []).length);
 })(typeof window !== 'undefined' ? window : globalThis);

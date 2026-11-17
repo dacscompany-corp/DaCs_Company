@@ -82,6 +82,21 @@ const real = { packageName: 'com.dacs.attendance', versionCode: 5, versionName: 
   });
   await test('size shows in MB with one decimal', () => eq(au.formatSize(5 * 1024 * 1024), '5.0 MB'));
 
+  console.log('\nIII-b. Office v5: the screen as cards');
+  const SRC = fs.readFileSync(path.join(__dirname, '..', 'js', 'app-updates-admin.js'), 'utf8');
+  await test('the frame draws it: one card per version, tabs by app, Publish as the main button', () => {
+    ok(/key: 'attAppUpdates'/.test(SRC) && /primary: \{ label: 'Publish a new version'/.test(SRC), 'frame + main button');
+    ok(/\{ id: 'all', label: 'All'/.test(SRC) && /APP_ORDER\.map\(app => \(\{ id: app, label: appLabel\(app\)/.test(SRC), 'tabs All + one per app');
+    ok(/pill: current \? \{ text: 'Current'/.test(SRC), 'the newest of each app reads Current');
+  });
+  await test('publishing opens wide and kept in the pop-up, and its flow is unchanged', () => {
+    ok(/wide: true, keep: true/.test(SRC), 'a stray click never drops a picked file');
+    ok(/function publishPage\(host, latest, onPublished\)/.test(SRC), 'the publish card is its own page');
+    ok(/const refusal = refusalFor\(manifest, latest\(\)\);/.test(SRC), 'the file check');
+    ok(/will be BLOCKED from Time In and Time Out/.test(SRC), 'the separate confirm step');
+    ok(/rpc\('app_publish_release', \{/.test(SRC) && /await storage\.remove\(\[path\]\); \/\/ not a release/.test(SRC), 'the RPC and the clean-up on refusal');
+  });
+
   console.log('\nIV. A real APK');
   const apkDir = path.join(__dirname, '..', '..', 'Dacs Attendance', 'app', 'build', 'outputs', 'apk');
   const candidates = ['release/app-release.apk', 'debug/app-debug.apk'].map(p => path.join(apkDir, p)).filter(fs.existsSync);

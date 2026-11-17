@@ -1,261 +1,454 @@
 /* ════════════════════════════════════════════════════════════════════
-   SPLIT VIEW — styles for js/split-view.js, the shared "triage split
-   view" frame of the office screens (design "Dacs Web Admin", variant B;
-   spec docs/superpowers/specs/2026-11-14-office-split-view-redesign-design.md).
+   OFFICE FRAME (v5) — styles for js/split-view.js, the shared frame of
+   the office screens (design "Dacs Web Office v5", docs/design/office-v5;
+   spec docs/superpowers/specs/2026-11-14-office-split-view-redesign-design.md
+   rev 2). The file keeps its Phase 1 name.
 
-   Header line · tabs with counts · list (440px) | panel. Pills reuse the
-   att-pill classes in css/attendance-admin.css, whose colours already
-   equal the design's. Phones (≤720px) show the list, then the panel with
-   a Back button.
+   Header · How … · pill tabs with counts · tab help · aside · toolbar ·
+   groups of cards. One item at a time in a centred pop-up (#svPop on
+   <body>). Pills reuse the att-pill classes in css/attendance-admin.css,
+   whose colours already equal the design's. Phones (≤720px): one column
+   of cards, the pop-up fills the screen.
    ════════════════════════════════════════════════════════════════════ */
 
-.content-view:has(> .sv) { padding-bottom: 24px; }
+.content-view:has(> .sv) { padding-bottom: 32px; }
 
 .sv {
+    max-width: 1280px;
+    margin: 0 auto;
     display: flex;
     flex-direction: column;
     gap: 14px;
-    padding-top: 20px;
+    padding-top: 22px;
     font-family: var(--sans, 'Barlow', sans-serif);
+    font-size: 15px;
     color: #1C1C1E;
 }
 
-/* ── Header line ───────────────────────────────────────────────── */
-.sv-head { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+@keyframes svIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@keyframes svPulse { 0%, 100% { opacity: 1; } 50% { opacity: .3; } }
+
+/* ── Header ─────────────────────────────────────────────────────── */
+.sv-head { display: flex; align-items: flex-start; gap: 14px; flex-wrap: wrap; }
+.sv-head-text { flex: 1; min-width: 240px; }
 .sv-title {
     font-family: var(--serif, 'Playfair Display', serif);
-    font-size: 26px; font-weight: 600; letter-spacing: -.015em; margin: 0;
+    font-size: 30px; font-weight: 600; letter-spacing: -.01em; line-height: 1.15; margin: 0;
     font-feature-settings: "lnum" 1;
 }
-.sv-sub { font-size: 14px; color: #6C6C70; flex: 1; min-width: 200px; }
+.sv-sub { font-size: 15px; color: #6C6C70; margin-top: 5px; line-height: 1.5; max-width: 760px; }
 .sv-live {
-    display: inline-flex; align-items: center; gap: 6px;
+    display: inline-flex; align-items: center; gap: 6px; align-self: center;
     font-size: 12px; font-weight: 600; color: #1A5C3A; background: #EAF2EC;
     border-radius: 999px; padding: 4px 10px;
 }
 .sv-live-dot { width: 7px; height: 7px; border-radius: 50%; background: #1A5C3A; animation: svPulse 1.6s ease-in-out infinite; }
-@keyframes svPulse { 0%, 100% { opacity: 1; } 50% { opacity: .3; } }
-@keyframes svIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 
-.sv-icon-btn {
-    width: 40px; height: 38px; border: 1px solid #E5E5E5; border-radius: 10px;
-    background: #fff; color: #3A3A3C; cursor: pointer; display: grid; place-items: center;
-}
-.sv-icon-btn svg { width: 18px; height: 18px; }
 .sv-more { position: relative; }
+.sv-more-btn {
+    height: 44px; padding: 0 16px; border: 1px solid #D8D8D6; border-radius: 999px; background: #fff;
+    color: #1C1C1E; cursor: pointer; display: inline-flex; align-items: center; gap: 7px;
+    font: inherit; font-size: 14.5px; font-weight: 600;
+}
+.sv-more-btn svg { width: 16px; height: 16px; }
 .sv-menu {
-    position: absolute; top: 44px; right: 0; z-index: 9; min-width: 200px;
-    background: #fff; border: 1px solid #E5E5E5; border-radius: 12px;
+    position: absolute; top: 50px; right: 0; z-index: 9; min-width: 250px;
+    background: #fff; border: 1px solid #E5E5E5; border-radius: 14px;
     box-shadow: 0 16px 48px rgba(0, 0, 0, .12); padding: 6px; animation: svIn .15s ease both;
 }
 .sv-menu-item {
-    width: 100%; display: flex; align-items: center; gap: 10px; padding: 9px 12px;
-    border: 0; background: none; border-radius: 8px; font: inherit; font-size: 13.5px;
-    color: #3A3A3C; cursor: pointer; text-align: left; white-space: nowrap;
+    width: 100%; display: flex; align-items: center; gap: 10px; padding: 11px 12px;
+    border: 0; background: none; border-radius: 9px; font: inherit; font-size: 15px;
+    color: #1C1C1E; cursor: pointer; text-align: left; white-space: nowrap;
 }
 .sv-menu-item:hover, .sv-menu-item:focus-visible { background: #F5F5F5; }
 .sv-menu-item svg { width: 15px; height: 15px; }
 .sv-primary {
-    display: inline-flex; align-items: center; gap: 8px; border: 1px solid #1A5C3A;
-    background: #1A5C3A; color: #fff; border-radius: 10px; padding: 10px 18px;
-    font: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer; white-space: nowrap;
+    height: 44px; display: inline-flex; align-items: center; gap: 8px; border: 0;
+    background: #1A5C3A; color: #fff; border-radius: 999px; padding: 0 20px;
+    font: inherit; font-size: 15px; font-weight: 600; cursor: pointer; white-space: nowrap;
 }
 .sv-primary:hover { background: #134428; }
-.sv-primary svg { width: 15px; height: 15px; }
+.sv-primary svg { width: 17px; height: 17px; }
 
-/* ── Tabs with counts ──────────────────────────────────────────── */
-.sv-tabs { display: flex; border-bottom: 1px solid #E5E5E5; }
-.sv-tabs-track { display: flex; gap: 4px; flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: none; }
-.sv-tabs-track::-webkit-scrollbar { display: none; }
+/* ── Segmented switch, tiles, lede, strips, switched-off card ──── */
+.sv-seg { display: inline-flex; gap: 3px; padding: 4px; background: #E8E8E4; border-radius: 999px; flex-wrap: wrap; align-self: center; }
+.sv-seg-btn {
+    padding: 9px 16px; font: inherit; font-size: 14px; border-radius: 999px; border: 0; background: transparent;
+    color: #55555A; font-weight: 600; cursor: pointer; white-space: nowrap;
+}
+.sv-seg-btn.is-on { background: #fff; color: #1C1C1E; }
+.sv-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; }
+.sv-tile {
+    text-align: left; padding: 14px 16px; border-radius: 16px; background: #fff; border: 1.5px solid #E5E5E5;
+    font: inherit; cursor: pointer; display: flex; flex-direction: column; gap: 2px;
+    transition: transform .15s, border-color .15s;
+}
+.sv-tile:hover { border-color: #1A5C3A; transform: translateY(-2px); }
+.sv-tile.is-on { border-color: #1A5C3A; }
+.sv-tile-n { font-family: var(--mono, 'IBM Plex Mono', monospace); font-size: 26px; font-weight: 500; }
+.sv-tile-label { font-size: 14px; color: #55555A; font-weight: 500; }
+.sv-lede { font-size: 16px; line-height: 1.55; color: #3A3A3C; }
+.sv-strip {
+    background: #EAF2EC; border-radius: 14px; padding: 12px 16px; display: flex; gap: 10px;
+    font-size: 14.5px; line-height: 1.5; color: #134428;
+}
+.sv-strip > svg { width: 17px; height: 17px; flex: none; margin-top: 1px; }
+.sv-off {
+    background: #fff; border: 1px dashed #D0D0CE; border-radius: 18px; padding: 44px 28px; text-align: center;
+    display: flex; flex-direction: column; align-items: center; gap: 10px;
+}
+.sv-off-title { font-family: var(--serif, 'Playfair Display', serif); font-size: 22px; font-weight: 600; }
+.sv-off-text { font-size: 15px; color: #6C6C70; max-width: 520px; }
+.sv-off .sv-primary { margin-top: 8px; }
+
+/* ── Legend and day dots (Weekly bonus) ───────────────────────── */
+.sv-legend { display: flex; gap: 12px; flex-wrap: wrap; }
+.sv-legend-item { display: inline-flex; align-items: center; gap: 6px; font-size: 13.5px; color: #55555A; }
+.sv-legend .sv-dot { width: 16px; height: 16px; border-radius: 5px; }
+.sv-dots { display: flex; gap: 5px; margin-top: 4px; }
+.sv-dot {
+    width: 30px; height: 26px; border-radius: 7px; box-sizing: border-box; border: 1px solid;
+    font-size: 12px; font-weight: 700; display: inline-grid; place-items: center;
+}
+.sv-dot--o { background: #1A5C3A; border-color: #1A5C3A; color: #fff; }
+.sv-dot--l { background: #E3C47A; border-color: #C9A54E; color: #5A4310; }
+.sv-dot--m { background: #C0392B; border-color: #C0392B; color: #fff; }
+.sv-dot--u { background: #E8EEF6; border-color: #2A4D7A; color: #2A4D7A; }
+.sv-dot--t { background: #fff; border-color: #CFCFCC; color: #9A9A9E; }
+.sv-dot--x { background: #F0F0EE; border-color: #F0F0EE; color: #9A9A9E; }
+
+/* ── Tick boxes and the tick bar (Shopping list) ──────────────── */
+.sv-tick {
+    flex: none; width: 28px; height: 28px; border-radius: 8px; border: 2px solid #BDBDBA; background: #fff;
+    color: #fff; display: grid; place-items: center; box-sizing: border-box; cursor: pointer; padding: 0;
+}
+.sv-tick svg { width: 16px; height: 16px; }
+.sv-tick.is-on { border-color: #1A5C3A; background: #1A5C3A; }
+.sv-tickbar { position: sticky; bottom: 14px; display: flex; justify-content: center; z-index: 5; }
+.sv-tickbar-btn {
+    height: 52px; border: 0; background: #1A5C3A; color: #fff; border-radius: 999px; padding: 0 28px;
+    font: inherit; font-size: 16px; font-weight: 600; cursor: pointer; box-shadow: 0 10px 28px rgba(26, 92, 58, .35);
+}
+
+/* ── How … (explanations and legends, folded) ─────────────────── */
+.sv-how { background: #fff; border: 1px solid #E5E5E5; border-radius: 14px; }
+.sv-how > summary {
+    min-height: 46px; display: flex; align-items: center; gap: 8px; padding: 0 16px;
+    font-size: 14.5px; font-weight: 600; color: #1A5C3A; cursor: pointer; list-style: none;
+}
+.sv-how > summary::-webkit-details-marker { display: none; }
+.sv-how > summary::after { content: '▾'; margin-left: auto; }
+.sv-how[open] > summary::after { content: '▴'; }
+.sv-how > summary svg { width: 17px; height: 17px; }
+.sv-how-body { padding: 0 16px 12px; font-size: 14.5px; line-height: 1.55; color: #3A3A3C; }
+.sv-how-text { margin: 0 0 6px; }
+.sv-how-row { display: flex; gap: 12px; padding: 7px 0; border-top: 1px solid #F0F0EE; flex-wrap: wrap; }
+.sv-how-row strong { flex: 0 0 190px; font-weight: 600; }
+.sv-how-row span { flex: 1; min-width: 200px; color: #55555A; }
+
+/* ── Pill tabs with counts ─────────────────────────────────────── */
+.sv-tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
 .sv-tab {
-    display: inline-flex; align-items: center; gap: 8px; padding: 10px 14px;
-    border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px; background: none;
-    font: inherit; font-size: 14px; font-weight: 600; color: #3A3A3C; cursor: pointer; white-space: nowrap;
+    height: 44px; display: inline-flex; align-items: center; gap: 8px; padding: 0 16px;
+    border: 1.5px solid transparent; border-radius: 999px; background: #fff;
+    font: inherit; font-size: 15px; font-weight: 500; color: #3A3A3C; cursor: pointer; white-space: nowrap;
 }
 .sv-tab:hover { color: #1A5C3A; }
-.sv-tab.is-on { border-bottom-color: #1A5C3A; color: #1A5C3A; font-weight: 700; }
+.sv-tab:focus-visible { outline: 2px solid #1A5C3A; outline-offset: 2px; }
+.sv-tab.is-on { border-color: #1A5C3A; color: #1A5C3A; font-weight: 700; }
 .sv-tab-n {
-    min-width: 22px; height: 20px; padding: 0 6px; box-sizing: border-box; border-radius: 10px;
-    background: #F0F0EE; color: #6C6C70; font-size: 12px; font-weight: 700;
+    min-width: 22px; height: 22px; padding: 0 6px; box-sizing: border-box; border-radius: 11px;
+    background: #EAEAE8; color: #55555A; font-size: 12px; font-weight: 700;
     display: inline-flex; align-items: center; justify-content: center;
 }
-.sv-tab-n.is-on { background: #1A5C3A; color: #fff; }
-.sv-tab-n.is-needs { background: #FBEDEB; color: #C0392B; }
-/* A screen's extra line in the header (Requests: this week's cutoff → buy →
-   deliver). Right-aligned beside the sub; wraps under the title when narrow. */
-.sv-head-aside {
-    display: flex; flex-direction: column; align-items: flex-end; gap: 2px;
-    font-size: 12.5px; color: #55555A; margin-left: auto;
-}
+.sv-tab-n.is-on { background: #EAF2EC; color: #1A5C3A; }
+.sv-tab-n.is-needs { background: #C0392B; color: #fff; }
+.sv-tab-help { font-size: 15px; line-height: 1.5; color: #3A3A3C; }
+.sv-aside { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
 
-/* ── The split ─────────────────────────────────────────────────── */
-.sv-split {
-    display: grid;
-    grid-template-columns: 440px minmax(0, 1fr);
-    gap: 16px;
-    height: calc(100vh - var(--sv-top, 220px) - 24px);
-    min-height: 420px;
+/* The Queue's "This week" box (in .sv-aside). */
+.sv-week {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 14px; color: #55555A;
+    padding: 10px 16px; background: #fff; border: 1px solid #E5E5E5; border-radius: 14px;
 }
-.sv-list, .sv-panel {
-    min-height: 0; border: 1px solid #E5E5E5; border-radius: 14px; overflow: hidden;
-    background: #fff; box-shadow: 0 1px 2px rgba(0, 0, 0, .06);
-}
-.sv-list { display: flex; flex-direction: column; }
-.sv-list-tools { flex: none; padding: 10px 12px; border-bottom: 1px solid #E5E5E5; display: flex; flex-direction: column; gap: 8px; }
-.sv-search {
-    display: flex; align-items: center; gap: 8px; border: 1px solid #E5E5E5; border-radius: 9px;
-    padding: 7px 12px; color: #9A9A9E; background: #FAFAFA; margin: 0;
-}
-.sv-search svg { width: 15px; height: 15px; flex: none; }
-.sv-search input {
-    border: 0; outline: none; background: transparent; font: inherit; font-size: 13px;
-    color: #1C1C1E; width: 100%; min-width: 0; padding: 0; box-shadow: none; height: auto;
-}
-.sv-search:focus-within { border-color: #1A5C3A; box-shadow: 0 0 0 3px #EAF2EC; }
-.sv-list-meta { font-size: 12px; color: #55555A; }
-.sv-select {
-    width: 100%; height: 34px; border: 1px solid #E5E5E5; border-radius: 9px; background: #fff;
-    padding: 0 10px; font: inherit; font-size: 13px; color: #3A3A3C;
-}
-.sv-select:focus { outline: none; border-color: #1A5C3A; box-shadow: 0 0 0 3px #EAF2EC; }
-
-/* The Queue's "this week" line (in .sv-head-aside). */
-.sv-week { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
-.sv-week svg { width: 15px; height: 15px; }
+.sv-week svg { width: 16px; height: 16px; }
 .sv-week strong { color: #1C1C1E; font-weight: 600; }
 .sv-week-k { font-weight: 700; color: #1C1C1E; }
 .sv-week-arrow { color: #9A9A9E; }
-.sv-week .att-link { font-size: 12.5px; }
-.sv-week-note { font-size: 12px; color: #6C6C70; }
-.sv-list-body { flex: 1; overflow-y: auto; }
+.sv-week .att-link { font-size: 14px; }
+.sv-week-note { font-size: 14px; color: #6C6C70; }
 
-.sv-group-head {
-    position: sticky; top: 0; z-index: 1; padding: 8px 16px; background: #F7F7F5;
-    border-bottom: 1px solid #E5E5E5; font-size: 12px; font-weight: 700; letter-spacing: .04em;
-    text-transform: uppercase; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+/* ── Toolbar: search, the screen's own controls, "Showing X of Y" ─ */
+.sv-toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.sv-search {
+    flex: 1; min-width: 220px; max-width: 380px; height: 44px; box-sizing: border-box;
+    display: flex; align-items: center; gap: 8px; border: 1px solid #DCDCDA; border-radius: 999px;
+    padding: 0 16px; color: #9A9A9E; background: #fff; margin: 0;
 }
-.sv-group-head .att-pill { text-transform: none; letter-spacing: 0; }
-.sv-group-meta { font-weight: 600; text-transform: none; letter-spacing: 0; color: #55555A; }
-.sv-group-count { margin-left: auto; color: #55555A; font-weight: 600; }
+.sv-search svg { width: 16px; height: 16px; flex: none; }
+.sv-search input {
+    border: 0; outline: none; background: transparent; font: inherit; font-size: 15px;
+    color: #1C1C1E; width: 100%; min-width: 0; padding: 0; box-shadow: none; height: auto;
+}
+.sv-search:focus-within { border-color: #1A5C3A; box-shadow: 0 0 0 3px #EAF2EC; }
+.sv-select {
+    height: 38px; border: 1px solid #DCDCDA; border-radius: 999px; background: #fff;
+    padding: 0 13px; font: inherit; font-size: 14px; color: #3A3A3C;
+    /* A select is as wide as its longest option (a long project name); v5's
+       filter is a compact pill ("All projects ▾"). */
+    width: auto; max-width: 240px; text-overflow: ellipsis;
+}
+.sv-select:focus { outline: none; border-color: #1A5C3A; box-shadow: 0 0 0 3px #EAF2EC; }
+/* The same pill as a toggle (.sv-chip, ticked when on: "Last 7 days ✓") and
+   as a labelled date box (.sv-date: "From [date]"), v5's toolbar filters. */
+.sv-chip {
+    height: 38px; display: inline-flex; align-items: center; gap: 6px; box-sizing: border-box;
+    border: 1px solid #DCDCDA; border-radius: 999px; background: #fff; padding: 0 14px;
+    font: inherit; font-size: 14px; color: #3A3A3C; cursor: pointer; white-space: nowrap;
+}
+.sv-chip:hover { border-color: #1A5C3A; }
+.sv-chip:focus-visible { outline: none; border-color: #1A5C3A; box-shadow: 0 0 0 3px #EAF2EC; }
+.sv-chip.is-on { border-color: #1A5C3A; background: #EAF2EC; color: #1A5C3A; font-weight: 600; }
+.sv-chip.is-on::after { content: '\2713'; }
+.sv-chip svg { width: 15px; height: 15px; }
+.sv-date {
+    height: 38px; display: inline-flex; align-items: center; gap: 4px; box-sizing: border-box;
+    border: 1px solid #DCDCDA; border-radius: 999px; background: #fff; padding: 0 8px 0 14px;
+    margin: 0; font-size: 14px; color: #6C6C70; white-space: nowrap; cursor: pointer;
+}
+.sv-date:focus-within { border-color: #1A5C3A; box-shadow: 0 0 0 3px #EAF2EC; }
+.sv-date input {
+    border: 0; outline: none; background: transparent; box-shadow: none; font: inherit; font-size: 14px;
+    color: #1C1C1E; width: auto; min-width: 0; height: 34px; padding: 0 2px; margin: 0;
+}
+@media (max-width: 720px) {
+    .sv-chip, .sv-date, .sv-select { height: 44px; }
+}
+.sv-showing { font-size: 13.5px; color: #6C6C70; white-space: nowrap; }
+
+/* ── Groups of cards ───────────────────────────────────────────── */
+.sv-body { display: flex; flex-direction: column; gap: 18px; }
+.sv-group { display: flex; flex-direction: column; gap: 10px; }
+.sv-group-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
+.sv-group-title { font-size: 16px; font-weight: 700; }
+.sv-group-count { font-size: 14px; color: #6C6C70; font-weight: 500; }
+.sv-group-meta { flex-basis: 100%; font-size: 14px; color: #6C6C70; line-height: 1.45; }
 .sv-tone-ink { color: #1C1C1E; }
 .sv-tone-red { color: #C0392B; }
 .sv-tone-gold { color: #7C5E2A; }
 .sv-tone-green { color: #1A5C3A; }
 .sv-tone-muted { color: #6C6C70; }
 
-.sv-row {
-    width: 100%; display: flex; gap: 12px; align-items: flex-start; padding: 12px 16px;
-    border: 0; border-bottom: 1px solid #F0F0EE; background: #fff; font: inherit; color: inherit;
-    text-align: left; cursor: pointer; transition: background .15s;
+.sv-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
+.sv-card {
+    background: #fff; border: 1.5px solid #E5E5E5; border-radius: 18px; padding: 16px;
+    display: flex; flex-direction: column; gap: 6px; cursor: pointer; overflow: hidden; outline: none;
+    transition: transform .15s, border-color .15s, box-shadow .15s;
 }
-.sv-row:hover { background: #F7F8F7; }
-.sv-row:focus-visible { outline: 2px solid #1A5C3A; outline-offset: -2px; }
-.sv-row--tint { background: #FDF6F5; }
-.sv-row--stripe-red { box-shadow: inset 3px 0 0 #C0392B; }
-.sv-row--dim .sv-row-main { opacity: .72; }
-.sv-row.is-selected { background: #F1F6F2; box-shadow: inset 3px 0 0 #1A5C3A; }
-.sv-row-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-.sv-row-title { font-weight: 700; font-size: 14.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.sv-row-sub, .sv-row-meta { font-size: 12.5px; color: #6C6C70; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.sv-row-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 7px; }
-.sv-row-side { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; flex: none; }
-.sv-row-right { font-family: var(--mono, 'IBM Plex Mono', monospace); font-size: 12px; color: #6C6C70; white-space: nowrap; }
-.sv-row .att-pill, .sv-group-head .att-pill { font-size: 11.5px; }
+.sv-card:hover { transform: translateY(-2px); border-color: #1A5C3A; }
+.sv-card:focus-visible { border-color: #1A5C3A; box-shadow: 0 0 0 3px #EAF2EC; }
+.sv-card.is-open { border-color: #1A5C3A; box-shadow: 0 14px 40px rgba(26, 92, 58, .14); }
+.sv-card--stripe-red { box-shadow: inset 5px 0 0 #C0392B; }
+.sv-card--stripe-red.is-open { box-shadow: inset 5px 0 0 #C0392B, 0 14px 40px rgba(26, 92, 58, .14); }
+.sv-card--tint { background: #FDF6F5; }
+.sv-card--dim { opacity: .62; }
+.sv-card-top { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; min-height: 26px; }
+.sv-card-top .att-pill { font-size: 12px; }
+.sv-card-right {
+    margin-left: auto; font-family: var(--mono, 'IBM Plex Mono', monospace); font-size: 13px;
+    color: #55555A; white-space: nowrap;
+}
+.sv-card-title { font-weight: 600; font-size: 17px; line-height: 1.3; margin-top: 2px; }
+.sv-card-sub {
+    font-size: 14.5px; color: #55555A; line-height: 1.45;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.sv-card-meta { font-size: 13.5px; color: #6C6C70; line-height: 1.45; }
+.sv-card-foot { margin-top: auto; padding-top: 6px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.sv-card-step {
+    height: 44px; border: 0; background: #1A5C3A; color: #fff; border-radius: 999px; padding: 0 18px;
+    font: inherit; font-size: 14.5px; font-weight: 600; cursor: pointer;
+}
+.sv-card-step:hover { background: #134428; }
+.sv-card-open { height: 44px; display: inline-flex; align-items: center; font-size: 14.5px; font-weight: 600; color: #1A5C3A; }
 .sv-pill--solid-red { background: #C0392B; color: #fff; }
-.sv-empty { padding: 40px 20px; text-align: center; color: #6C6C70; font-size: 14px; line-height: 1.5; }
 
-/* ── Panel ─────────────────────────────────────────────────────── */
-.sv-panel-in { height: 100%; display: flex; flex-direction: column; min-height: 0; }
-.sv-panel-empty { height: 100%; display: flex; align-items: center; justify-content: center; color: #6C6C70; font-size: 14px; padding: 24px; }
-.sv-panel-head { flex: none; padding: 22px 26px 16px; border-bottom: 1px solid #E5E5E5; }
-.sv-back {
-    display: none; align-items: center; gap: 6px; border: 0; background: none; padding: 0 0 10px;
-    font: inherit; font-size: 14px; font-weight: 700; color: #1A5C3A; cursor: pointer;
+.sv-empty {
+    background: #fff; border: 1px dashed #D0D0CE; border-radius: 18px; padding: 40px 24px;
+    text-align: center; color: #55555A; font-size: 16px; line-height: 1.5;
+    display: flex; flex-direction: column; align-items: center; gap: 10px;
 }
-.sv-back svg { width: 16px; height: 16px; }
-.sv-kicker {
-    font-family: var(--mono, 'IBM Plex Mono', monospace); font-size: 11px; font-weight: 500;
-    letter-spacing: .14em; text-transform: uppercase; color: #6C6C70;
+.sv-empty > svg { width: 26px; height: 26px; color: #1A5C3A; }
+
+/* ── The pop-up (#svPop on <body>) ─────────────────────────────── */
+@keyframes svPop { from { opacity: 0; transform: translateY(14px) scale(.96); } to { opacity: 1; transform: none; } }
+@keyframes svFade { from { opacity: 0; } to { opacity: 1; } }
+html.sv-pop-on, html.sv-pop-on body { overflow: hidden; }
+.sv-pop {
+    position: fixed; inset: 0; z-index: 1200; display: flex; align-items: center; justify-content: center;
+    padding: 32px; box-sizing: border-box; font-family: var(--sans, 'Barlow', sans-serif); color: #1C1C1E;
 }
-.sv-panel-title {
-    font-family: var(--serif, 'Playfair Display', serif); font-size: 24px; font-weight: 600;
-    letter-spacing: -.01em; margin: 4px 0 0; line-height: 1.2; font-feature-settings: "lnum" 1;
+.sv-pop[hidden] { display: none; }
+.sv-pop-scrim { position: absolute; inset: 0; background: rgba(28, 28, 30, .45); animation: svFade .2s ease both; }
+.sv-pop-box {
+    position: relative; width: 100%; max-width: 780px; max-height: 100%; background: #fff;
+    border-radius: 22px; box-shadow: 0 30px 80px rgba(0, 0, 0, .3); display: flex; flex-direction: column;
+    overflow: hidden; animation: svPop .24s cubic-bezier(.2, .9, .3, 1.1) both;
 }
-.sv-panel-sub { font-size: 14px; color: #6C6C70; margin-top: 4px; }
-.sv-panel-pills { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
-.sv-panel-body {
-    flex: 1; overflow-y: auto; padding: 20px 26px 24px; display: flex; flex-direction: column;
-    gap: 16px; min-height: 0;
+.sv-pop-x {
+    position: absolute; top: 14px; right: 14px; z-index: 2; width: 44px; height: 44px; border-radius: 50%;
+    border: 0; background: #F0F0EE; color: #1C1C1E; display: grid; place-items: center; cursor: pointer;
 }
+.sv-pop-x:hover { background: #E5E5E3; }
+.sv-pop-x svg { width: 20px; height: 20px; }
+.sv-pop .sv-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.sv-panel-head { flex: none; padding: 24px 70px 12px 26px; }
+.sv-pop .sv-panel-body { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 26px 20px; }
 .sv-panel-foot {
-    flex: none; padding: 14px 26px; border-top: 1px solid #E5E5E5; background: #FAFAFA;
-    display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+    flex: none; padding: 12px 26px; border-top: 1px solid #EDEDEB; background: #FAFAF8;
+    display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
 }
-.sv-panel-actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
 .sv-next {
-    margin-left: auto; display: inline-flex; align-items: center; gap: 6px; border: 0;
-    background: transparent; color: #1A5C3A; font: inherit; font-size: 14px; font-weight: 700;
-    cursor: pointer; padding: 10px 4px;
+    margin-left: auto; height: 42px; display: inline-flex; align-items: center; gap: 6px;
+    border: 1px solid #D8D8D6; background: #fff; color: #1C1C1E; border-radius: 10px; padding: 0 16px;
+    font: inherit; font-size: 14.5px; font-weight: 600; cursor: pointer; white-space: nowrap;
 }
 .sv-next svg { width: 16px; height: 16px; }
 
+/* The largest pages and forms (Record purchase) */
+.sv-pop-box.sv-pop-box--wide { max-width: 1040px; }
+.sv-page-host { display: flex; flex-direction: column; gap: 16px; }
+
+/* ── Form adapter: existing .att-modal forms (RA.modal, Work Plan,
+   Attendance) in the v5 form look. Over an open item they take its place:
+   the item is hidden underneath, not redrawn, and comes back as it was. */
+.att-modal { z-index: 1250; background: rgba(28, 28, 30, .45); }
+html.sv-pop-on .att-modal { background: transparent; }
+body:has(.att-modal) #svPop .sv-pop-box { visibility: hidden; }
+.att-modal-box--narrow, .att-modal-box {
+    max-width: 780px; border-radius: 22px; box-shadow: 0 30px 80px rgba(0, 0, 0, .3);
+    font-family: var(--sans, 'Barlow', sans-serif);
+}
+.att-modal-title { font-family: var(--serif, 'Playfair Display', serif); font-size: 24px; font-weight: 600; }
+.att-modal-sub { font-size: 15px; line-height: 1.55; color: #3A3A3C; }
+.att-modal-x {
+    width: 44px; height: 44px; border-radius: 50%; background: #F0F0EE; color: #1C1C1E;
+    display: grid; place-items: center; font-size: 22px;
+}
+.att-modal-body .att-input, .att-modal-body select.att-input { min-height: 44px; border-radius: 9px; }
+.att-modal-foot { background: #FAFAF8; border-top: 1px solid #EDEDEB; }
+.att-modal-foot .att-btn { min-height: 44px; border-radius: 10px; padding: 0 20px; font-size: 15px; }
+
+/* "What to do now" */
+.sv-step {
+    background: #EAF2EC; border-radius: 12px; padding: 16px 18px;
+    display: flex; gap: 14px; align-items: center; flex-wrap: wrap;
+}
+.sv-step-main { flex: 1; min-width: 240px; }
+.sv-step-k { font-size: 12.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #1A5C3A; }
+.sv-step-text { font-size: 15.5px; line-height: 1.5; color: #134428; margin-top: 4px; }
+.sv-step .att-btn { min-height: 46px; padding: 0 22px; font-size: 15.5px; white-space: nowrap; }
+
+/* A form in the pop-up */
+.sv-form-back {
+    align-self: flex-start; display: inline-flex; align-items: center; gap: 5px; border: 0; background: none;
+    padding: 0 0 12px; font: inherit; font-size: 14px; font-weight: 600; color: #1A5C3A; cursor: pointer;
+}
+.sv-form-back svg { width: 15px; height: 15px; }
+.sv-form-head { display: flex; flex-direction: column; }
+.sv-form-title { font-size: 24px; margin-top: 0; }
+.sv-form .sv-panel-foot .att-btn { min-height: 44px; padding: 0 22px; border-radius: 10px; font-size: 15px; }
+
+/* The "done" message */
+.sv-toast {
+    pointer-events: none;
+    position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 1300; max-width: 90%;
+    padding: 13px 20px; border-radius: 999px; background: #1C1C1E; color: #fff; font-size: 15px; font-weight: 500;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, .25); display: flex; align-items: center; gap: 10px;
+    font-family: var(--sans, 'Barlow', sans-serif); animation: svIn .25s ease both;
+}
+.sv-toast[hidden] { display: none; }
+.sv-toast svg { width: 16px; height: 16px; color: #8FD6A8; flex: none; }
+
+/* ── The item (filled into the pop-up's .sv-panel) ─────────────── */
+.sv-panel-in { display: flex; flex-direction: column; min-height: 0; flex: 1; }
+.sv-panel-empty { display: flex; align-items: center; justify-content: center; color: #6C6C70; font-size: 15px; padding: 40px 24px; }
+.sv-kicker { font-size: 12.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: #6C6C70; }
+.sv-panel-title {
+    font-family: var(--serif, 'Playfair Display', serif); font-size: 26px; font-weight: 600;
+    letter-spacing: -.01em; margin: 4px 0 0; line-height: 1.2; font-feature-settings: "lnum" 1;
+}
+.sv-panel-sub { font-size: 15px; color: #55555A; line-height: 1.5; }
+.sv-panel-pills { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.sv-panel-body { display: flex; flex-direction: column; gap: 16px; }
+/* The body is a flex column that scrolls: its sections must keep their own
+   height. Without this, sections that clip their content (the facts box,
+   request item cards: overflow hidden) were squeezed to nothing on a long
+   request (seen live 14 Nov 2026). */
+.sv-panel-body > * { flex-shrink: 0; }
+.sv-panel-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+
 .sv-sec { display: flex; flex-direction: column; gap: 8px; }
-.sv-text { margin: 0; font-size: 15px; line-height: 1.5; color: #3A3A3C; white-space: pre-line; }
+.sv-text { margin: 0; font-size: 15px; line-height: 1.6; color: #3A3A3C; white-space: pre-line; }
 .sv-empty-inline { font-size: 14px; color: #6C6C70; }
-.sv-sec-title { font-size: 11px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: #6C6C70; }
-.sv-notice { padding: 14px 16px; border-radius: 12px; border: 1px solid; display: flex; gap: 11px; }
+.sv-sec-title { font-size: 15px; font-weight: 700; color: #1C1C1E; }
+.sv-notice { padding: 12px 14px; border-radius: 10px; border: 1px solid; display: flex; gap: 11px; }
 .sv-notice > svg { width: 18px; height: 18px; flex: none; margin-top: 1px; }
 .sv-notice-title { font-weight: 700; font-size: 14.5px; }
-.sv-notice-body { font-size: 13.5px; line-height: 1.5; color: #3A3A3C; margin-top: 2px; }
-.sv-notice--red { background: #FBEDEB; border-color: #F0DAD7; color: #C0392B; }
-.sv-notice--gold { background: #F5EFE2; border-color: #E0D2B4; color: #7C5E2A; }
-.sv-notice--green { background: #EAF2EC; border-color: #D3E2D8; color: #1A5C3A; }
-.sv-notice--grey { background: #F5F5F5; border-color: #E5E5E5; color: #1C1C1E; }
+.sv-notice-body { font-size: 14.5px; line-height: 1.5; color: #3A3A3C; margin-top: 2px; }
+.sv-notice--red { background: #FBEDEB; border-color: #F0DAD7; color: #8E2A20; }
+.sv-notice--gold { background: #F5EFE2; border-color: #E0D2B4; color: #5F4718; }
+.sv-notice--green { background: #EAF2EC; border-color: #D3E2D8; color: #134428; }
+.sv-notice--grey { background: #F5F5F5; border-color: #E5E5E5; color: #3A3A3C; }
 
-.sv-facts { border: 1px solid #E5E5E5; border-radius: 12px; overflow: hidden; margin: 0; }
-.sv-fact { display: flex; gap: 16px; padding: 11px 16px; font-size: 14px; }
+.sv-facts { border: 1px solid #E5E5E5; border-radius: 10px; overflow: hidden; margin: 0; }
+.sv-fact { display: flex; gap: 12px; padding: 9px 14px; font-size: 14.5px; flex-wrap: wrap; }
 .sv-fact + .sv-fact { border-top: 1px solid #F0F0EE; }
-.sv-fact dt { width: 130px; flex: none; color: #6C6C70; }
-.sv-fact dd { flex: 1; margin: 0; font-weight: 600; color: #1C1C1E; min-width: 0; overflow-wrap: anywhere; }
+.sv-fact dt { flex: 0 0 170px; color: #6C6C70; }
+.sv-fact dd { flex: 1; min-width: 160px; margin: 0; font-weight: 500; color: #1C1C1E; line-height: 1.45; overflow-wrap: anywhere; }
 .sv-mono { font-family: var(--mono, 'IBM Plex Mono', monospace); }
 
-.sv-hist summary { cursor: pointer; list-style: none; }
-.sv-hist summary::-webkit-details-marker { display: none; }
+/* History folds above 6 entries (as the old request page did): the title
+   row says so with ▸ Show / ▾ Hide and looks clickable. */
+.sv-hist > summary {
+    cursor: pointer; list-style: none; display: flex; align-items: center; gap: 6px;
+    padding: 6px 0; border-top: 1px solid #E5E5E5;
+}
+.sv-hist > summary::-webkit-details-marker { display: none; }
+.sv-hist > summary::after { content: '▸ Show'; margin-left: auto; letter-spacing: .04em; color: #1A5C3A; font-weight: 700; }
+.sv-hist[open] > summary::after { content: '▾ Hide'; }
+.sv-hist > summary:hover { color: #1A5C3A; }
 .sv-hist-n { color: #9A9A9E; margin-left: 4px; }
 .sv-history { list-style: none; margin: 0; padding: 0; }
-.sv-history li { position: relative; padding-left: 20px; margin-top: 10px; }
-.sv-history li::before {
-    content: ''; position: absolute; left: 0; top: 6px; width: 8px; height: 8px;
-    border-radius: 50%; background: #C9C8C3;
-}
-.sv-history-when { font-size: 12.5px; color: #6C6C70; }
-.sv-history-text { font-size: 14px; color: #3A3A3C; }
+.sv-history li { display: flex; gap: 12px; padding: 7px 0; border-top: 1px solid #F0F0EE; font-size: 14px; flex-wrap: wrap; }
+.sv-history-when { flex: 0 0 230px; font-family: var(--mono, 'IBM Plex Mono', monospace); font-size: 12.5px; color: #6C6C70; }
+.sv-history-text { flex: 1; min-width: 180px; color: #3A3A3C; }
 
 .sv-error {
-    margin: 20px; padding: 14px 16px; border-radius: 12px; background: #FBEDEB;
-    border: 1px solid #F0DAD7; color: #C0392B; display: flex; gap: 10px; font-size: 14px;
+    margin: 20px; padding: 14px 16px; border-radius: 10px; background: #FBEDEB;
+    border: 1px solid #F0DAD7; color: #C0392B; display: flex; gap: 10px; font-size: 14.5px;
 }
 .sv-error svg { width: 18px; height: 18px; flex: none; }
 
-/* ── Forms in the panel ────────────────────────────────────────── */
+/* ── Forms (in the pop-up) ─────────────────────────────────────── */
 .sv-form { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-.sv-form-body .att-field { display: flex; flex-direction: column; gap: 7px; }
-.sv-form-body .att-field label { font-size: 12.5px; font-weight: 600; color: #3A3A3C; }
-.sv-form-body .att-input { min-height: 42px; box-sizing: border-box; border-radius: 10px; }
+.sv-form-body .att-field { display: flex; flex-direction: column; gap: 5px; max-width: 640px; }
+.sv-form-body .att-field label { font-size: 14px; font-weight: 600; color: #1C1C1E; }
+.sv-form-body .att-input { min-height: 44px; box-sizing: border-box; border-radius: 9px; font-size: 15px; }
 .sv-form-body select.att-input[size] { min-height: 0; }
 .sv-form-error {
-    padding: 12px 14px; border-radius: 10px; background: #FBEDEB; border: 1px solid #F0DAD7;
-    color: #C0392B; font-size: 13.5px;
+    display: flex; gap: 9px; font-size: 14.5px; line-height: 1.5; color: #C0392B; font-weight: 500; max-width: 640px;
 }
 
 /* ── Chrome: "needs you" counts and the Setup ▾ menu ───────────── */
 .sv-count {
     min-width: 18px; height: 18px; padding: 0 5px; box-sizing: border-box; border-radius: 9px;
-    background: #FBEDEB; color: #C0392B; font-size: 11px; font-weight: 700; line-height: 1;
+    background: #C0392B; color: #fff; font-size: 11px; font-weight: 700; line-height: 1;
     display: inline-flex; align-items: center; justify-content: center; margin-left: 2px;
 }
 .sv-count[hidden] { display: none; }
-.sv-count--tab { background: #C0392B; color: #fff; font-size: 10px; min-width: 16px; height: 16px; margin-left: 6px; }
+.sv-count--tab { font-size: 10px; min-width: 16px; height: 16px; margin-left: 6px; }
 .portal-ptab.active .sv-count--tab { background: #fff; color: #C0392B; }
 .sv-setup-menu {
     position: fixed; z-index: 1000; min-width: 220px; background: #fff; border: 1px solid #E5E5E5;
@@ -264,33 +457,77 @@
 }
 .sv-setup-menu .sv-menu-item.is-on { color: #1A5C3A; font-weight: 700; }
 
-/* ── Mid width: a narrower list ────────────────────────────────── */
-@media (max-width: 1100px) {
-    .sv-split { grid-template-columns: 360px minmax(0, 1fr); }
-}
-
-/* ── Phones: the list, then the panel with Back ────────────────── */
+/* ── Phones: one column of cards ───────────────────────────────── */
 @media (max-width: 720px) {
-    .sv-split { display: block; height: auto; min-height: 0; }
-    .sv-panel { display: none; }
-    .sv--panel .sv-list { display: none; }
-    .sv--panel .sv-panel { display: block; }
-    .sv-list-body { overflow: visible; }
-    .sv-panel-in { height: auto; }
-    .sv-panel-body { overflow: visible; padding: 18px 16px 20px; }
-    .sv-panel-head { padding: 16px 16px 14px; }
-    .sv-panel-foot { padding: 12px 16px; position: sticky; bottom: 0; }
-    .sv-back { display: inline-flex; }
-    .sv-error-back { padding: 16px 16px 0; }
-    .sv-tabs-track { -webkit-overflow-scrolling: touch; }
-    .sv-head-aside { align-items: flex-start; margin-left: 0; }
-    .sv-week { justify-content: flex-start; }
-    .sv-fact dt { width: 110px; }
-    .sv-group-head { top: 0; }
+    .sv { padding-top: 14px; }
+    .sv-title { font-size: 26px; }
+    .sv-tabs { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+    .sv-tabs::-webkit-scrollbar { display: none; }
+    .sv-search { max-width: none; }
+    .sv-cards { grid-template-columns: minmax(0, 1fr); }
+    .sv-how-row strong { flex-basis: 100%; }
+    .sv-fact dt { flex-basis: 110px; }
+    .sv-history-when { flex-basis: 100%; }
     .sv-setup-menu { left: 16px !important; right: 16px; min-width: 0; }
+    /* The pop-up fills the screen. */
+    .sv-pop { padding: 0; }
+    .sv-pop-box { max-width: none; width: 100%; height: 100%; max-height: none; border-radius: 0; }
+    .sv-panel-head { padding: 18px 66px 10px 16px; }
+    .sv-pop .sv-panel-body { padding: 4px 16px 18px; }
+    .sv-panel-foot { padding: 10px 16px; }
+    /* Phone tap targets inside the pop-up; the toast sits above its footer. */
+    .sv-pop .att-btn, .sv-pop .att-link { min-height: 44px; }
+    html.sv-pop-on .sv-toast { bottom: 84px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .sv-live-dot, .sv-menu, .sv-setup-menu { animation: none; }
-    .sv-row { transition: none; }
+    .sv-live-dot, .sv-menu, .sv-setup-menu, .sv-pop-scrim, .sv-pop-box, .sv-toast { animation: none; }
+    .sv-card { transition: none; }
+    .sv-card:hover { transform: none; }
 }
+
+/* A tab or screen that keeps its own content (cfg.custom): the frame already
+   shows the title and sub, so the page's own first title line is hidden; its
+   buttons stay. A page's later headings (an item page) are untouched. */
+.sv-custom > .att-stack > .att-head:first-child .att-title,
+.sv-custom > .att-stack > .att-head:first-child .att-sub { display: none; }
+.sv-custom > .att-stack { padding-top: 0; }
+/* A worker's day in the pop-up drops its back link (✕ replaces it). */
+.att-in-pop .att-crumbs { display: none; }
+
+/* Printing with the pop-up open (e.g. "Print this day" on a worker's day)
+   prints the whole item as a page: nothing behind it, no dimming, ✕ or
+   Next, and no box cut at the screen height. Only while a pop-up is open
+   (html.sv-pop-on): an id rule would otherwise beat .sv-pop[hidden] and put
+   an empty box on every other printout. */
+@media print {
+    html.sv-pop-on, html.sv-pop-on body { overflow: visible !important; height: auto !important; }
+    html.sv-pop-on body > *:not(#svPop) { display: none !important; }
+    html.sv-pop-on #svPop { position: static; display: block; padding: 0; }
+    html.sv-pop-on #svPop .sv-pop-scrim, html.sv-pop-on #svPop .sv-pop-x, html.sv-pop-on #svPop .sv-panel-foot { display: none !important; }
+    html.sv-pop-on #svPop .sv-pop-box { max-width: none; max-height: none; box-shadow: none; border-radius: 0; overflow: visible; animation: none; }
+    html.sv-pop-on #svPop .sv-panel-body { overflow: visible; }
+}
+
+/* ── The v5 sections' page (Attendance, Requests, Work Plan) ─────────
+   body.sv-v5 is set by syncPortalChrome (js/admin.js, V5_SECTIONS). v5
+   draws the work area light grey under white cards, tab pills and boxes,
+   and its module row as plain links with the active one underlined in
+   green. Every other portal section keeps the white page and the grey
+   capsule (admin-renovation.css "White app background"). */
+body.sv-v5 .main-content { background: #F5F5F5 !important; }
+body.sv-v5 .portal-modules-row {
+    background: #fff !important; padding-top: 0; padding-bottom: 0; min-height: 48px; align-items: stretch;
+}
+body.sv-v5 .portal-modules-track {
+    background: none; border: 0; border-radius: 0; padding: 0; gap: 2px; align-items: stretch; overflow: visible;
+}
+body.sv-v5 .portal-module-link {
+    border: 0; border-bottom: 3px solid transparent; border-radius: 0; padding: 0 13px;
+    font-size: 14.5px; font-weight: 500; color: #3A3A3C; background: none; box-shadow: none;
+}
+body.sv-v5 .portal-module-link:hover { color: #1A5C3A; }
+body.sv-v5 .portal-module-link.active-link {
+    border-bottom-color: #1A5C3A; color: #1A5C3A; font-weight: 700; background: none; box-shadow: none;
+}
+body.sv-v5 .portal-module-link svg { width: 16px; height: 16px; }

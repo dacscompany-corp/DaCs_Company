@@ -208,7 +208,7 @@ console.log('\ntools: wiring');
 test('Requests → Tools: in the nav, the view list and the page; hidden until tools are on, except from the main owner', () => {
   const admin = read('js/admin.js');
   const html = read('admin.html');
-  ok(/\{ view: 'reqTools',\s+label: 'Tools',\s+icon: 'wrench' \}/.test(admin), 'PRIMARY_NAV entry');
+  ok(/\{ view: 'reqTools',\s+label: 'Tools',\s+icon: 'wrench', count: 'tools' \}/.test(admin), 'PRIMARY_NAV entry (with its D5 count)');
   ok(/if \(!window\.currentToolsOn && !window\.currentToolsMainOwner\) hidden\.push\('reqTools'\);/.test(admin), 'hidden until on');
   ok(/const \{ data: tl \} = await window\.sbClient\.rpc\('tl_status'\);/.test(admin), 'the server says (before 0107: hidden)');
   ok(/window\.currentToolsOn = !!\(tl && tl\.enabled\);/.test(admin) && /window\.currentToolsMainOwner = !!\(tl && tl\.is_main_owner\);/.test(admin));
@@ -283,6 +283,19 @@ test('tool photos: their own folder, office only, in the storage map', () => {
   const st = read('tests/storage-access.test.js');
   ok(/tools: 'admin',/.test(st), 'classified');
   ok(/const path = photoPath\(root\.currentDataUserId, new Date\(\), newOp\(\)\);/.test(BROWSER), 'the company the server checks against');
+});
+
+test('office v5: Tools on the frame — tools, out, to register, waiting and problems are cards; one opens in the pop-up', () => {
+  ok(JS.includes('SplitView.render('), 'drawn by the shared frame');
+  ok(/primary: \{ label: 'Register tools'/.test(JS), 'Register tools is the primary button');
+  ok(/SV\.page\(panel, \{/.test(JS) && !/data-back/.test(JS), 'a tool opens in the pop-up, no "← All tools"');
+  ok(/off: \{ title: 'Not switched on yet\.'/.test(JS), 'the switched-off card');
+  ok(/toolStep\(t\)/.test(JS) && /want\.act === go\.dataset\.toolAct/.test(JS), 'a card starts only the step it showed');
+  ok(/Show closed/.test(JS) && /Only the main owner confirms or rejects a Lost report or a Retire request\./.test(JS), 'Problems keeps Show closed; Waiting keeps its note');
+});
+
+test("office v5: the Problems tab's load error is escaped (the frame draws empty as HTML)", () => {
+  ok(/problems: problemsError \? esc\(errorMessage\(problemsError\)\)/.test(BROWSER), 'server text never becomes markup');
 });
 
 console.log('\n' + passed + ' passed, ' + failed + ' failed');

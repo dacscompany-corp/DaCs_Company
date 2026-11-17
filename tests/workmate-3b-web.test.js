@@ -76,8 +76,9 @@ test('every refusal has a sentence, and the teams a leader still leads are named
 test('the buttons show only for the main owner, from the server\'s answer', () => {
   ok(/window\.sbClient\.rpc\('wk_me'\)/.test(ATT), 'asks the server');
   ok(/isMainOwner = !!\(me && me\.is_main_owner\)/.test(ATT), 'its answer decides');
-  ok(/\$\{isMainOwner && \(w\._active \|\| w\.role === 'teamLeader'\)/.test(ATT), 'the role button');
-  ok(/\$\{isMainOwner && w\._active/.test(ATT), 'the password button, active accounts only');
+  // Office v5: the two buttons sit in each worker's pop-up (same rule, new shape).
+  ok(/\(isMainOwner && \(w\._active \|\| w\.role === 'teamLeader'\) \?/.test(ATT), 'the role button');
+  ok(/\(isMainOwner && w\._active \?/.test(ATT), 'the password button, active accounts only');
 });
 
 test('a role change goes through the switch; a reset through the Edge Function; both confirm first', () => {
@@ -150,7 +151,8 @@ test('words for each kind, and a report reads plainly', () => {
 });
 
 test('its own tab, with a count, and closing needs a note and is sent once', () => {
-  ok(/t\('problems', 'Problems' \+ n\(problems\)\)/.test(TOOLS), 'the tab and count');
+  ok(/\['problems', 'Problems', open\]/.test(TOOLS) && /const open = problems\.filter\(p => !p\.closed_at\)\.length;/.test(TOOLS),
+     'the tab and its count of open problems (office v5: pill tabs with counts)');
   ok(/RA\.rpc\('tl_problems', \{ p_open_only: !ui\.showClosed \}\)/.test(TOOLS), 'reads the server');
   ok(/sendOnce\(\(opId, note\) => RA\.rpc\('tl_close_problem', \{ p_op: opId, p_problem: p\.id, p_note: note \}\)\)/.test(TOOLS), 'one operation id');
   ok(/if \(!form\.note\.value\.trim\(\)\) throw new Error\('REASON_REQUIRED'\);/.test(TOOLS.slice(TOOLS.indexOf('function openCloseProblem'))), 'a note is required');

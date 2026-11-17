@@ -236,7 +236,7 @@ test('the Cash tab, the Payments card and "Paid now" are wired in', () => {
   ok(/t\('cash', 'Cash'\)/.test(list) && /ui\.tab === 'cash' && PA\.renderCash/.test(list), 'Cash tab');
   const pur = read('js/purchasing-admin-purchases.js');
   ok(/<div data-payments><\/div>/.test(pur) && /PA\.renderPayments\(host\.querySelector\('\[data-payments\]'\), doc\)/.test(pur), 'Payments card');
-  ok(/<th>Payment<\/th>/.test(pur) && /PA\.payPill\(p\.pay\)/.test(pur), 'Purchases list column');
+  ok(/PA\.payLabel\(p\.pay\)/.test(pur), 'each purchase card shows how it was paid (office v5: cards, not a table column)');
   const rec = read('js/purchasing-admin-record.js');
   ok(/\(st\.editId \? '' : paidNowHtml\(me\)\)/.test(rec), '"Paid now" on new purchases only');
   const save = rec.slice(rec.indexOf('async function save('), rec.indexOf('function refreshDocs('));

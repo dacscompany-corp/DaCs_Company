@@ -224,6 +224,59 @@
         const s = requestSummary(req);
         return !!(s.urgent && s.neededBy && s.neededBy < todayKey);
     }
+    // "What to do now" for one request (office redesign v5, spec §6.3): a
+    // sentence, and a button only when there is exactly one existing next
+    // step — the same action as the button inside the request, for the
+    // same portion. Several portions to arrange get the sentence alone:
+    // "Mark all arranged" does not exist. Rules follow lineState's order.
+    function requestNextStep(req, todayKey) {
+        const st = requestState(req);
+        if (req.status === 'cancelled' || st === 'arranged' || st === 'cancelled') return null;
+        const lines = req.lines || [];
+        const no = (l, i) => (Number.isInteger(l.position) ? l.position : i) + 1;
+        const conflicted = lines.map((l, i) => ({ l, i })).filter(x => (x.l.open_conflicts || []).length);
+        if (conflicted.length === 1) {
+            return { text: 'One item has an offline edit that needs your decision. Choose Apply or Keep on item ' + no(conflicted[0].l, conflicted[0].i) + '.', label: null, act: null };
+        }
+        if (conflicted.length > 1) {
+            return { text: conflicted.length + ' items have an offline edit that needs your decision. Choose Apply or Keep on each.', label: null, act: null };
+        }
+        const reductions = [];
+        lines.forEach(l => (l.portions || []).forEach(p => { if (Number(p.pending_reduction) > 0) reductions.push({ l, p }); }));
+        if (reductions.length === 1) {
+            const { l, p } = reductions[0];
+            return {
+                text: formatQty(p.quantity) + ' ' + l.unit + ' was arranged; the request now needs ' + formatQty(p.pending_reduction) + ' ' + l.unit + ' less. Say what happened to the order.',
+                label: 'Resolve reduction…',
+                act: { act: 'reduction', portion: p.id, line: l.id },
+            };
+        }
+        if (reductions.length > 1) {
+            return { text: reductions.length + ' reductions are waiting. Resolve each one on its item.', label: null, act: null };
+        }
+        const open = [];
+        lines.forEach(l => { if (l.status === 'open') (l.portions || []).forEach(p => { if (!p.arranged) open.push(p); }); });
+        if (!open.length) return null;
+        const overdue = isOverdue(req, todayKey)
+            ? 'Needed ' + formatDay(requestSummary(req).neededBy) + '. Arrange it now or tell the worker when it will arrive.' : null;
+        if (open.length === 1) {
+            return {
+                text: overdue || (st === 'partly' ? 'One portion is still to arrange.' : 'Nothing is arranged yet for this request.'),
+                label: 'Mark arranged',
+                act: { act: 'arrange', portion: open[0].id },
+            };
+        }
+        return { text: overdue || open.length + ' portions are still to arrange. Mark each one arranged on its item.', label: null, act: null };
+    }
+
+    // A card's next-step button starts only the step the card showed: the
+    // same action on the same portion. If the request changed meanwhile
+    // (someone resolved a reduction, so its one step is now "Mark
+    // arranged"), nothing runs — the request just opens.
+    function sameStep(want, have) {
+        return !!(want && have && want.act === have.act && want.portion === have.portion);
+    }
+
     function manilaDayKey(nowMs) {
         const p = manilaParts(new Date(nowMs).toISOString());
         return p.y + '-' + String(p.m + 1).padStart(2, '0') + '-' + String(p.d).padStart(2, '0');
@@ -404,7 +457,7 @@
 
     const pure = { formatQty, parseQty, manilaParts, formatManila, formatDay, shortDay, cutoffLabel, batchLabel,
                    validateDates, lineState, STATE_LABEL, STATE_PILL, needsAction, requestSummary, sortQueue,
-                   requestState, QUEUE_TABS, inQueueTab, queueCounts, isOverdue, manilaDayKey,
+                   requestState, QUEUE_TABS, inQueueTab, queueCounts, isOverdue, requestNextStep, sameStep, manilaDayKey,
                    filterQueue, eventText, ERRORS, errorMessage, workerNo, itemLabel, catalogMatches,
                    parseAliases, aliasesProblem, entryDateLabel, entryPill, refProblem, galleryPath };
 
@@ -519,11 +572,10 @@
     const state = { detailId: null };
     const views = {};
 
-    // One request opens in the Queue's right-hand panel (office split-view
-    // redesign); the Queue reads state.detailId and selects it.
+    // One request opens in the Queue's pop-up (office redesign v5); the
+    // Queue reads state.detailId and opens it.
     function openRequest(id) {
         state.detailId = id;
-        if (root.SplitView) root.SplitView.openPanel('reqQueue');
         root.switchView('reqQueue');
     }
     // The old one-request page is gone; anything still routed there (a

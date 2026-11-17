@@ -65,7 +65,8 @@ const M = evalWith(
    'attValidateEditWorker', 'attSplitName', 'attCanAbandon', 'attOpenRecords',
    'attDayNum', 'attKeyFromDayNum', 'attIsoDow', 'attWeekStartOf', 'attWeekEndOf',
    'attRewardSummary', 'attRewardTotals', 'attRewardStatusLabel', 'attRewardCsv',
-   'attWeeksNeedingEvaluation']
+   'attWeeksNeedingEvaluation', 'attNeedsCount', 'attTodayTab', 'attBadgeChips', 'attBonusDots',
+   'attIsDayId', 'attDateDebounce']
 );
 
 // The plain-language layer, extracted the same way. A separate region
@@ -946,6 +947,218 @@ test('the admin list and the toggle are admin-only', () => {
   const setter = slice(hideSql, 'create or replace function attendance_project_set_hidden(',
                        'revoke all on function attendance_project_set_hidden', '0072');
   ok(setter.includes('attendance_schedule_owner('), 'the toggle uses the 0070 guard');
+});
+
+test('office v5 D8: the red count leaves out "Absent?" (the crew still uses Messenger)', () => {
+  eq(M.attNeedsCount([{ kind: 'open' }, { kind: 'none' }, { kind: 'location' }]), 2, 'open + location');
+  eq(M.attNeedsCount([{ kind: 'none' }]), 0, 'absentees alone show no badge');
+  eq(M.attNeedsCount([]), 0, 'nothing');
+});
+
+test("office v5: Today's tabs — Needs you, Everyone, On site, Absent?, Finished", () => {
+  eq(M.attTodayTab('abs', 'none', false, true), true, 'no record → Absent?');
+  eq(M.attTodayTab('needs', 'none', false, true), false, 'an absentee is not Needs you (D8)');
+  eq(M.attTodayTab('needs', 'working', true, true), true, 'an attention item is Needs you');
+  eq(M.attTodayTab('fin', 'abandoned', false, true), true, 'closed by the office is Finished');
+  eq(M.attTodayTab('fin', 'done', false, true), true, 'finished');
+  eq(M.attTodayTab('on', 'working', false, true), true, 'still on site');
+  eq(M.attTodayTab('all', 'none', false, true), true, 'Everyone');
+  eq(M.attTodayTab('needs', 'none', false, false), false, 'before workers are due nobody needs you');
+  eq(M.attTodayTab('abs', 'none', false, false), true, 'the tab still lists them, as Not in yet');
+});
+
+test('office v5: a card carries the same badge words as the old row, as text', () => {
+  const chips = M.attBadgeChips({ timein_was_offline: true }, null, [{ side: 'in', badge: 'off site', tone: 'bad' }]);
+  eq(JSON.stringify(chips), JSON.stringify([{ text: 'offline', tone: 'n' }, { text: 'in: off site', tone: 'r' }]), 'offline + off site');
+  const clock = M.attBadgeChips({}, 12, [{ side: 'out', badge: 'weak GPS', tone: 'warn' }]);
+  eq(JSON.stringify(clock), JSON.stringify([{ text: 'clock 12m', tone: 'n' }, { text: 'out: weak GPS', tone: 'w' }]), 'clock + a warn');
+  eq(JSON.stringify(M.attBadgeChips({}, 4, [])), '[]', 'a small skew is not shown');
+  eq(JSON.stringify(M.attBadgeChips(null, null, [])), '[]', 'no record, no chips');
+});
+
+test('office v5: Today on site is drawn as v5 cards', () => {
+  const today = slice(src, 'async function attRenderToday(', '// ── A2 · Worker detail', 'attendance-admin.js');
+  ok(/const SV = window\.SplitView;/.test(today) && /SV\.render\(container/.test(today) && /key: 'attToday'/.test(today), 'the frame draws it');
+  ok(/seg: \{/.test(today) && /'By site'/.test(today) && /'Full list'/.test(today), 'By site / Full list');
+  ok(/primary: \{ label: 'Download for Excel'/.test(today), 'Download for Excel is the main button');
+  ok(/if \(window\.NavCounts && workDate === attTodayKey\(\)\) window\.NavCounts\.set\('attToday', attNeedsCount\(attn\)\)/.test(today),
+    'the count is D8 and only for today');
+  ok(/if \(mine !== ticket\) return;/.test(today), 'a late answer for another date is dropped');
+  ok(/nextLabel: [^\n]*'Close this day'/.test(today), 'a closable day has the button on its card');
+  ok(/attOpenNewWorker\(attBodyHost\(\), load\)/.test(today), 'Add a worker opens its form on <body>');
+});
+
+test('office v5: Workers is drawn as v5 cards; every button is in the pop-up', () => {
+  const ws = slice(src, 'async function attRenderWorkers(', '// ── A4 · Create worker account', 'attendance-admin.js');
+  ok(/SV\.render\(container/.test(ws) && /key: 'attWorkers'/.test(ws), 'the frame draws it');
+  ok(/\['on', 'Can use the app'/.test(ws) && /\['off', 'Switched off'/.test(ws) && /\['all', 'All'/.test(ws), 'the three tabs');
+  ok(/primary: \{ label: 'Add a worker'/.test(ws), 'Add a worker is the main button');
+  ok(/\.update\(\{ status: nowActive \? 'inactive' : 'active' \}\)/.test(ws) &&
+     /Nothing was changed — the database refused the update\./.test(ws), 'the switch and its zero-row guard are kept');
+  ok(/attOpenEditWorker\(attBodyHost\(\), w,/.test(ws) && /attOpenLeaderSwitch\(attBodyHost\(\), w,/.test(ws) &&
+     /attOpenTempPassword\(attBodyHost\(\), w,/.test(ws) && /attOpenNewWorker\(attBodyHost\(\),/.test(ws), 'every form opens on <body>');
+  ok(/refreshPanel: true/.test(ws), 'a save redraws the open worker');
+});
+
+test('office v5: Sites & schedule is drawn as v5 cards; the schedule opens on the tab asked for', () => {
+  const ps = slice(src, 'async function attRenderProjects(', '// ── A6 · Attendance reports', 'attendance-admin.js');
+  ok(/SV\.render\(container/.test(ps) && /key: 'attProjects'/.test(ps), 'the frame draws it');
+  ok(/\['all', 'All'/.test(ps) && /\['custom', 'Custom schedule'/.test(ps) && /\['hidden', 'Hidden'/.test(ps) &&
+     /\['closed', 'Has closed days'/.test(ps), 'the four tabs');
+  ok(/how: \{ title: 'How this page works'/.test(ps), 'the How box');
+  ok(/rpc\('attendance_project_set_hidden', \{/.test(ps) && /It stops appearing on their phone\. Anyone already timed in/.test(ps),
+    'hiding keeps its RPC and its confirm');
+  ok(/attOpenSchedule\(attBodyHost\(\), project, configs\.get\(key\) \|\| null,/.test(ps), 'the schedule form opens on <body>');
+  ok(/data-sched-tab="location"[^\n]*Location…/.test(ps) && /data-sched-tab="closed"[^\n]*Closed dates…/.test(ps),
+    'Location… and Closed dates… open their own tab');
+  const sched = slice(src, 'function attOpenSchedule(', 'function attFenceMessage(', 'attendance-admin.js');
+  ok(/function attOpenSchedule\(host, project, config, onSaved, defaultStart, startTab\)/.test(sched), 'the optional tab');
+  ok(/showTab\(startTab \|\| 'days'\);/.test(sched), 'it opens there');
+  ok(/if \(el\) attRenderProjects\(el\);/.test(src), 'Sites & schedule draws its own frame');
+});
+
+test('office v5: Hours report is drawn as v5 cards; its exports and Close this day are kept', () => {
+  const rs = slice(src, 'async function attRenderReports(', '// ── Entry points', 'attendance-admin.js');
+  ok(/SV\.render\(container/.test(rs) && /key: 'attReports'/.test(rs), 'the frame draws it');
+  ok(/\['needs', 'Waiting for a time out'/.test(rs) && /\['worker', 'By worker'/.test(rs) && /\['site', 'By site'/.test(rs), 'the three tabs');
+  ok(/label: 'Excel — one row per worker'/.test(rs) && /label: 'Excel — one row per day'/.test(rs), 'both exports in More');
+  ok(/'attendance-by-worker-' \+ shown\.from \+ '-to-' \+ shown\.to \+ '\.csv'/.test(rs) &&
+     /'attendance-by-day-' \+ shown\.from \+ '-to-' \+ shown\.to \+ '\.csv'/.test(rs), 'the file names are unchanged');
+  ok(/if \(mine !== ticket\) return;/.test(rs), 'a slower, older answer is dropped');
+  ok(/attOpenResolve\(attBodyHost\(\), rec, run\)/.test(rs), 'Close this day opens on <body> and re-runs the report');
+  ok(/nextLabel: [^\n]*'Close this day'/.test(rs), 'a closable day has the button on its card');
+  ok(/not a basis for pay/.test(rs), 'the pay note stays beside the numbers');
+  ok(/if \(el\) attRenderReports\(el\);/.test(src), 'Hours report draws its own frame');
+});
+
+test("office v5: a bonus card's five day dots say what each day cell said", () => {
+  eq(M.attBonusDots([{ tone: 'ok' }, { tone: 'late' }, { tone: 'missed' }, { tone: 'unv' }, { tone: 'off' }]), 'olmux', 'every tone');
+  eq(M.attBonusDots([{ tone: 'pending' }, { tone: 'unknown' }]), 'tt', 'not yet, and no row, read as not yet');
+  eq(M.attBonusDots(null), '', 'no cells');
+});
+
+test('office v5: Weekly bonus is drawn as v5 cards, and staff still see no peso', () => {
+  const rw = slice(src, 'async function attRenderRewards(', 'window.initAttendanceModule = function', 'attendance-admin.js');
+  ok(/SV\.render\(container/.test(rw) && /key: 'attRewards'/.test(rw), 'the frame draws it');
+  ok(/const hideMoney = attIsStaff\(\);/.test(rw), 'staff is still decided the same way');
+  ok(/hideMoney \? \[\] : \[\{ n: attPeso\(/.test(rw), 'no money tile for staff');
+  ok(/right: hideMoney \? '' : amountText\(r\)/.test(rw), 'no amount on a staff card');
+  ok(/hideMoney \? \[\] : \[\['Amount', /.test(rw), 'no amount in a staff pop-up');
+  ok(/hideMoney \? \[\] : \[\{ label: 'Download the list'/.test(rw), 'staff cannot fetch the amounts in a file');
+  ok(/rpc\('attendance_reward_mark_paid', \{/.test(rw) && /This page only keeps a record\. No money moves, /.test(rw) &&
+     /and nothing here touches payroll or a contract\./.test(rw), 'handing over keeps its RPC and its warning');
+  ok(/dots: attBonusDots\(r\._cells\)/.test(rw), 'the five day dots');
+  ok(/nextLabel: [^\n]*'Mark as handed over'/.test(rw), 'an earned, unpaid bonus has the button on its card');
+  ok(/if \(el\) attRenderRewards\(el\);/.test(src), 'Weekly bonus draws its own frame');
+});
+
+test("review #1: \"Open this worker's day\" opens the day in Hours report and Weekly bonus too", () => {
+  ok(M.attIsDayId('7f3a-uuid|2026-11-16') === true, 'a worker|date id is a day');
+  ok(M.attIsDayId('o:123') === false && M.attIsDayId('w:7f3a-uuid') === false && M.attIsDayId('s:Site') === false, 'other ids are not');
+  ok(M.attIsDayId('7f3a-uuid') === false && M.attIsDayId(null) === false, 'a bare worker id is not');
+  for (const [start, end] of [['async function attRenderReports(', '// ── Entry points'],
+                              ['async function attRenderRewards(', 'window.initAttendanceModule = function']]) {
+    const s = slice(src, start, end, 'attendance-admin.js');
+    ok(/onSelect: \(id, panel, opts\) => \{\s*(?:ui\.)?sel = id;\s*(?:\/\/[^\n]*\n\s*)?if \(attIsDayId\(id\)\) \{ attWorkerPanel\(panel, id, opts\); return; \}/.test(s),
+       start + ' routes a day id to the worker\'s day');
+  }
+});
+
+test('review #2: a typed date waits for a pause before it loads (the box is redrawn on load)', () => {
+  const calls = [], timers = [];
+  const fake = { set: (f, ms) => { timers.push({ f, ms }); return timers.length; }, clear: id => { if (timers[id - 1]) timers[id - 1].f = null; } };
+  const apply = M.attDateDebounce(v => calls.push(v), 800, fake);
+  apply('2026-11-01'); apply('2026-11-15');
+  eq(calls.length, 0, 'nothing loads while typing');
+  timers.forEach(t => t.f && t.f());
+  eq(JSON.stringify(calls), '["2026-11-15"]', 'only the finished date loads');
+  eq(timers[1].ms, 800, 'after the pause');
+  for (const [start, end] of [['async function attRenderToday(', '// ── A2 · Worker detail'],
+                              ['async function attRenderReports(', '// ── Entry points'],
+                              ['async function attRenderRewards(', 'window.initAttendanceModule = function']]) {
+    const s = slice(src, start, end, 'attendance-admin.js');
+    ok(/const applyDate = attDateDebounce\(/.test(s), start + ' debounces its date box once per screen');
+  }
+});
+
+test("review #3: Today's site filter clears when the picked day has no such site", () => {
+  const today = slice(src, 'async function attRenderToday(', '// ── A2 · Worker detail', 'attendance-admin.js');
+  ok(/if \(proj && projects\.indexOf\(proj\) < 0\) proj = '';/.test(today), 'a stale site never filters out everyone');
+});
+
+test('review #6: Hours report is red only when a day can be closed (D5)', () => {
+  const rs = slice(src, 'async function attRenderReports(', '// ── Entry points', 'attendance-admin.js');
+  ok(/const closable = t\.openRows\.filter\(r => r\._closable\)\.length;/.test(rs), 'counts the days the office can close');
+  ok(/tone: closable \? 'red' : open \? 'gold' : ''/.test(rs), 'the tile is amber for days still running');
+  ok(/needs: id === 'needs' && closable > 0/.test(rs), 'the tab count is red only when one can be closed');
+});
+
+test("review #7: Today still says the attention sentences — on the card and in What to do now", () => {
+  const today = slice(src, 'async function attRenderToday(', '// ── A2 · Worker detail', 'attendance-admin.js');
+  ok(/function attnFor\(workerId\)/.test(today), 'one worker\'s attention items');
+  ok(/attnFor\(worker\.id\)\.map\(a => a\.title\)/.test(today), 'the card names what needs doing');
+  ok(/notes: attnFor\(/.test(today), 'the pop-up gets the sentences');
+  const w = slice(src, 'async function attRenderWorker(', 'function attHalf(', 'attendance-admin.js');
+  ok(/opts && opts\.notes && opts\.notes\.length \? opts\.notes\.join\(' '\) : leadBody/.test(w), 'What to do now says them');
+});
+
+test('owner check 17 Nov: the toolbars use the frame\'s pills, not the old full-width boxes', () => {
+  for (const [start, end] of [['async function attRenderToday(', '// ── A2 · Worker detail'],
+                              ['async function attRenderReports(', '// ── Entry points'],
+                              ['async function attRenderRewards(', 'window.initAttendanceModule = function']]) {
+    const s = slice(src, start, end, 'attendance-admin.js');
+    ok(!/class="att-(?:input|filter|seg|dates)\b/.test(s), start + ' has no old toolbar box');
+    ok(/class="sv-date"/.test(s), start + ' dates are pills');
+  }
+  const rs = slice(src, 'async function attRenderReports(', '// ── Entry points', 'attendance-admin.js');
+  ok(/class="sv-chip' \+ \(preset\('weekly'\) \? ' is-on' : ''\)/.test(rs), 'the presets are pill toggles');
+  ok(/search: state === 'ready'\s*\? \{ placeholder: 'Search a worker or a site…'/.test(rs), 'Hours report has the v5 search');
+  ok(/state = 'ready';\s*draw\(\{ refreshPanel: true \}\);/.test(rs), 'an empty range keeps the tiles and tabs (zeros), not a bare message');
+  const css = read('css/split-view.css');
+  ok(/\.sv-chip \{/.test(css) && /\.sv-chip\.is-on \{/.test(css) && /\.sv-date \{/.test(css) && /\.sv-date input \{/.test(css), 'the frame styles both pills');
+});
+
+test("office v5: in the pop-up, the worker's day leads with What to do now", () => {
+  const w = slice(src, 'async function attRenderWorker(', 'function attHalf(', 'attendance-admin.js');
+  ok(/SplitView\.nextStep\(/.test(w), 'the sentence is the step box');
+  ok(/id="attResolve"/.test(w), 'Close this day keeps its id');
+});
+
+test("office v5: every Attendance screen is in the frame; a worker's day opens in the pop-up", () => {
+  // Every screen draws its own v5 frame as cards (plan
+  // 2026-11-16-office-v5-attendance-cards); the old wrapper is gone.
+  for (const f of ['attRenderToday', 'attRenderWorkers', 'attRenderProjects', 'attRenderReports', 'attRenderRewards'])
+    ok(src.includes('if (el) ' + f + '(el);'), f + ' draws its own frame');
+  ok(!/attFramed/.test(src), 'no screen is wrapped in the old custom body');
+  ok(/window\.SplitView\.open\(_attScreen, workerId \+ '\|' \+ _attWorkDate\)/.test(src), "a worker's day opens in the pop-up of the screen it came from");
+  ok(/SV\.page\(panel, \{ kicker: "One worker's day" \}\)/.test(src), 'through the page shell');
+  ok(/switchView\('attWorker'\)/.test(src), 'the old page still opens when no framed screen is showing');
+});
+
+test("office v5: Close this day opens on <body> when the worker's day is in the pop-up", () => {
+  // The pop-up's box is hidden under an open form (split-view.css); a form
+  // host inside the box was hidden with it — Close this day showed nothing.
+  const at = src.indexOf('function attFormHost(');
+  ok(at > 0, 'attFormHost exists');
+  if (at < 0) return;
+  // attFormHost and the <body> host it uses (attBodyHost), up to attWorkerPanel.
+  const end = src.indexOf('function attWorkerPanel(', at);
+  const attFormHost = new Function('document', src.slice(at, end) + '\nreturn attFormHost;');
+  const made = [];
+  const fakeDoc = {
+    getElementById: id => made.find(e => e.id === id) || null,
+    createElement: () => ({ id: '' }),
+    body: { appendChild: e => { made.push(e); return e; } },
+  };
+  const own = { id: 'attDetailModalHost' };
+  const inPop = { closest: s => s === '#svPop' ? {} : null, querySelector: () => own };
+  const onPage = { closest: () => null, querySelector: () => own };
+  const fn = attFormHost(fakeDoc);
+  ok(fn(onPage, '#attDetailModalHost') === own, 'on the old page the form keeps its own host');
+  const h1 = fn(inPop, '#attDetailModalHost');
+  ok(h1 !== own && made.includes(h1), 'in the pop-up the form goes on <body>');
+  ok(fn(inPop, '#attDetailModalHost') === h1, 'one body host, reused');
+  ok(/attOpenResolve\(attFormHost\(container, '#attDetailModalHost'\)/.test(src), 'Close this day uses it');
 });
 
 console.log(passed + ' passed, ' + failed + ' failed');

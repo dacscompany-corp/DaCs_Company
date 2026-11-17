@@ -166,3 +166,12 @@
     .stk-rec { flex-direction: column; }
     .stk-grid2 { grid-template-columns: 1fr; }
 }
+
+/* ── Office v5: Purchasing in the shared frame ──────────────────── */
+.sv-toolbar .att-label { display: flex; flex-direction: row; align-items: center; gap: 6px; font-size: 13.5px; font-weight: 600; color: var(--att-ink-2); }
+.sv-toolbar .att-label .att-input { height: 38px; border-radius: 999px; padding: 0 12px; }
+.sv-toolbar .pur-quick { display: inline-flex; gap: 6px; flex-wrap: wrap; }
+.sv-custom { display: flex; flex-direction: column; gap: 14px; }
+.pur-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+.sv-page-host .pur-line { border: 0; box-shadow: none; }
+.sv-page-host .pur-line > .att-card-body { padding: 0; }

@@ -262,18 +262,16 @@
     }
     function appLabel(app) { return (APPS[app] && APPS[app].label) || app; }
 
-    async function render(container) {
-        container.innerHTML =
+    // ── Publish a new version (a page of its own) ───────────────────
+    //
+    // Office v5: the publish card opens in the screen's pop-up, wide and
+    // kept (a stray click or Escape never drops a picked file). Its file
+    // check, its separate "will be BLOCKED" confirm step and the publish
+    // itself are unchanged. `latest()` is the highest published version
+    // per app; `onPublished()` redraws the list behind it.
+    function publishPage(host, latest, onPublished) {
+        host.innerHTML =
             '<div class="att-stack au">' +
-              '<div class="att-head"><div>' +
-                '<h2 class="att-title">App updates</h2>' +
-                '<div class="att-sub">Publish a new version of a worker app. Every phone on an older version of that app must update before it can Time In or Time Out.</div>' +
-              '</div></div>' +
-
-              // What is live right now, per app: the first thing an owner
-              // wants to know, and it used to sit below the fold in a table.
-              '<div class="au-live" id="auLive"></div>' +
-
               '<div class="att-card"><div class="att-card-head"><div>' +
                 '<h3 class="att-card-title">Publish a new version</h3>' +
                 '<p class="att-card-sub">Upload the signed release APK. The file itself says which app it is, and the version number is read from it.</p>' +
@@ -307,113 +305,26 @@
                     '<i data-lucide="upload"></i>Publish update</button>' +
                 '</div>' +
               '</div></div>' +
-
-              '<div class="att-card"><div class="att-card-head au-hist-head"><div>' +
-                '<h3 class="att-card-title">Published versions</h3>' +
-                '<p class="att-card-sub">Each phone downloads the newest one once. Mind the size: every worker downloads it.</p>' +
-              '</div><div class="att-seg" id="auFilter" role="group" aria-label="Show versions of"></div></div>' +
-              '<div class="att-card-body" id="auHistory" style="padding:0">Loading…</div></div>' +
             '</div>';
 
-        const fileInput = container.querySelector('#auFile');
-        const drop = container.querySelector('#auDrop');
-        const dropTitle = container.querySelector('#auDropTitle');
-        const dropSub = container.querySelector('#auDropSub');
-        const facts = container.querySelector('#auFacts');
-        const notes = container.querySelector('#auNotes');
-        const counter = container.querySelector('#auCount');
-        const errorBox = container.querySelector('#auError');
-        const hint = container.querySelector('#auHint');
-        const clearBtn = container.querySelector('#auClear');
-        const publishBtn = container.querySelector('#auPublish');
-        const history = container.querySelector('#auHistory');
-        const live = container.querySelector('#auLive');
-        const filterBar = container.querySelector('#auFilter');
+        const fileInput = host.querySelector('#auFile');
+        const drop = host.querySelector('#auDrop');
+        const dropTitle = host.querySelector('#auDropTitle');
+        const dropSub = host.querySelector('#auDropSub');
+        const facts = host.querySelector('#auFacts');
+        const notes = host.querySelector('#auNotes');
+        const counter = host.querySelector('#auCount');
+        const errorBox = host.querySelector('#auError');
+        const hint = host.querySelector('#auHint');
+        const clearBtn = host.querySelector('#auClear');
+        const publishBtn = host.querySelector('#auPublish');
 
-        let releases = [];
         let picked = null; // { file, buffer, manifest, sha }
-        let histFilter = 'all';
         let readToken = 0;
 
         function showError(msg) {
             errorBox.textContent = msg || '';
             errorBox.style.display = msg ? '' : 'none';
-        }
-
-        // Highest published version per app. Rows arrive ordered by app, then newest first.
-        function latest() {
-            const out = { attendance: 0, workmate: 0 };
-            for (const r of releases) {
-                const app = r.app || 'attendance';
-                if (r.version_code > (out[app] || 0)) out[app] = r.version_code;
-            }
-            return out;
-        }
-        function currentRow(app) {
-            let best = null;
-            for (const r of releases) {
-                if ((r.app || 'attendance') === app && (!best || r.version_code > best.version_code)) best = r;
-            }
-            return best;
-        }
-
-        function paintLive() {
-            live.innerHTML = APP_ORDER.map(function (app) {
-                const r = currentRow(app);
-                return '<div class="au-app">' +
-                    '<div class="au-app-top"><span class="au-app-name">' + esc(appLabel(app)) + '</span>' +
-                      (r ? '<span class="att-pill att-pill--done">Live now</span>' : '<span class="att-pill att-pill--none">Nothing yet</span>') + '</div>' +
-                    (r
-                        ? '<div class="au-app-version">' + esc(r.version_name) + ' <span class="au-code">(' + esc(r.version_code) + ')</span></div>' +
-                          '<div class="au-app-meta">' + esc(formatSize(r.size_bytes)) + ' · published ' + esc(fmtDate(r.published_at)) + '</div>'
-                        : '<div class="au-app-meta">Nothing published yet. Phones keep the version they have until you publish one here.</div>') +
-                    '</div>';
-            }).join('');
-        }
-
-        function paintHistory() {
-            const counts = { all: releases.length, attendance: 0, workmate: 0 };
-            releases.forEach(r => { counts[r.app || 'attendance'] = (counts[r.app || 'attendance'] || 0) + 1; });
-            filterBar.innerHTML =
-                '<button type="button" class="att-seg-btn' + (histFilter === 'all' ? ' is-on' : '') + '" data-f="all">All <span class="au-n">' + counts.all + '</span></button>' +
-                APP_ORDER.map(app => '<button type="button" class="att-seg-btn' + (histFilter === app ? ' is-on' : '') + '" data-f="' + app + '">' +
-                    esc(appLabel(app)) + ' <span class="au-n">' + (counts[app] || 0) + '</span></button>').join('');
-
-            if (!releases.length) {
-                history.innerHTML = '<div class="att-empty">Nothing published yet. Phones keep the version they have until you publish one here.</div>';
-                return;
-            }
-            const rows = releases.filter(r => histFilter === 'all' || (r.app || 'attendance') === histFilter);
-            const top = latest();
-            history.innerHTML = !rows.length
-                ? '<div class="att-empty">No versions of this app yet.</div>'
-                : '<div class="au-table-wrap"><table class="att-table"><thead><tr>' +
-                  '<th>Version</th><th>App</th><th>What\'s new</th><th>Size</th><th>Published</th><th></th>' +
-                  '</tr></thead><tbody>' +
-                  rows.map(function (r) {
-                      const app = r.app || 'attendance';
-                      const current = r.version_code === top[app];
-                      return '<tr class="' + (current ? 'au-row-current' : '') + '">' +
-                          '<td><strong>' + esc(r.version_name) + '</strong> <span class="au-code">(' + esc(r.version_code) + ')</span></td>' +
-                          '<td><span class="att-pill ' + (app === 'workmate' ? 'att-pill--pm' : 'att-pill--pc') + '">' + esc(appLabel(app)) + '</span></td>' +
-                          '<td>' + (r.release_notes ? esc(r.release_notes) : '<span class="au-muted">—</span>') + '</td>' +
-                          '<td>' + esc(formatSize(r.size_bytes)) + '</td>' +
-                          '<td>' + esc(fmtDate(r.published_at)) + '</td>' +
-                          '<td>' + (current ? '<span class="att-pill att-pill--done">Current</span>' : '') + '</td>' +
-                          '</tr>';
-                  }).join('') +
-                  '</tbody></table></div>';
-        }
-
-        async function refresh() {
-            try {
-                releases = await loadReleases();
-                paintLive();
-                paintHistory();
-            } catch (e) {
-                live.innerHTML = '';
-                history.innerHTML = '<div class="att-error" style="margin:18px">Could not load published versions: ' + esc(e.message || e) + '</div>';
-            }
         }
 
         // Back to "nothing chosen" -- the state the page opens in.
@@ -500,12 +411,6 @@
         });
 
         notes.addEventListener('input', () => { counter.textContent = notes.value.length + ' / 500'; });
-        filterBar.addEventListener('click', (e) => {
-            const b = e.target.closest('[data-f]');
-            if (!b) return;
-            histFilter = b.dataset.f;
-            paintHistory();
-        });
 
         publishBtn.addEventListener('click', async function () {
             if (!picked) return;
@@ -553,7 +458,7 @@
                 reset('<div class="au-done"><i data-lucide="circle-check"></i><div><strong>Published.</strong> ' +
                       'Phones will show the update the next time the app is opened with internet.</div></div>');
                 icons();
-                await refresh();
+                await onPublished();
             } catch (e) {
                 showError(publishError(e));
                 hint.textContent = '';
@@ -562,11 +467,143 @@
         });
 
         icons();
+    }
+
+    // ── The list ────────────────────────────────────────────────────
+    //
+    // Office v5: one card per published version, tabs by app, what is live
+    // now in the sentence at the top, and Publish a new version as the main
+    // button (its page opens in the pop-up).
+    const PUBLISH = '__publish';
+    const ui = { tab: 'all', sel: null };
+
+    async function render(container) {
+        const SV = root.SplitView;
+        let releases = [];
+        let state = 'loading';
+        let errorText = '';
+
+        // Highest published version per app. Rows arrive ordered by app, then newest first.
+        function latest() {
+            const out = { attendance: 0, workmate: 0 };
+            for (const r of releases) {
+                const app = r.app || 'attendance';
+                if (r.version_code > (out[app] || 0)) out[app] = r.version_code;
+            }
+            return out;
+        }
+        function currentRow(app) {
+            let best = null;
+            for (const r of releases) {
+                if ((r.app || 'attendance') === app && (!best || r.version_code > best.version_code)) best = r;
+            }
+            return best;
+        }
+
+        // What is live right now, per app: the first thing an owner wants
+        // to know.
+        function liveLine() {
+            return APP_ORDER.map(function (app) {
+                const r = currentRow(app);
+                return appLabel(app) + ' — ' + (r
+                    ? 'Live now: ' + r.version_name + ' (' + r.version_code + ') · ' + formatSize(r.size_bytes) + ' · published ' + fmtDate(r.published_at)
+                    : 'Nothing yet. Nothing published yet. Phones keep the version they have until you publish one here.');
+            }).join('. ') + '.';
+        }
+
+        function rowId(r) { return (r.app || 'attendance') + ':' + r.version_code; }
+
+        function versionPanel(panel, id) {
+            const r = releases.find(x => rowId(x) === id);
+            if (!r) { SV.error(panel, 'This version is no longer listed.'); return; }
+            const app = r.app || 'attendance';
+            const current = r.version_code === latest()[app];
+            const body = SV.page(panel, {
+                kicker: 'Published version', title: appLabel(app) + ' ' + r.version_name,
+                pills: current ? [{ text: 'Current', tone: 'done' }] : [], nextLabel: 'Next version',
+            });
+            body.innerHTML = SV.facts([
+                    ['Version', esc(r.version_name) + ' <span class="au-code">(' + esc(r.version_code) + ')</span>'],
+                    ['App', esc(appLabel(app))],
+                    ['What\'s new', r.release_notes ? esc(r.release_notes) : '<span class="au-muted">—</span>'],
+                    ['Size', esc(formatSize(r.size_bytes))],
+                    ['Published', esc(fmtDate(r.published_at))],
+                ]) +
+                '<p class="att-paynote"><i data-lucide="info"></i>Each phone downloads the newest one once. Mind the size: every worker downloads it.</p>';
+            icons();
+        }
+
+        function draw(o) {
+            const counts = { all: releases.length, attendance: 0, workmate: 0 };
+            releases.forEach(r => { counts[r.app || 'attendance'] = (counts[r.app || 'attendance'] || 0) + 1; });
+            const top = latest();
+            const list = releases.filter(r => ui.tab === 'all' || (r.app || 'attendance') === ui.tab);
+            SV.render(container, {
+                key: 'attAppUpdates',
+                title: 'App updates',
+                sub: 'Publish a new version of a worker app. Every phone on an older version of that app must update before it can Time In or Time Out.',
+                primary: { label: 'Publish a new version', icon: 'upload', onClick: () => { ui.sel = PUBLISH; draw(); } },
+                lede: state === 'ready' ? liveLine() : '',
+                tabs: [{ id: 'all', label: 'All', count: counts.all, help: 'Published versions. Each phone downloads the newest one once. Mind the size: every worker downloads it.' }]
+                    .concat(APP_ORDER.map(app => ({ id: app, label: appLabel(app), count: counts[app] || 0 }))),
+                tab: ui.tab,
+                onTab: id => { ui.tab = id; draw(); },
+                search: false,
+                groups: [{ title: '', rows: list.map(r => {
+                    const app = r.app || 'attendance';
+                    const current = r.version_code === top[app];
+                    return {
+                        id: rowId(r),
+                        title: appLabel(app) + ' ' + r.version_name,
+                        sub: 'Published ' + fmtDate(r.published_at) + ' · ' + formatSize(r.size_bytes),
+                        meta: r.release_notes || '—',
+                        right: String(r.version_code),
+                        pill: current ? { text: 'Current', tone: 'done' } : null,
+                        chips: [{ text: appLabel(app), tone: app === 'workmate' ? 'pm' : 'check' }],
+                    };
+                }) }],
+                empty: state === 'loading' ? 'Loading…'
+                    : state === 'error' ? 'Could not load published versions: ' + esc(errorText)
+                    : !releases.length ? 'Nothing published yet. Phones keep the version they have until you publish one here.'
+                    : 'No versions of this app yet.',
+                selectedId: ui.sel,
+                refreshPanel: !!(o && o.refreshPanel),
+                onSelect: (id, panel) => {
+                    ui.sel = id;
+                    if (id === PUBLISH) {
+                        const host = SV.page(panel, { kicker: 'App updates', title: 'Publish a new version', wide: true, keep: true });
+                        publishPage(host, latest, refresh);
+                        return;
+                    }
+                    versionPanel(panel, id);
+                },
+                onClose: () => { ui.sel = null; },
+            });
+        }
+
+        // After a publish the list behind redraws; the publish page stays as
+        // it is (its own "Published." note shows), so it is not reloaded.
+        async function refresh() {
+            try {
+                releases = await loadReleases();
+                state = 'ready';
+            } catch (e) {
+                state = 'error';
+                errorText = e.message || String(e);
+            }
+            draw();
+        }
+
+        draw();
         await refresh();
     }
 
+    // Office v5: App updates draws its own frame (cards); without the frame
+    // (never in admin.html) there is nothing to draw into.
     root.initAppUpdatesModule = function (container) {
-        if (container) render(container);
+        if (!container || !root.SplitView) return;
+        render(container);
     };
+
     root.AppUpdatesApk = pure;
 })(typeof window !== 'undefined' ? window : globalThis);

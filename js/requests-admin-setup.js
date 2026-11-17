@@ -16,8 +16,9 @@
 
     // ── Weekly batches ──────────────────────────────────────────────
 
-    async function renderBatches(host) {
-        host.innerHTML = '<div class="att-stack req-batches"><div class="att-empty">Loading batches…</div></div>';
+    const batchUi = { sel: null };
+    async function renderBatches(host, o) {
+        if (!host.querySelector('.sv')) host.innerHTML = '<div class="att-stack req-batches"><div class="att-empty">Loading batches…</div></div>';
         let batches;
         try { batches = await RA.rpc('pr_office_batches'); } catch (e) { RA.fail(host, e); return; }
         batches = (batches || []).slice().sort((a, b) => Date.parse(a.cutoff_at) - Date.parse(b.cutoff_at));
@@ -46,52 +47,60 @@
         // The year is dropped while it is this year.
         const when = iso => RA.formatManila(iso).replace(' ' + year + ',', ' ·');
 
-        function rowHtml(b, kind) {
+        // Office redesign v5: one card per batch under This week / Upcoming /
+        // Closed; a batch opens in the pop-up with Change dates… and View in queue.
+        function cardOf(b, kind) {
             const items = Number(b.open_portions) || 0;
-            return '<tr class="req-brow' + (kind === 'current' ? ' is-current' : '') +
-                   (kind === 'closed' ? ' is-closed' : '') + '">' +
-                '<td><strong>' + esc(RA.cutoffLabel(b.cutoff_at)) + '</strong></td>' +
-                '<td>' + esc(RA.formatDay(b.purchase_on)) + '</td>' +
-                '<td>' + esc(RA.formatDay(b.delivery_on)) + '</td>' +
-                '<td>' + (items
-                    ? '<strong>' + items + '</strong> ' + (items === 1 ? 'item' : 'items') +
-                      '<div><button class="att-link" type="button" data-queue="' + esc(b.id) + '">View in queue</button></div>'
-                    : '<span class="req-muted">None</span>') + '</td>' +
-                '<td>' + (b.updated_by_name
-                    ? '<span class="att-pill att-pill--working">Dates changed</span>' +
-                      '<div class="req-muted">' + esc(b.updated_by_name) + ' · ' + esc(when(b.updated_at)) + '</div>'
-                    : '<span class="req-muted">Default dates</span>') + '</td>' +
-                '<td class="req-bact"><button class="att-btn" type="button" data-edit="' + esc(b.id) + '">Change dates…</button></td>' +
-                '</tr>';
+            return {
+                id: b.id,
+                title: 'Cutoff ' + RA.cutoffLabel(b.cutoff_at),
+                sub: 'Purchasing ' + RA.formatDay(b.purchase_on) + ' · Delivery ' + RA.formatDay(b.delivery_on),
+                meta: (items ? items + ' open ' + (items === 1 ? 'item' : 'items') : 'No open items') + ' · ' +
+                    (b.updated_by_name ? 'Dates changed by ' + b.updated_by_name + ' · ' + when(b.updated_at) : 'Default dates'),
+                pill: kind === 'current' ? { text: 'This week', tone: 'done' } : kind === 'closed' ? { text: 'Closed', tone: 'none' } : { text: 'Upcoming', tone: 'gold' },
+                dim: kind === 'closed',
+            };
         }
-        function headingHtml(title, meta, count) {
-            return '<tr class="req-group"><td colspan="6"><span class="req-group-title">' + esc(title) + '</span>' +
-                (meta ? '<span class="req-group-meta">' + esc(meta) + '</span>' : '') +
-                '<span class="req-group-count">' + count + (count === 1 ? ' batch' : ' batches') + '</span></td></tr>';
-        }
+        const groups = [
+            current ? { title: 'This week', tone: 'green', meta: esc('Closes in ' + closesIn(current.cutoff_at)), rows: [cardOf(current, 'current')] } : null,
+            upcoming.length ? { title: 'Upcoming', rows: upcoming.map(x => cardOf(x, 'upcoming')) } : null,
+            closed.length ? { title: 'Closed', tone: 'muted', meta: 'Cutoff has passed', rows: closed.map(x => cardOf(x, 'closed')) } : null,
+        ].filter(Boolean);
 
-        const rows =
-            (current ? headingHtml('This week', 'Closes in ' + closesIn(current.cutoff_at), 1) + rowHtml(current, 'current') : '') +
-            (upcoming.length ? headingHtml('Upcoming', '', upcoming.length) + upcoming.map(b => rowHtml(b, 'upcoming')).join('') : '') +
-            (closed.length ? headingHtml('Closed', 'Cutoff has passed', closed.length) + closed.map(b => rowHtml(b, 'closed')).join('') : '');
-
-        host.innerHTML =
-            '<div class="att-stack req-batches">' +
-              head('Weekly batches', 'When each week\'s requests are bought and delivered.') +
-              '<div class="att-info"><i data-lucide="calendar-clock"></i><div>Requests received before ' +
-                '<strong>Saturday 12:00 noon</strong> (Manila) join that week\'s batch. Holidays or supplier delays? ' +
-                'Use <strong>Change dates</strong> to move purchasing and delivery — workers see the new dates.</div></div>' +
-              '<div class="att-card"><div class="att-card-body" style="padding:0">' +
-                '<div class="req-table-wrap"><table class="att-table req-btable"><thead><tr>' +
-                  '<th>Cutoff</th><th>Purchasing</th><th>Delivery</th><th>Open items</th><th>Last changed</th><th></th>' +
-                '</tr></thead><tbody>' + rows + '</tbody></table></div>' +
-                (batches.length ? '' : '<div class="att-empty">No batches yet.</div>') +
-              '</div></div>' +
-            '</div>';
-
-        host.querySelectorAll('[data-queue]').forEach(btn => btn.addEventListener('click', () => {
-            if (RA.showQueueForBatch) RA.showQueueForBatch(btn.dataset.queue);
-        }));
+        root.SplitView.render(host, {
+            key: 'reqBatches',
+            title: 'Weekly batches',
+            sub: "When each week's requests are bought and delivered.",
+            strips: ["Requests received before Saturday 12:00 noon (Manila) join that week's batch. Holidays or supplier delays? " +
+                'Use Change dates to move purchasing and delivery — workers see the new dates.'],
+            search: false,
+            groups: groups,
+            empty: 'No batches yet.',
+            selectedId: batchUi.sel,
+            // After Change dates… the open batch reloads with the saved record.
+            refreshPanel: !!(o && o.refreshPanel),
+            onSelect: (id, panel) => {
+                batchUi.sel = id;
+                const bt = batches.find(x => x.id === id);
+                if (!bt) return root.SplitView.error(panel, 'This batch is no longer listed.');
+                const items = Number(bt.open_portions) || 0;
+                const body = root.SplitView.page(panel, { kicker: 'Weekly batch', title: 'Cutoff ' + RA.cutoffLabel(bt.cutoff_at), nextLabel: 'Next batch' });
+                body.innerHTML = root.SplitView.facts([
+                        ['Cutoff', esc(RA.cutoffLabel(bt.cutoff_at))],
+                        ['Purchasing', esc(RA.formatDay(bt.purchase_on))],
+                        ['Delivery', esc(RA.formatDay(bt.delivery_on))],
+                        ['Open items', items ? '<strong>' + items + '</strong> ' + (items === 1 ? 'item' : 'items') : '<span class="req-muted">None</span>'],
+                        ['Last changed', bt.updated_by_name ? 'Dates changed · ' + esc(bt.updated_by_name) + ' · ' + esc(when(bt.updated_at)) : 'Default dates'],
+                    ]) +
+                    '<div class="wp-actions"><button class="att-btn att-btn--primary" type="button" data-edit="' + esc(bt.id) + '">Change dates…</button>' +
+                    (items ? '<button class="att-btn" type="button" data-queue="' + esc(bt.id) + '">View in queue</button>' : '') + '</div>';
+                body.querySelector('[data-edit]').addEventListener('click', () => openDates(bt));
+                const q = body.querySelector('[data-queue]');
+                if (q) q.addEventListener('click', () => { if (RA.showQueueForBatch) RA.showQueueForBatch(bt.id); });
+                RA.icons();
+            },
+            onClose: () => { batchUi.sel = null; },
+        });
 
         // A date-only value moved by whole days, never through a time zone.
         function addDays(key, n) {
@@ -121,9 +130,8 @@
               '</div>';
         }
 
-        host.querySelectorAll('[data-edit]').forEach(btn => btn.addEventListener('click', () => {
-            const b = batches.find(x => x.id === btn.dataset.edit);
-            if (!b) return;
+        // Change batch dates (its own form, unchanged), opened from a batch's pop-up.
+        function openDates(b) {
             RA.modal({
                 title: 'Change batch dates',
                 sub: 'Cutoff ' + RA.cutoffLabel(b.cutoff_at) + ' — the cutoff itself does not change',
@@ -219,9 +227,9 @@
                     if (problem) throw new Error('BAD_DATES');
                     await RA.rpc('pr_office_set_batch_dates', { p_batch: b.id, p_purchase_on: form.buy.value, p_delivery_on: form.deliver.value });
                 },
-                onDone: () => renderBatches(host),
+                onDone: () => renderBatches(host, { refreshPanel: true }),
             });
-        }));
+        }
         RA.icons();
     }
 
@@ -639,109 +647,102 @@
         });
     }
 
+    // Office redesign v5: tabs All · Materials · Tools (the kind, with counts),
+    // "Show inactive" kept; one card per item; an item opens in the pop-up
+    // with its Active switch (same confirm) and Edit….
     async function renderCatalog(host) {
-        host.innerHTML = '<div class="att-stack req-catalog"><div class="att-empty">Loading the catalogue…</div></div>';
+        if (!host.querySelector('.sv')) host.innerHTML = '<div class="att-stack req-catalog"><div class="att-empty">Loading the catalogue…</div></div>';
         let items;
         try { items = await RA.rpc('pr_office_catalog'); } catch (e) { RA.fail(host, e); return; }
         items = (items || []).slice().sort((a, b) =>
             (b.active - a.active) || String(a.name).localeCompare(String(b.name)) || String(a.spec).localeCompare(String(b.spec)));
         const rerender = () => renderCatalog(host);
         const inactiveCount = items.filter(i => !i.active).length;
-        host.innerHTML =
-            '<div class="att-stack req-catalog">' +
-              head('Item catalogue', 'The materials and tools workers pick from. Unlisted items are matched to an entry here from the request screen.',
-                   '<button class="att-btn att-btn--primary" type="button" data-new-item>New item</button>') +
-              '<div class="att-toolbar">' +
-                '<div class="att-search-wrap"><i data-lucide="search"></i>' +
-                  '<input class="att-search" type="search" data-text aria-label="Search" placeholder="Search name, size, unit, category, brand, other names…" value="' + esc(catUi.text) + '"></div>' +
-                '<div class="att-seg" role="group" aria-label="Kind">' +
-                  '<button type="button" class="att-seg-btn" data-kind="">All <span class="req-tabn" data-n="all"></span></button>' +
-                  '<button type="button" class="att-seg-btn" data-kind="material">Materials <span class="req-tabn" data-n="material"></span></button>' +
-                  '<button type="button" class="att-seg-btn" data-kind="tool">Tools <span class="req-tabn" data-n="tool"></span></button>' +
-                '</div>' +
-                '<label class="req-toggle"><input type="checkbox" data-inactive' + (catUi.showInactive ? ' checked' : '') + '> Show inactive' +
-                  (inactiveCount ? ' <span class="req-muted">(' + inactiveCount + ')</span>' : '') + '</label>' +
-                '<span class="req-count" data-count aria-live="polite"></span>' +
-              '</div>' +
-              '<div class="att-card"><div class="att-card-body" style="padding:0">' +
-                '<div class="req-table-wrap"><table class="att-table req-ctable"><thead><tr>' +
-                  '<th>Item</th><th>Kind</th><th>Unit</th><th>Category</th><th>Active</th><th></th></tr></thead>' +
-                '<tbody data-rows></tbody></table></div><div class="att-empty" data-empty style="display:none"></div>' +
-              '</div></div>' +
-            '</div>';
 
-        function draw() {
+        async function toggle(item, sw) {
+            const next = !item.active;
+            if (next && findDuplicate(items, item, item.id)) {
+                alert('Another active item already has the same name, size and unit, so this one cannot be turned on.');
+                return;
+            }
+            if (!next && !confirm('Make "' + itemLabel(item) + '" inactive?\n\nWorkers can no longer pick it. You can turn it back on any time.')) return;
+            sw.disabled = true;
+            try {
+                await RA.rpc('pr_office_save_item', {
+                    p_item: item.id, p_kind: item.kind, p_name: item.name, p_spec: item.spec || '',
+                    p_unit: item.unit, p_category: item.category || '', p_active: next,
+                });
+                rerender();
+            } catch (err) {
+                alert(RA.errorMessage(err));
+                sw.disabled = false;
+            }
+        }
+
+        function draw(o) {
             const t = normText(catUi.text);
             const pool = items.filter(i => catUi.showInactive || i.active);
             const list = pool.filter(i => (!catUi.kind || i.kind === catUi.kind) &&
                 (!t || [i.name, i.spec, i.unit, i.category, i.brand].concat(i.aliases || []).join(' ').toLowerCase().includes(t)));
-
-            host.querySelector('[data-n="all"]').textContent = pool.length;
-            host.querySelector('[data-n="material"]').textContent = pool.filter(i => i.kind === 'material').length;
-            host.querySelector('[data-n="tool"]').textContent = pool.filter(i => i.kind === 'tool').length;
-            host.querySelectorAll('[data-kind]').forEach(b => b.classList.toggle('is-on', b.dataset.kind === catUi.kind));
-            host.querySelector('[data-count]').textContent = list.length !== pool.length ? 'Showing ' + list.length + ' of ' + pool.length : '';
-
-            host.querySelector('[data-rows]').innerHTML = list.map(i =>
-                '<tr class="req-crow' + (i.active ? '' : ' is-inactive') + '">' +
-                  '<td><strong>' + esc(i.name) + '</strong>' + (i.spec ? ' <span class="req-spec">' + esc(i.spec) + '</span>' : '') +
-                    (i.brand ? ' <span class="req-muted">· ' + esc(i.brand) + '</span>' : '') +
-                    ((i.aliases || []).length ? '<div class="req-muted">Also called: ' + esc(i.aliases.join(', ')) + '</div>' : '') + '</td>' +
-                  '<td><span class="att-pill ' + (i.kind === 'tool' ? 'att-pill--pm' : 'att-pill--pc') + '">' + (i.kind === 'tool' ? 'Tool' : 'Material') + '</span></td>' +
-                  '<td>' + esc(i.unit) + '</td>' +
-                  '<td>' + (i.category ? esc(i.category) : '<span class="req-muted">—</span>') + '</td>' +
-                  '<td class="req-cact"><button class="att-switch" type="button" role="switch" aria-checked="' + (i.active ? 'true' : 'false') +
-                    '" data-toggle="' + esc(i.id) + '" aria-label="Active: ' + esc(itemLabel(i)) + '" title="' +
-                    (i.active ? 'Workers can pick this item.' : 'Hidden from workers.') + '">' +
-                    '<span class="att-switch-track"></span><span>' + (i.active ? 'Active' : 'Inactive') + '</span></button></td>' +
-                  '<td class="req-cact"><button class="att-btn" type="button" data-edit="' + esc(i.id) + '">Edit…</button></td></tr>').join('');
-
-            const empty = host.querySelector('[data-empty]');
-            host.querySelector('.req-ctable').style.display = list.length ? '' : 'none';
-            empty.style.display = list.length ? 'none' : 'block';
-            if (!items.length) {
-                empty.textContent = 'No items yet. Workers can only pick what is listed here — add the first one with New item.';
-            } else if (!list.length) {
-                empty.innerHTML = 'No item matches. <button class="att-link" type="button" data-clear>Clear filters</button>';
-                empty.querySelector('[data-clear]').addEventListener('click', () => {
-                    catUi.text = ''; catUi.kind = ''; catUi.showInactive = false;
-                    renderCatalog(host);
-                });
-            }
+            if (o && o.leaveSelection && catUi.sel && !list.some(i => i.id === catUi.sel)) catUi.sel = null;
+            let empty;
+            if (!items.length) empty = 'No items yet. Workers can only pick what is listed here — add the first one with New item.';
+            else empty = 'No item matches. <button class="att-link" type="button" data-clear>Clear filters</button>';
+            root.SplitView.render(host, {
+                key: 'reqCatalog',
+                title: 'Item catalogue',
+                sub: 'The materials and tools workers pick from. Unlisted items are matched to an entry here from the request screen.',
+                primary: { label: 'New item', onClick: () => itemModal(null, rerender, items) },
+                tabs: [['', 'All', pool.length], ['material', 'Materials', pool.filter(i => i.kind === 'material').length],
+                       ['tool', 'Tools', pool.filter(i => i.kind === 'tool').length]].map(([id, label, count]) => ({ id: id || 'all', label, count })),
+                tab: catUi.kind || 'all',
+                onTab: id => { catUi.kind = id === 'all' ? '' : id; draw({ leaveSelection: true }); },
+                search: { placeholder: 'Search name, size, unit, category, brand, other names…', value: catUi.text, onInput: v => { catUi.text = v; draw({ leaveSelection: true }); } },
+                toolbar: '<label class="req-toggle"><input type="checkbox" data-inactive' + (catUi.showInactive ? ' checked' : '') + '> Show inactive' +
+                    (inactiveCount ? ' <span class="req-muted">(' + inactiveCount + ')</span>' : '') + '</label>',
+                onToolbar: el => el.querySelector('[data-inactive]').addEventListener('change', e => { catUi.showInactive = e.target.checked; draw({ leaveSelection: true }); }),
+                showing: list.length !== pool.length ? 'Showing ' + list.length + ' of ' + pool.length : '',
+                groups: [{ title: '', rows: list.map(i => ({
+                    id: i.id,
+                    title: i.name + (i.spec ? ' · ' + i.spec : ''),
+                    sub: (i.kind === 'tool' ? 'Tool' : 'Material') + ' · ' + i.unit + (i.category ? ' · ' + i.category : '') + (i.brand ? ' · ' + i.brand : ''),
+                    meta: (i.aliases || []).length ? 'Also called: ' + i.aliases.join(', ') : '',
+                    chips: [{ text: i.kind === 'tool' ? 'Tool' : 'Material', tone: i.kind === 'tool' ? 'pm' : 'check' }],
+                    pill: i.active ? { text: 'Active', tone: 'done' } : { text: 'Hidden from workers', tone: 'none' },
+                    dim: !i.active,
+                })) }],
+                empty: empty,
+                onEmpty: el => {
+                    const c = el.querySelector('[data-clear]');
+                    if (c) c.addEventListener('click', () => { catUi.text = ''; catUi.kind = ''; catUi.showInactive = false; renderCatalog(host); });
+                },
+                selectedId: catUi.sel,
+                refreshPanel: !!(o && o.refreshPanel),
+                onSelect: (id, panel) => {
+                    catUi.sel = id;
+                    const i = items.find(x => x.id === id);
+                    if (!i) return root.SplitView.error(panel, 'This item is no longer listed.');
+                    const body = root.SplitView.page(panel, { kicker: 'Catalogue item', title: i.name + (i.spec ? ' · ' + i.spec : ''),
+                        pills: [{ text: i.kind === 'tool' ? 'Tool' : 'Material', tone: i.kind === 'tool' ? 'pm' : 'check' }], nextLabel: 'Next item' });
+                    body.innerHTML = root.SplitView.facts([
+                            ['Kind', i.kind === 'tool' ? 'Tool' : 'Material'], ['Unit', esc(i.unit)],
+                            ['Category', i.category ? esc(i.category) : '<span class="req-muted">—</span>'], ['Brand', i.brand ? esc(i.brand) : ''],
+                            ['Also called', (i.aliases || []).length ? esc(i.aliases.join(', ')) : ''],
+                        ]) +
+                        '<div class="req-cact"><button class="att-switch" type="button" role="switch" aria-checked="' + (i.active ? 'true' : 'false') +
+                          '" data-toggle="' + esc(i.id) + '" aria-label="Active: ' + esc(itemLabel(i)) + '" title="' +
+                          (i.active ? 'Workers can pick this item.' : 'Hidden from workers.') + '">' +
+                          '<span class="att-switch-track"></span><span>' + (i.active ? 'Active' : 'Inactive') + '</span></button>' +
+                          ' <span class="req-muted">' + (i.active ? 'Workers can pick this item.' : 'Hidden from workers.') + '</span></div>' +
+                        '<div class="wp-actions"><button class="att-btn att-btn--primary" type="button" data-edit="' + esc(i.id) + '">Edit…</button></div>';
+                    body.querySelector('[data-toggle]').addEventListener('click', e => toggle(i, e.currentTarget));
+                    body.querySelector('[data-edit]').addEventListener('click', () => itemModal(i, rerender, items));
+                    RA.icons();
+                },
+                onClose: () => { catUi.sel = null; },
+            });
         }
-        draw();
-        host.querySelector('[data-new-item]').addEventListener('click', () => itemModal(null, rerender, items));
-        host.querySelector('[data-text]').addEventListener('input', e => { catUi.text = e.target.value; draw(); });
-        host.querySelectorAll('[data-kind]').forEach(b => b.addEventListener('click', () => { catUi.kind = b.dataset.kind; draw(); }));
-        host.querySelector('[data-inactive]').addEventListener('change', e => { catUi.showInactive = e.target.checked; draw(); });
-        host.querySelector('[data-rows]').addEventListener('click', async e => {
-            const sw = e.target.closest('[data-toggle]');
-            if (sw) {
-                const item = items.find(i => i.id === sw.dataset.toggle);
-                if (!item) return;
-                const next = !item.active;
-                if (next && findDuplicate(items, item, item.id)) {
-                    alert('Another active item already has the same name, size and unit, so this one cannot be turned on.');
-                    return;
-                }
-                if (!next && !confirm('Make "' + itemLabel(item) + '" inactive?\n\nWorkers can no longer pick it. You can turn it back on any time.')) return;
-                sw.disabled = true;
-                try {
-                    await RA.rpc('pr_office_save_item', {
-                        p_item: item.id, p_kind: item.kind, p_name: item.name, p_spec: item.spec || '',
-                        p_unit: item.unit, p_category: item.category || '', p_active: next,
-                    });
-                    rerender();
-                } catch (err) {
-                    alert(RA.errorMessage(err));
-                    sw.disabled = false;
-                }
-                return;
-            }
-            const b = e.target.closest('[data-edit]');
-            if (b) itemModal(items.find(i => i.id === b.dataset.edit), rerender, items);
-        });
-        RA.icons();
+        draw({ refreshPanel: true });
     }
 
     // ── Projects ────────────────────────────────────────────────────
@@ -765,8 +766,11 @@
                  why: p.hidden_from_time_in ? 'Hidden from Time In' : 'Not on today\'s Time In list' };
     }
 
+    // Office redesign v5: tabs All · Open · Not open · Completed (with counts),
+    // "How this works" in the frame, one card per project; a project opens in
+    // the pop-up with its two switches (the same handlers and RPCs).
     async function renderProjects(host) {
-        host.innerHTML = '<div class="att-stack req-projects"><div class="att-empty">Loading projects…</div></div>';
+        if (!host.querySelector('.sv')) host.innerHTML = '<div class="att-stack req-projects"><div class="att-empty">Loading projects…</div></div>';
         let projects;
         try { projects = await RA.rpc('pr_office_projects'); } catch (e) { RA.fail(host, e); return; }
         projects = projects || [];
@@ -776,137 +780,111 @@
         const nClosed = stat.filter(s => s.key === 'closed').length;
         const nDone = stat.filter(s => s.key === 'completed').length;
         const nOverride = projects.filter(p => p.allow_requests && !p.completed).length;
-        const plural = (n, one, many) => n + ' ' + (n === 1 ? one : many);
-        const chip = (n, text, tone) => n
-            ? '<span class="req-sum req-sum--' + tone + '"><strong>' + n + '</strong> ' + text + '</span>' : '';
+        const TONE = { 'att-pill--done': 'done', 'att-pill--working': 'gold', 'att-pill--hidden': 'none' };
+        const lede = projects.length ? [projects.length + ' ' + (projects.length === 1 ? 'project' : 'projects'),
+            nOpen ? nOpen + ' open to workers' : '', nClosed ? nClosed + ' not open' : '',
+            nOverride ? nOverride + ' ' + (nOverride === 1 ? 'override on' : 'overrides on') : '', nDone ? nDone + ' completed' : ''].filter(Boolean).join(' · ') : '';
 
-        host.innerHTML =
-            '<div class="att-stack req-projects">' +
-              head('Projects open to requests', 'Which Project Control projects workers can send requests for.') +
-              '<details class="att-howto">' +
-                '<summary><i data-lucide="info"></i>How this works</summary>' +
-                '<div class="att-howto-body">' +
-                  'A project accepts requests while it is on <strong>today\'s Time In list</strong>. ' +
-                  '<strong>Allow requests</strong> opens one that is not — use it for an upcoming site with no ' +
-                  'geofence yet. Completed projects never accept requests. Open Additional Works under a ' +
-                  'project are offered with it. <strong>Item history</strong> is separate: it lets workers browse what was requested on ' +
-                  'that project before (Find Previous Item), and it stays on after the project is completed.</div>' +
-              '</details>' +
-              (projects.length
-                ? '<div class="req-summary">' +
-                    '<span class="req-sum req-sum--plain"><strong>' + projects.length + '</strong> ' +
-                      (projects.length === 1 ? 'project' : 'projects') + '</span>' +
-                    chip(nOpen, 'open to workers', 'green') +
-                    chip(nClosed, 'not open', 'gold') +
-                    chip(nOverride, nOverride === 1 ? 'override on' : 'overrides on', 'plain') +
-                    chip(nDone, 'completed', 'plain') +
-                  '</div>' : '') +
-              '<div class="att-toolbar">' +
-                '<div class="att-search-wrap"><i data-lucide="search"></i>' +
-                  '<input class="att-search" type="search" data-text aria-label="Search" placeholder="Search projects…" value="' + esc(projUi.text) + '"></div>' +
-                '<div class="att-seg" role="group" aria-label="Show">' +
-                  '<button type="button" class="att-seg-btn" data-filter="all">All <span class="req-tabn">' + stat.length + '</span></button>' +
-                  '<button type="button" class="att-seg-btn" data-filter="open">Open <span class="req-tabn">' + nOpen + '</span></button>' +
-                  '<button type="button" class="att-seg-btn" data-filter="closed">Not open <span class="req-tabn">' + nClosed + '</span></button>' +
-                  '<button type="button" class="att-seg-btn" data-filter="completed">Completed <span class="req-tabn">' + nDone + '</span></button>' +
-                '</div>' +
-                '<span class="req-count" data-count aria-live="polite"></span>' +
-              '</div>' +
-              '<div class="att-card"><div class="att-card-body" style="padding:0">' +
-                '<div class="req-table-wrap"><table class="att-table req-ptable"><thead><tr>' +
-                  '<th>Project</th><th>Additional Works</th><th>Status</th>' +
-                  '<th>Allow requests <span class="req-th-hint">override</span></th>' +
-                  '<th>Item history <span class="req-th-hint">Find Previous Item</span></th></tr></thead>' +
-                '<tbody data-rows></tbody></table></div>' +
-                '<div class="att-empty" data-empty style="display:none"></div>' +
-              '</div></div>' +
-            '</div>';
-
-        function draw() {
-            const t = String(projUi.text || '').trim().toLowerCase();
-            const list = stat.filter(s => (projUi.filter === 'all' || s.key === projUi.filter) &&
-                (!t || String(s.p.name).toLowerCase().includes(t)));
-            host.querySelectorAll('[data-filter]').forEach(b => b.classList.toggle('is-on', b.dataset.filter === projUi.filter));
-            host.querySelector('[data-count]').textContent = list.length !== stat.length ? 'Showing ' + list.length + ' of ' + stat.length : '';
-
-            host.querySelector('[data-rows]').innerHTML = list.map(s => {
-                const p = s.p;
-                const on = !!p.allow_requests;
-                const works = Number(p.additional_works) || 0;
-                return '<tr class="req-prow' + (s.key === 'completed' ? ' is-inactive' : '') + '">' +
-                    '<td><strong>' + esc(p.name) + '</strong></td>' +
-                    '<td>' + (works ? '<strong>' + works + ' open</strong>' : '<span class="req-muted">—</span>') + '</td>' +
-                    '<td><span class="att-pill ' + s.pill + '">' + s.label + '</span>' +
-                      '<div class="req-muted">' + esc(s.why) + '</div></td>' +
-                    '<td class="req-pact"><button class="att-switch" type="button" role="switch" aria-checked="' + (on ? 'true' : 'false') + '"' +
-                      ' data-folder="' + esc(p.folder_id) + '"' + (p.completed ? ' disabled' : '') +
-                      ' title="' + esc(p.completed ? 'Completed projects never accept requests.' :
-                        on ? 'On: open to requests even when not on the Time In list.' :
-                             'Off: open only while on today\'s Time In list.') + '"' +
-                      ' aria-label="Allow requests: ' + esc(p.name) + '">' +
-                      '<span class="att-switch-track"></span><span>' + (on ? 'On' : 'Off') + '</span></button></td>' +
-                    '<td class="req-pact"><button class="att-switch" type="button" role="switch" aria-checked="' + (p.allow_history ? 'true' : 'false') + '"' +
-                      ' data-history="' + esc(p.folder_id) + '"' +
-                      ' title="' + esc(p.allow_history ? 'On: workers can browse what was requested on this project before.' :
-                                                  'Off: workers do not see this project\'s item history.') + '"' +
-                      ' aria-label="Item history: ' + esc(p.name) + '">' +
-                      '<span class="att-switch-track"></span><span>' + (p.allow_history ? 'Workers can browse' : 'Off') + '</span></button></td>' +
-                  '</tr>';
-            }).join('');
-
-            const empty = host.querySelector('[data-empty]');
-            host.querySelector('.req-ptable').style.display = list.length ? '' : 'none';
-            empty.style.display = list.length ? 'none' : 'block';
-            if (!projects.length) {
-                empty.textContent = 'No Project Control projects yet.';
-            } else if (!list.length) {
-                empty.innerHTML = 'No project matches. <button class="att-link" type="button" data-clear>Clear filters</button>';
-                empty.querySelector('[data-clear]').addEventListener('click', () => {
-                    projUi.text = ''; projUi.filter = 'all';
-                    renderProjects(host);
-                });
-            }
-        }
-        draw();
-
-        host.querySelector('[data-text]').addEventListener('input', e => { projUi.text = e.target.value; draw(); });
-        host.querySelectorAll('[data-filter]').forEach(b => b.addEventListener('click', () => { projUi.filter = b.dataset.filter; draw(); }));
-        host.querySelector('[data-rows]').addEventListener('click', async e => {
-            // Item history (0090): its own switch, never touches Allow requests;
-            // completed projects keep it (history outlives the job).
-            const hs = e.target.closest('[data-history]');
-            if (hs) {
-                if (hs.disabled) return;
-                const proj = projects.find(p => p.folder_id === hs.dataset.history);
-                if (!proj) return;
-                hs.disabled = true;
-                try {
-                    await RA.rpc('pr_office_set_allow_history', { p_folder: proj.folder_id, p_allow: !proj.allow_history });
-                    renderProjects(host);
-                } catch (err) {
-                    alert(RA.errorMessage(err));
-                    hs.disabled = false;
-                }
-                return;
-            }
-            const sw = e.target.closest('[data-folder]');
-            if (!sw || sw.disabled) return;
-            const project = projects.find(p => p.folder_id === sw.dataset.folder);
-            if (!project) return;
+        async function flip(kind, proj, sw) {
+            if (!proj || sw.disabled) return;
             sw.disabled = true;
             try {
-                await RA.rpc('pr_office_set_allow_requests', { p_folder: project.folder_id, p_allow: !project.allow_requests });
+                // Item history (0090): its own switch, never touches Allow requests;
+                // completed projects keep it (history outlives the job).
+                if (kind === 'history') await RA.rpc('pr_office_set_allow_history', { p_folder: proj.folder_id, p_allow: !proj.allow_history });
+                else { const project = proj; await RA.rpc('pr_office_set_allow_requests', { p_folder: project.folder_id, p_allow: !project.allow_requests }); }
+                projUi.refresh = true;
                 renderProjects(host);
             } catch (err) {
                 alert(RA.errorMessage(err));
                 sw.disabled = false;
             }
-        });
-        RA.icons();
+        }
+
+        function draw(o) {
+            const t = String(projUi.text || '').trim().toLowerCase();
+            const list = stat.filter(s => (projUi.filter === 'all' || s.key === projUi.filter) &&
+                (!t || String(s.p.name).toLowerCase().includes(t)));
+            if (o && o.leaveSelection && projUi.sel && !list.some(s => s.p.folder_id === projUi.sel)) projUi.sel = null;
+            root.SplitView.render(host, {
+                key: 'reqProjects',
+                title: 'Projects open to requests',
+                sub: 'Which Project Control projects workers can send requests for.',
+                lede: lede,
+                how: { title: 'How this works',
+                       text: 'A project accepts requests while it is on today\'s Time In list. Allow requests opens one that is not — use it for an upcoming site with no ' +
+                             'geofence yet. Completed projects never accept requests. Open Additional Works under a project are offered with it. ' +
+                             'Item history is separate: it lets workers browse what was requested on that project before (Find Previous Item), and it stays on after the project is completed.' },
+                tabs: [['all', 'All', stat.length], ['open', 'Open', nOpen], ['closed', 'Not open', nClosed], ['completed', 'Completed', nDone]]
+                    .map(([id, label, count]) => ({ id, label, count })),
+                tab: projUi.filter,
+                onTab: id => { projUi.filter = id; draw({ leaveSelection: true }); },
+                search: { placeholder: 'Search projects…', value: projUi.text, onInput: v => { projUi.text = v; draw({ leaveSelection: true }); } },
+                showing: list.length !== stat.length ? 'Showing ' + list.length + ' of ' + stat.length : '',
+                groups: [{ title: '', rows: list.map(s => {
+                    const works = Number(s.p.additional_works) || 0;
+                    const chips = [];
+                    if (s.p.allow_requests && !s.p.completed) chips.push({ text: 'Override on', tone: 'gold' });
+                    if (s.p.allow_history) chips.push({ text: 'Item history on', tone: 'check' });
+                    return { id: s.p.folder_id, title: s.p.name, sub: s.why, meta: works ? works + ' open Additional Works' : 'No Additional Works',
+                             pill: { text: s.label, tone: TONE[s.pill] || 'none' }, chips: chips, dim: s.key === 'completed' };
+                }) }],
+                empty: !projects.length ? 'No Project Control projects yet.'
+                    : 'No project matches. <button class="att-link" type="button" data-clear>Clear filters</button>',
+                onEmpty: el => {
+                    const c = el.querySelector('[data-clear]');
+                    if (c) c.addEventListener('click', () => { projUi.text = ''; projUi.filter = 'all'; renderProjects(host); });
+                },
+                selectedId: projUi.sel,
+                refreshPanel: !!(o && o.refreshPanel),
+                onSelect: (id, panel) => {
+                    projUi.sel = id;
+                    const s = stat.find(x => x.p.folder_id === id);
+                    if (!s) return root.SplitView.error(panel, 'This project is no longer listed.');
+                    const p = s.p;
+                    const on = !!p.allow_requests;
+                    const works = Number(p.additional_works) || 0;
+                    const body = root.SplitView.page(panel, { kicker: 'Project', title: p.name, pills: [{ text: s.label, tone: TONE[s.pill] || 'none' }], nextLabel: 'Next project' });
+                    body.innerHTML = root.SplitView.facts([
+                            ['Status', esc(s.label)], ['Why', esc(s.why)],
+                            ['Additional Works', works ? '<strong>' + works + ' open</strong>' : '<span class="req-muted">—</span>'],
+                        ]) +
+                        '<div class="req-pswitches">' +
+                          '<div class="req-pswitch"><div><strong>Allow requests</strong> <span class="req-th-hint">override</span><div class="req-muted">' +
+                            esc(p.completed ? 'Completed projects never accept requests.' :
+                                on ? 'On: open to requests even when not on the Time In list.' : 'Off: open only while on today\'s Time In list.') + '</div></div>' +
+                            '<button class="att-switch" type="button" role="switch" aria-checked="' + (on ? 'true' : 'false') + '"' +
+                            ' data-folder="' + esc(p.folder_id) + '"' + (p.completed ? ' disabled' : '') +
+                            ' aria-label="Allow requests: ' + esc(p.name) + '"><span class="att-switch-track"></span><span>' + (on ? 'On' : 'Off') + '</span></button></div>' +
+                          '<div class="req-pswitch"><div><strong>Item history</strong> <span class="req-th-hint">Find Previous Item</span><div class="req-muted">' +
+                            esc(p.allow_history ? 'On: workers can browse what was requested on this project before.' :
+                                'Off: workers do not see this project\'s item history.') + '</div></div>' +
+                            '<button class="att-switch" type="button" role="switch" aria-checked="' + (p.allow_history ? 'true' : 'false') + '"' +
+                            ' data-history="' + esc(p.folder_id) + '" aria-label="Item history: ' + esc(p.name) + '">' +
+                            '<span class="att-switch-track"></span><span>' + (p.allow_history ? 'Workers can browse' : 'Off') + '</span></button></div>' +
+                        '</div>';
+                    body.querySelector('[data-folder]').addEventListener('click', e => flip('requests', p, e.currentTarget));
+                    body.querySelector('[data-history]').addEventListener('click', e => flip('history', p, e.currentTarget));
+                    RA.icons();
+                },
+                onClose: () => { projUi.sel = null; },
+            });
+        }
+        const refresh = !!projUi.refresh;
+        projUi.refresh = false;
+        draw({ refreshPanel: refresh || true });
     }
 
     RA.views.reqBatches = renderBatches;
-    RA.views.reqTeams = renderTeams;
+    // Office redesign v5: Teams is already a grid of team cards with their
+    // members and buttons, so it keeps its content inside the frame (custom
+    // body); the frame draws the header, and the page's own title line is
+    // hidden there (css/split-view.css), its New team button stays.
+    RA.views.reqTeams = host => root.SplitView.render(host, {
+        key: 'reqTeams', title: 'Teams',
+        sub: 'Members can send requests for their team. A leader also sees them and checks the team\x27s work. Only people with the Team Leader role can be made leader.',
+        search: false, custom: true, onCustom: el => renderTeams(el),
+    });
     RA.views.reqCatalog = renderCatalog;
     RA.views.reqProjects = renderProjects;
 })(typeof window !== 'undefined' ? window : globalThis);

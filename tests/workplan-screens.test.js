@@ -49,6 +49,7 @@ function fakeHost() {
   let html = '';
   let els = {};
   return {
+    isConnected: true, dataset: {},
     get innerHTML() { return html; },
     set innerHTML(v) { html = String(v); els = {}; },
     querySelector(sel) { return els[sel] || (els[sel] = fakeEl()); },
@@ -70,7 +71,24 @@ function makeWP(rpc) {
   });
 }
 function loadScreens(WP) {
-  const win = { WorkPlanAdmin: WP, addEventListener() {}, alert() {}, switchView() {} };
+  // The office v5 frame: the task page renders into the pop-up shell,
+  // which here just writes the title and hands the same element back.
+  const SplitView = {
+    page(panel, p) {
+      const head = '<h3>' + p.title + '</h3>';
+      panel.innerHTML = head;
+      return { get innerHTML() { return panel.innerHTML; }, set innerHTML(v) { panel.innerHTML = head + v; },
+               querySelector: s => panel.querySelector(s), querySelectorAll: s => panel.querySelectorAll(s) };
+    },
+    nextStep: (text, btn) => '<div class="sv-step">' + text + (btn || '') + '</div>',
+    // The v5 section helpers the task pop-up is built from.
+    section: (title, html) => '<section><b>' + title + '</b>' + html + '</section>',
+    facts: rows => '<dl>' + rows.filter(r => r[1]).map(r => '<dt>' + r[0] + '</dt><dd>' + r[1] + '</dd>').join('') + '</dl>',
+    history: items => '<ul>' + items.map(i => '<li>' + i.when + ' ' + i.html + '</li>').join('') + '</ul>',
+    notice: (tone, icon, title, html) => '<div class="sv-notice">' + title + (html || '') + '</div>',
+    toast() {}, error: (panel, msg) => { panel.innerHTML = 'FAILED: ' + msg; },
+  };
+  const win = { WorkPlanAdmin: WP, SplitView, addEventListener() {}, alert() {}, switchView() {} };
   for (const f of ['js/workplan-admin-task.js', 'js/workplan-admin-meetings.js']) {
     new Function('window', fs.readFileSync(path.join(ROOT, f), 'utf8'))(win);
   }
@@ -101,8 +119,8 @@ async function typeWhileAiDrafts(outcome) {
   WP.aiDraft = () => ai.promise;
   const views = loadScreens(WP);
   const host = fakeHost();
-  WP.state.meetingId = 'M';
-  await views.wpMeeting(host);
+  host.dataset.svId = 'M';              // v5: the meeting renders into the pop-up's panel
+  await WP.renderMeetingPanel(host, 'M', {});
   const notes = host.querySelector('[data-notes]');
   notes.value = 'Wall prep Monday';
   await notes.fire('input');
@@ -145,11 +163,19 @@ async function typeWhileAiDrafts(outcome) {
     });
     const views = loadScreens(WP);
     const host = fakeHost();
-    const field = view === 'wpMeeting' ? 'meetingId' : 'taskId';
-    WP.state[field] = 'A';
-    const pA = views[view](host);
-    WP.state[field] = 'B';
-    const pB = views[view](host);
+    let pA, pB;
+    if (view === 'wpTask') {
+      // v5: one task renders into the pop-up's panel (WP.renderTaskPanel).
+      host.dataset.svId = 'A';
+      pA = WP.renderTaskPanel(host, 'A', {});
+      host.dataset.svId = 'B';
+      pB = WP.renderTaskPanel(host, 'B', {});
+    } else {
+      host.dataset.svId = 'A';
+      pA = WP.renderMeetingPanel(host, 'A', {});
+      host.dataset.svId = 'B';
+      pB = WP.renderMeetingPanel(host, 'B', {});
+    }
     await flush();
     loads.B.resolve(doc('B', 'Screen B'));
     await pB;

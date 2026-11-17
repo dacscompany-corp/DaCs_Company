@@ -1,10 +1,11 @@
 // ════════════════════════════════════════════════════════════════════
 // Requests → Queue (WorkMate, 0086). Owner + staff.
 //
-// Office split-view redesign (spec docs/superpowers/specs/2026-11-14-
-// office-split-view-redesign-design.md, Phase 1): the queue is a list on
-// the left and the chosen request on the right (js/requests-admin-
-// detail.js draws the panel), drawn by the shared frame js/split-view.js.
+// Office redesign v5 (spec docs/superpowers/specs/2026-11-14-office-split-
+// view-redesign-design.md rev 2): the queue is cards in groups; the chosen
+// request opens in the frame's pop-up (js/requests-admin-detail.js draws
+// it), drawn by the shared frame js/split-view.js. A card carries its
+// "What to do now" button when the request has exactly one next step.
 //
 // Every request with an open item, urgent first (earliest needed-by),
 // then by the earliest weekly batch still to arrange — sortQueue in the
@@ -75,6 +76,7 @@
         const state = RA.requestState(r);
         const chip = urgentChip(s, today);
         const items = (r.lines || []).map(l => l.description).slice(0, 3).join(', ') + ((r.lines || []).length > 3 ? ', …' : '');
+        const step = RA.requestNextStep(r, today);
         return {
             id: r.id,
             title: r.requester_name + ' · ' + r.project_name,
@@ -86,6 +88,7 @@
             stripe: s.urgent ? 'red' : '',
             tint: RA.isOverdue(r, today),
             dim: state === 'arranged',
+            nextLabel: (step && step.label) || '',
         };
     }
 
@@ -155,16 +158,36 @@
 
     const DONE_TABS = ['attn', 'urgent', 'resolve', 'arrange'];
 
+    // The line under the tabs. "Needs action" is the code's rule (anything
+    // still to arrange or to resolve), wider than the design's sentence.
+    const TAB_HELP = {
+        attn: 'Requests with something still to arrange or to resolve.',
+        urgent: 'Needed soonest first.',
+        resolve: 'A reduction or an offline edit is waiting for your decision.',
+        arrange: 'Nothing arranged yet, or only partly.',
+        closed: 'Closed requests load separately.',
+    };
+    const HOW = {
+        title: 'What the labels on a request mean',
+        rows: [
+            ['URGENT · needed today', 'Needed today.'],
+            ['URGENT · by [date]', 'Needed by that date.'],
+            ['OVERDUE N DAYS · needed [date]', 'The date it was needed has passed.'],
+            ['Red bar on the left', 'An urgent request.'],
+            ['Dimmed card', 'Finished — nothing left to arrange.'],
+        ],
+    };
+
     // opts.leaveSelection: a filter or tab change drops a selection that
-    // is no longer in the list (the desktop then shows the first row);
-    // a reload after an action keeps it, so the office sees the result.
+    // is no longer in the list (its pop-up closes); a reload after an
+    // action keeps it, so the office sees the result.
     function draw(opts) {
         if (!host || !data) return;
         const closed = ui.scope === 'closed';
         const tabs = RA.QUEUE_TABS.map(([id, label]) => ({
-            id, label, count: data.openCounts ? data.openCounts[id] : null, needs: id === 'attn',
+            id, label, count: data.openCounts ? data.openCounts[id] : null, needs: id === 'attn', help: TAB_HELP[id] || '',
         }));
-        tabs.push({ id: 'closed', label: 'Closed', count: closed ? data.all.length : null });
+        tabs.push({ id: 'closed', label: 'Closed', count: closed ? data.all.length : null, help: TAB_HELP.closed });
         // The user's pick wins; otherwise this visit's automatic tab, chosen
         // once (Needs action when it has something, else the first tab with
         // something in it).
@@ -193,15 +216,16 @@
             tabs: tabs,
             tab: tab,
             onTab: onTab,
+            how: HOW,
             aside: closed ? '' : weekHtml(data.current),
             notice: data.capped ? SV.notice('gold', 'list-filter', 'Showing the newest 300 requests.',
                 'Requests with a reduction or an offline edit to resolve are always included.') : '',
             search: { placeholder: 'Search worker, project, item…', value: ui.text, onInput: text => { ui.text = text; draw({ leaveSelection: true }); } },
-            listTools: batchSelect(),
-            onListTools: el => {
+            toolbar: batchSelect(),
+            onToolbar: el => {
                 el.querySelector('[data-batch]').addEventListener('change', e => { ui.batchId = e.target.value; draw({ leaveSelection: true }); });
             },
-            listMeta: filtered && list.length ? 'Showing ' + list.length + ' of ' + inTab.length : '',
+            showing: filtered && list.length ? 'Showing ' + list.length + ' of ' + inTab.length : '',
             groups: groupsOf(list),
             empty: empty,
             onEmpty: el => {
@@ -212,14 +236,25 @@
             // Reload the open request only after an action or a fresh load —
             // never on a search keystroke, filter or tab change.
             refreshPanel: !!(opts && opts.refreshPanel),
-            onSelect: (id, panel) => {
+            onSelect: (id, panel, opts) => {
                 ui.selectedId = id;
                 if (typeof RA.renderRequestPanel !== 'function') { SV.error(panel, 'This request could not be opened. Reload the page.'); return; }
-                RA.renderRequestPanel(panel, id, { onChanged: () => load(), nextLabel: 'Next request' });
+                RA.renderRequestPanel(panel, id, { onChanged: () => load(), nextLabel: 'Next request', start: opts && opts.start ? cardStep(id) : null });
             },
+            // The pop-up closed (✕, Escape, outside, a tab change, another
+            // screen): forget the request — never redraw from here.
+            onClose: () => { ui.selectedId = null; },
         });
         const goBatches = host.querySelector('[data-go-batches]');
         if (goBatches) goBatches.addEventListener('click', () => root.switchView('reqBatches'));
+    }
+
+    // The step the card showed when its button was pressed ({ act, portion }),
+    // so the request view starts that exact step or none.
+    function cardStep(id) {
+        const r = data && data.all.find(x => x.id === id);
+        const step = r ? RA.requestNextStep(r, data.today) : null;
+        return step ? step.act : null;
     }
 
     function onTab(id) {

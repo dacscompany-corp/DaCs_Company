@@ -253,7 +253,8 @@
     const RA = root.RequestsAdmin;
     if (!RA) return;
     const esc = RA.esc;
-    const ui = { tab: 'tools', toolId: null, showClosed: false };
+    const ui = { tab: 'tools', toolId: null, showClosed: false, sel: null, text: '' };
+    const SV = root.SplitView;
     let cache = { choices: null, status: null };
 
     const newOp = () => (root.crypto && root.crypto.randomUUID) ? root.crypto.randomUUID()
@@ -581,12 +582,49 @@
         });
     }
 
-    function tabs(ov, problems) {
-        const n = (x) => x && x.length ? ' (' + x.length + ')' : '';
-        const t = (id, label) => '<button type="button" class="att-seg-btn' + (ui.tab === id ? ' is-on' : '') + '" data-tab="' + id + '">' + label + '</button>';
-        return '<div class="att-seg" role="tablist" aria-label="Tools">' +
-            t('tools', 'Tools') + t('out', 'Out' + n(ov && ov.out)) + t('register', 'To register' + n(ov && ov.to_register)) +
-            t('pending', 'Waiting for owner' + n(ov && ov.pending)) + t('problems', 'Problems' + n(problems)) + '</div>';
+    // Office redesign v5: tabs with counts, cards, one tool / line / record /
+    // problem in the frame's pop-up.
+    const TONE = { done: 'done', working: 'gold', abandoned: 'red', pc: 'check', pm: 'pm', cancelled: 'none', none: 'none' };
+    const TAB_HELP = {
+        tools: 'Every tool the company owns, by number.',
+        out: 'Tools that are with someone now.',
+        register: 'Purchases of tools waiting to get their numbers.',
+        pending: 'Only the main owner confirms or rejects a Lost report or a Retire request.',
+        problems: 'Problems reported from the phone.',
+    };
+    function stateOf(st) { const s = STATE_LABEL[st] || [st, 'cancelled']; return { text: s[0], tone: TONE[s[1]] || 'none' }; }
+    // A tool's one next step, when it has exactly one: a lost tool can only be found.
+    function toolStep(t) {
+        if (t.state === 'lost') return { act: 'found', label: 'Found…', text: 'It was reported lost. If it turns up, record it as found.' };
+        return null;
+    }
+    function lineKey(l) { return l.purchase_id + ':' + l.line_no; }
+
+    function toolRow(t) {
+        const step = toolStep(t);
+        return { id: 't:' + t.id, title: t.label + ' · ' + t.item_name, sub: t.details || '', meta: whereText(t) || '',
+                 pill: stateOf(t.state), nextLabel: step ? step.label : '' };
+    }
+    function outCard(t) {
+        const broken = t.condition && t.condition !== 'good';
+        return { id: 'o:' + t.id, title: t.label + ' · ' + t.item_name, sub: t.holder_name + ' · ' + t.folder_name,
+                 right: 'Out ' + daysText(t.days), chips: broken ? [{ text: conditionLabel(t.condition) + ' — not usable', tone: 'red' }] : [],
+                 stripe: broken ? 'red' : '' };
+    }
+    function regCard(l) {
+        return { id: 'g:' + lineKey(l), title: l.item_name, sub: String(Number(l.quantity)) + ' ' + l.unit + ' · bought ' + RA.formatDay(l.purchase_date) +
+                 (l.destination === 'warehouse' ? ' for the warehouse' : ' for ' + (l.folder_name || 'a project')),
+                 meta: 'Registered ' + l.registered + ' of ' + Math.floor(Number(l.quantity)), pill: { text: 'To register', tone: 'gold' },
+                 nextLabel: 'Register…' };
+    }
+    function pendCard(r) {
+        return { id: 'p:' + r.id, title: (r.label ? r.label + ' · ' : '') + (KIND_LABEL[r.kind] || r.kind), sub: recordText(r),
+                 meta: r.recorded_by_name + ' · ' + RA.cutoffLabel(r.recorded_at), pill: { text: 'Waiting for the owner', tone: 'red' } };
+    }
+    function probCard(p) {
+        return { id: 'q:' + p.id, title: p.label + ' · ' + p.item_name, sub: problemText(p),
+                 meta: 'Reported ' + RA.cutoffLabel(p.reported_at) + (p.holder_name ? ' · now with ' + p.holder_name : ''),
+                 pill: p.closed_at ? { text: 'Closed', tone: 'none' } : { text: problemLabel(p.kind), tone: 'red' }, dim: !!p.closed_at };
     }
 
     function toolCard(t) {
@@ -664,103 +702,156 @@
         return openSimple(t, act, reload);
     }
 
-    async function renderTool(body, toolId, reload) {
-        body.innerHTML = '<div class="att-empty">Loading…</div>';
+    // One tool in the pop-up: photo, facts, the actions its state allows, records.
+    async function renderTool(panel, toolId, reload, opts) {
+        const sid = panel.dataset.svId;
+        panel.innerHTML = '<div class="sv-panel-empty">Loading…</div>';
         let t;
-        try { t = await RA.rpc('tl_tool', { p_tool: toolId }); } catch (e) { RA.fail(body, e); return; }
+        try { t = await RA.rpc('tl_tool', { p_tool: toolId }); } catch (e) { if (panel.isConnected && panel.dataset.svId === sid) SV.error(panel, errorMessage(e)); return; }
+        if (!panel.isConnected || panel.dataset.svId !== sid) return;   // closed or moved on while this loaded
         const m = me();
+        const step = toolStep(t);
+        const body = SV.page(panel, {
+            kicker: 'Tool', title: t.label + ' · ' + t.item_name, pills: [stateOf(t.state)],
+            step: step ? SV.nextStep(step.text, '<button type="button" class="att-btn att-btn--primary" data-tool-act="' + esc(step.act) + '">' + esc(step.label) + '</button>') : '',
+            nextLabel: (opts && opts.nextLabel) || 'Next tool',
+        });
+        body.classList.add('stk-tab', 'req-detail');
         body.innerHTML =
-            '<button type="button" class="att-btn att-btn--sm" data-back>← All tools</button>' +
-            '<h3 class="stk-h">' + esc(t.label) + ' · ' + esc(t.item_name) + ' ' + statePill(t.state) + '</h3>' +
             (t.photo_path ? '<img class="tl-photo tl-photo--lg" alt="' + esc(t.label) + '" data-sign-bucket="uploads" data-sign-path="' + esc(t.photo_path) + '">' : '') +
             '<div class="req-muted">' + esc([t.details, whereText(t), t.purchase_id ? 'Bought ' + RA.formatDay(t.purchase_date) : 'Opening register'].filter(Boolean).join(' · ')) + '</div>' +
             '<div class="stk-actions" style="margin-top:12px">' + actionsFor(t).map((a, i) =>
               '<button type="button" class="att-btn att-btn--sm' + (i === 0 ? ' att-btn--primary' : '') + '" data-tool-act="' + a + '">' + ACTION_LABEL[a] + '</button>').join('') + '</div>' +
             '<h3 class="stk-h">History</h3>' +
             '<div class="stk-recs">' + (t.records.map(r => recordRow(Object.assign({ label: '' }, r), m)).join('') || '<div class="att-empty">Nothing yet.</div>') + '</div>';
-        body.querySelector('[data-back]').addEventListener('click', () => { ui.toolId = null; reload(); });
-        body.querySelectorAll('[data-tool-act]').forEach(b => b.addEventListener('click', () => runAction(b.dataset.toolAct, t, reload)));
+        panel.querySelectorAll('[data-tool-act]').forEach(b => b.addEventListener('click', () => runAction(b.dataset.toolAct, t, reload)));
         wireRecords(body, t.records.map(r => Object.assign({ label: t.label }, r)), reload);
         RA.signImages(body);
+        // The card's button: only the step it showed.
+        const want = opts && opts.start ? opts.start : null;
+        const go = panel.querySelector('.sv-step [data-tool-act]');
+        if (want && go && want.act === go.dataset.toolAct) go.click();
     }
 
-    async function render(host) {
-        host.innerHTML = '<div class="att-stack stk-tab req-detail"><div class="att-empty">Loading…</div></div>';
+    async function render(host, opts) {
+        if (!host.querySelector('.sv')) host.innerHTML = '<div class="sv"><div class="sv-empty">Loading…</div></div>';
         let status;
         try { status = await RA.rpc('tl_status'); } catch (e) { RA.fail(host, e); return; }
         cache.status = status;
         if (!status || !status.enabled) return renderOff(host, status);
-        const reload = () => render(host);
+        const reload = () => render(host, { refreshPanel: true });
         cache.choices = null;
-        let ov = null;
-        if (!(ui.tab === 'tools' && ui.toolId)) {
-            try { ov = await RA.rpc('tl_overview'); } catch (e) { RA.fail(host, e); return; }
-        }
+        let ov;
+        try { ov = await RA.rpc('tl_overview'); } catch (e) { RA.fail(host, e); return; }
         // A failed read costs only this tab: the rest of the screen stays usable.
         let problems = [];
         let problemsError = null;
-        if (ov) {
-            try { problems = (await RA.rpc('tl_problems', { p_open_only: !ui.showClosed })) || []; } catch (e) { problemsError = e; }
-        }
-        host.innerHTML =
-            '<div class="att-stack stk-tab req-detail">' +
-              RA.head('Tools', 'Every tool by number, and who answers for it. No prices here — a tool\'s cost stays with its purchase.', tabs(ov, problems.filter(p => !p.closed_at))) +
-              '<div class="stk-actions"><button type="button" class="att-btn att-btn--primary" data-register><i data-lucide="plus"></i> Register tools</button></div>' +
-              '<div data-body></div>' +
-              (status.is_main_owner ? '<div class="stk-switch-off"><button type="button" class="att-btn att-btn--sm att-btn--ghost" data-switch-off>Switch tools off…</button></div>' : '') +
-            '</div>';
-        host.querySelectorAll('[data-tab]').forEach(b => b.addEventListener('click', () => {
-            if (ui.tab === b.dataset.tab && !ui.toolId) return;
-            ui.tab = b.dataset.tab; ui.toolId = null;
-            render(host);
-        }));
-        host.querySelector('[data-register]').addEventListener('click', () => openRegister(null, reload));
-        const off = host.querySelector('[data-switch-off]');
-        if (off) off.addEventListener('click', () => openSwitchOff());
-        const body = host.querySelector('[data-body]');
+        try { problems = (await RA.rpc('tl_problems', { p_open_only: !ui.showClosed })) || []; } catch (e) { problemsError = e; }
         const m = me();
-        if (ui.tab === 'tools' && ui.toolId) { await renderTool(body, ui.toolId, reload); RA.icons(); return; }
-        const openTool = (id) => { ui.tab = 'tools'; ui.toolId = id; render(host); };
-        if (ui.tab === 'out') {
-            body.innerHTML = ov.out.length ? '<div class="stk-recs">' + ov.out.map(outRow).join('') + '</div>'
-                : '<div class="att-empty">No tool is out.</div>';
-            body.querySelectorAll('[data-out-act]').forEach(b => b.addEventListener('click', () => {
-                const t = ov.out.find(x => x.id === b.closest('[data-tool-row]').dataset.toolRow);
-                if (t) runAction(b.dataset.outAct, t, reload);
-            }));
-        } else if (ui.tab === 'register') {
-            body.innerHTML = ov.to_register.length ? ov.to_register.map(lineCard).join('')
-                : '<div class="att-empty">No purchase of tools is waiting to be registered.</div>';
-            body.querySelectorAll('[data-line-act]').forEach(b => b.addEventListener('click', () => {
-                const key = b.closest('[data-line]').dataset.line;
-                const l = ov.to_register.find(x => x.purchase_id + ':' + x.line_no === key);
-                if (l) openRegister({ line: l }, reload);
-            }));
-        } else if (ui.tab === 'problems') {
-            body.innerHTML = (problemsError ? '<div class="att-empty">' + esc(errorMessage(problemsError)) + '</div>'
-                : problems.length ? '<div class="stk-recs">' + problems.map(problemRow).join('') + '</div>'
-                : '<div class="att-empty">' + (ui.showClosed ? 'No problem has been reported.' : 'No open problems.') + '</div>') +
-                '<label class="req-toggle"><input type="checkbox" data-problems-closed' + (ui.showClosed ? ' checked' : '') + '> Show closed</label>';
-            body.querySelector('[data-problems-closed]').addEventListener('change', (e) => { ui.showClosed = e.target.checked; render(host); });
-            body.querySelectorAll('[data-problem]').forEach(row => {
-                const p = problems.find(x => x.id === row.dataset.problem);
-                if (!p) return;
-                row.querySelector('[data-problem-tool]').addEventListener('click', () => openTool(p.tool_id));
-                const closeBtn = row.querySelector('[data-problem-close]');
-                if (closeBtn) closeBtn.addEventListener('click', () => openCloseProblem(p, reload));
+        if (root.NavCounts && m.isMainOwner) root.NavCounts.set('tools', ov.pending.length);
+        const openTool = (id) => { ui.tab = 'tools'; ui.sel = 't:' + id; draw({ refreshPanel: true }); };
+        const draw = (o) => {
+            const text = String(ui.text || '').trim().toLowerCase();
+            const hit = r => !text || (r.title + ' ' + (r.sub || '') + ' ' + (r.meta || '')).toLowerCase().includes(text);
+            const rows = ui.tab === 'out' ? ov.out.map(outCard) : ui.tab === 'register' ? ov.to_register.map(regCard)
+                : ui.tab === 'pending' ? ov.pending.map(pendCard) : ui.tab === 'problems' ? problems.map(probCard) : ov.tools.map(toolRow);
+            const shown = rows.filter(hit);
+            if (o && o.leaveSelection && ui.sel && !shown.some(r => r.id === ui.sel)) ui.sel = null;
+            const empty = text ? 'Nothing matches the search.' : {
+                tools: 'No tools yet. Register the tools the company owns, or a purchase of tools.',
+                out: 'No tool is out.',
+                register: 'No purchase of tools is waiting to be registered.',
+                pending: 'Nothing is waiting for the owner.',
+                problems: problemsError ? esc(errorMessage(problemsError)) :(ui.showClosed ? 'No problem has been reported.' : 'No open problems.'),
+            }[ui.tab];
+            const open = problems.filter(p => !p.closed_at).length;
+            root.SplitView.render(host, {
+                key: 'reqTools',
+                title: 'Tools',
+                sub: 'Every tool by number, and who answers for it. No prices here — a tool\'s cost stays with its purchase.',
+                primary: { label: 'Register tools', onClick: () => openRegister(null, reload) },
+                tabs: [['tools', 'Tools', ov.tools.length], ['out', 'Out', ov.out.length], ['register', 'To register', ov.to_register.length],
+                       ['pending', 'Waiting for owner', ov.pending.length], ['problems', 'Problems', open]]
+                    .map(([id, label, count]) => ({ id, label, count, needs: id === 'pending' && m.isMainOwner, help: TAB_HELP[id] || '' })),
+                tab: ui.tab,
+                onTab: id => { ui.tab = id; ui.sel = null; ui.text = ''; draw(); },
+                search: { placeholder: 'Search a tool number or name…', value: ui.text, onInput: t => { ui.text = t; draw({ leaveSelection: true }); } },
+                toolbar: ui.tab === 'problems' ? '<label class="req-toggle"><input type="checkbox" data-problems-closed' + (ui.showClosed ? ' checked' : '') + '> Show closed</label>' : '',
+                onToolbar: el => {
+                    const c = el.querySelector('[data-problems-closed]');
+                    if (c) c.addEventListener('change', (e) => { ui.showClosed = e.target.checked; render(host); });
+                },
+                showing: text ? 'Showing ' + shown.length + ' of ' + rows.length : '',
+                groups: [{ title: '', rows: shown }],
+                empty: empty,
+                selectedId: ui.sel,
+                refreshPanel: !!(o && o.refreshPanel),
+                onSelect: (id, panel, so) => {
+                    ui.sel = id;
+                    const kind = id.slice(0, 2), key = id.slice(2);
+                    if (kind === 't:') {
+                        const t = ov.tools.find(x => x.id === key);
+                        return renderTool(panel, key, reload, { start: so && so.start && t ? toolStep(t) : null });
+                    }
+                    if (kind === 'o:') {
+                        const t = ov.out.find(x => x.id === key);
+                        if (!t) return SV.error(panel, 'This tool is no longer out.');
+                        const body = SV.page(panel, { kicker: 'Tool out', title: t.label + ' · ' + t.item_name, sub: t.holder_name + ' · ' + t.folder_name, nextLabel: 'Next tool' });
+                        body.classList.add('stk-tab', 'req-detail');
+                        body.innerHTML = '<div class="stk-recs">' + outRow(t) + '</div>' +
+                            '<div class="stk-actions"><button type="button" class="att-btn att-btn--sm" data-open-tool>Open tool</button></div>';
+                        body.querySelectorAll('[data-out-act]').forEach(b => b.addEventListener('click', () => {
+                            if (t) runAction(b.dataset.outAct, t, reload);
+                        }));
+                        body.querySelector('[data-open-tool]').addEventListener('click', () => openTool(t.id));
+                        return RA.icons();
+                    }
+                    if (kind === 'g:') {
+                        const l = ov.to_register.find(x => lineKey(x) === key);
+                        if (!l) return SV.error(panel, 'This purchase of tools is no longer waiting to be registered.');
+                        const body = SV.page(panel, { kicker: 'Purchase of tools', title: l.item_name,
+                            step: SV.nextStep(Number(l.quantity) - Number(l.registered) === 1 ? 'This tool was bought and still needs its number.'
+                                : 'These tools were bought and still need their numbers.', ''),
+                            nextLabel: 'Next line' });
+                        body.classList.add('stk-tab', 'req-detail');
+                        body.innerHTML = lineCard(l);
+                        body.querySelectorAll('[data-line-act]').forEach(b => b.addEventListener('click', () => openRegister({ line: l }, reload)));
+                        // The card's "Register…": the line's own button.
+                        if (so && so.start) { const go = body.querySelector('[data-line-act="register"]'); if (go) go.click(); }
+                        return RA.icons();
+                    }
+                    if (kind === 'p:') {
+                        const r = ov.pending.find(x => x.id === key);
+                        if (!r) return SV.error(panel, 'This record is no longer waiting for the owner.');
+                        const body = SV.page(panel, { kicker: 'Waiting for owner', title: (r.label ? r.label + ' · ' : '') + (KIND_LABEL[r.kind] || r.kind),
+                            sub: m.isMainOwner ? '' : 'Only the main owner confirms or rejects a Lost report or a Retire request.', nextLabel: 'Next record' });
+                        body.classList.add('stk-tab', 'req-detail');
+                        body.innerHTML = '<div class="stk-recs">' + recordRow(r, m) + '</div>';
+                        wireRecords(body, [r], reload);
+                        RA.signImages(body);
+                        return RA.icons();
+                    }
+                    const p = problems.find(x => x.id === key);
+                    if (!p) return SV.error(panel, 'This problem is no longer listed.');
+                    const body = SV.page(panel, { kicker: 'Problem reported from the phone', title: p.label + ' · ' + p.item_name,
+                        step: p.closed_at ? '' : SV.nextStep('Fix the tool with its own actions first, then close the problem.', ''), nextLabel: 'Next problem' });
+                    body.classList.add('stk-tab', 'req-detail');
+                    body.innerHTML = '<div class="stk-recs">' + problemRow(p) + '</div>';
+                    body.querySelector('[data-problem-tool]').addEventListener('click', () => openTool(p.tool_id));
+                    const closeBtn = body.querySelector('[data-problem-close]');
+                    if (closeBtn) closeBtn.addEventListener('click', () => openCloseProblem(p, reload));
+                    RA.icons();
+                },
+                onClose: () => { ui.sel = null; },
             });
-        } else if (ui.tab === 'pending') {
-            body.innerHTML = (ov.pending.length ? '<div class="stk-recs">' + ov.pending.map(r => recordRow(r, m)).join('') + '</div>'
-                : '<div class="att-empty">Nothing is waiting for the owner.</div>') +
-                (m.isMainOwner ? '' : '<p class="req-muted">Only the main owner confirms or rejects a Lost report or a Retire request.</p>');
-            wireRecords(body, ov.pending, reload);
-            RA.signImages(body);
-        } else {
-            body.innerHTML = ov.tools.length ? ov.tools.map(toolCard).join('')
-                : '<div class="att-empty">No tools yet. Register the tools the company owns, or a purchase of tools.</div>';
-            body.querySelectorAll('[data-tool]').forEach(c => c.addEventListener('click', () => openTool(c.dataset.tool)));
-        }
-        RA.icons();
+            // The main owner's way back, at the bottom (a failed pilot).
+            host.querySelector('.sv').insertAdjacentHTML('beforeend',
+                (status.is_main_owner ? '<div class="stk-switch-off"><button type="button" class="att-btn att-btn--sm att-btn--ghost" data-switch-off>Switch tools off…</button></div>' : ''));
+            const off = host.querySelector('[data-switch-off]');
+            if (off) off.addEventListener('click', () => openSwitchOff());
+            RA.icons();
+        };
+        draw(opts);
     }
 
     // Switch tools off again: the ZZ pilot failed. Records stay; nothing is undone.
@@ -791,15 +882,15 @@
             RA.icons();
             return;
         }
-        host.innerHTML =
-            '<div class="att-stack stk-tab">' +
-              RA.head('Tools', 'Not switched on yet.', '') +
-              '<div class="att-info att-info--warn"><i data-lucide="alert-triangle"></i><div>' +
-                'Switch tools on for the <strong>ZZ pilot</strong>, then keep them on (launch) — or switch them off again if the pilot fails. ' +
-                'Once on, the office registers tools and records who has each one here.</div></div>' +
-              '<button type="button" class="att-btn att-btn--warn" data-switch>Switch tools on…</button>' +
-            '</div>';
-        host.querySelector('[data-switch]').addEventListener('click', () => RA.modal({
+        root.SplitView.render(host, { key: 'reqTools', title: 'Tools', sub: 'Not switched on yet.', search: false, tabs: [],
+            off: { title: 'Not switched on yet.',
+                   text: 'Switch tools on for the ZZ pilot, then keep them on (launch) — or switch them off again if the pilot fails. ' +
+                         'Once on, the office registers tools and records who has each one here.',
+                   button: { label: 'Switch tools on…', onClick: () => switchOn() } } });
+        RA.icons();
+    }
+    function switchOn() {
+        return RA.modal({
             title: 'Switch tools on',
             sub: 'Type TOOLS to confirm.',
             warn: true,
@@ -812,10 +903,20 @@
                 root.currentToolsOn = true;
             },
             onDone: () => root.location.reload(),
-        }));
-        RA.icons();
+        });
     }
 
     root.ToolsAdmin = Object.assign({}, pure, { render });
     RA.views.reqTools = render;
+
+    // D5: the red count on Tools — Lost reports and Retire requests waiting for
+    // the owner, for the main owner (who alone decides them).
+    if (root.NavCounts) {
+        root.NavCounts.register('tools', async () => {
+            const st = await RA.rpc('tl_status');
+            if (!st || !st.enabled || !st.is_main_owner) return null;
+            const ov = await RA.rpc('tl_overview');
+            return ((ov && ov.pending) || []).length;
+        });
+    }
 })(typeof window !== 'undefined' ? window : globalThis);

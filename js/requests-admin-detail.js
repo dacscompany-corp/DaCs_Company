@@ -1,10 +1,11 @@
 // ════════════════════════════════════════════════════════════════════
 // Requests → one request (WorkMate, 0086). Owner + staff.
 //
-// Office split-view redesign (Phase 1): the request opens in the Queue's
-// right-hand panel (RA.renderRequestPanel, called by js/requests-admin-
-// queue.js) and its forms open in that same panel (SplitView.form), not
-// as pop-ups.
+// Office redesign v5: the request opens in the frame's pop-up
+// (RA.renderRequestPanel, called by js/requests-admin-queue.js), with a
+// "What to do now" box (RA.requestNextStep) whose one button is the same
+// action as the button inside the request; its forms open in that same
+// pop-up (SplitView.form) and every save ends with a short toast.
 //
 // Every office action on a request: mark portions arranged, move an
 // unarranged portion to another weekly batch, resolve a worker's
@@ -174,6 +175,7 @@
                   '<input class="att-input" id="reqReason" name="reason" maxlength="200" placeholder="e.g. Engineer recounted on site"></div>' +
                 '<div class="att-hint att-span">Lowering below what is already arranged does not erase it: the difference waits as a reduction for you to resolve.</div>',
             submitLabel: 'Change quantity',
+            doneText: 'Quantity changed',
             errorMessage: RA.errorMessage,
             onSubmit: async (form) => {
                 const q = RA.parseQty(form.qty.value);
@@ -198,6 +200,7 @@
                 '<div class="att-field att-span"><label for="reqReason">Reason</label>' +
                   '<input class="att-input" id="reqReason" name="reason" maxlength="200" placeholder="e.g. Wrong size; replaced by item 3"></div>',
             submitLabel: 'Cancel item',
+            doneText: 'Item cancelled',
             warn: true,
             errorMessage: RA.errorMessage,
             onSubmit: async (form) => {
@@ -225,6 +228,7 @@
                 '<div class="att-field att-span"><label for="reqNote">Note <span class="att-hint-inline">(optional)</span></label>' +
                   '<input class="att-input" id="reqNote" name="note" maxlength="200"></div>',
             submitLabel: 'Resolve',
+            doneText: 'Reduction resolved',
             errorMessage: RA.errorMessage,
             onSubmit: async (form) => {
                 await RA.rpc('pr_office_resolve_reduction', { p_portion: portion.id, p_outcome: form.outcome.value, p_note: form.note.value.trim() || null });
@@ -252,6 +256,7 @@
                 '<div class="att-field att-span"><label for="reqNote">Note <span class="att-hint-inline">(optional)</span></label>' +
                   '<input class="att-input" id="reqNote" name="note" maxlength="200" placeholder="e.g. Supplier can deliver earlier"></div>',
             submitLabel: 'Move',
+            doneText: 'Moved to another weekly batch',
             errorMessage: RA.errorMessage,
             onSubmit: async (form) => {
                 await RA.rpc('pr_office_move_portion', { p_portion: portion.id, p_batch: form.batch.value, p_note: form.note.value.trim() || null });
@@ -276,6 +281,8 @@
                 '<div class="att-field att-span"><label for="reqNote">Note <span class="att-hint-inline">(optional)</span></label>' +
                   '<input class="att-input" id="reqNote" name="note" maxlength="200"></div>',
             submitLabel: apply ? 'Apply' : 'Keep current',
+            doneText: apply ? 'Applied the offline edit (' + RA.formatQty(k.proposed_quantity) + ' ' + line.unit + ')'
+                            : 'Kept the current quantity; offline edit not applied',
             errorMessage: RA.errorMessage,
             onSubmit: async (form) => {
                 await RA.rpc('pr_office_resolve_conflict', { p_conflict: conflictId, p_apply: apply, p_note: form.note.value.trim() || null });
@@ -295,7 +302,7 @@
             return '<option value="">— No match —</option>' + RA.catalogMatches(items, line.kind, text).map(i =>
                 '<option value="' + esc(i.id) + '"' + (i.id === line.catalog_item_id ? ' selected' : '') + '>' + esc(RA.itemLabel(i)) + '</option>').join('');
         }
-        root.SplitView.form(panel, {
+        const opts = {
             kicker: 'Request',
             title: 'Match to the catalogue',
             sub: line.description + (line.spec ? ' · ' + line.spec : '') + ' (' + line.unit + ')',
@@ -306,6 +313,7 @@
                   '<select class="att-input" id="reqItem" name="item" size="8">' + options('') + '</select></div>' +
                 '<div class="att-hint att-span">Missing? Add it in Requests → Catalogue first. The worker\'s own words stay on the request.</div>',
             submitLabel: 'Save match',
+            doneText: 'Matched to a catalogue item',
             errorMessage: RA.errorMessage,
             onOpen: (form) => {
                 form.find.addEventListener('input', () => { form.item.innerHTML = options(form.find.value); });
@@ -315,10 +323,12 @@
                 // only an explicit pick (an item, or "No match") is saved.
                 if (form.item.selectedIndex < 0) throw new Error('BAD_CATALOG_ITEM');
                 await RA.rpc('pr_office_match_item', { p_line: line.id, p_item: form.item.value || null });
+                opts.doneText = form.item.value ? 'Matched to a catalogue item' : 'Removed the catalogue match';
             },
             onCancel: ctx.back,
             onDone: ctx.done,
-        });
+        };
+        root.SplitView.form(panel, opts);
     }
 
     // ── The panel ───────────────────────────────────────────────────
@@ -355,11 +365,26 @@
                 : { text: sum.neededBy ? 'URGENT · by ' + RA.formatDay(sum.neededBy) : 'URGENT', tone: 'red' });
         }
 
+        // "What to do now", from this fresh copy of the request. Its button
+        // is the real action's button (same data-act), so the click below
+        // runs exactly what the button inside the item runs.
+        const step = RA.requestNextStep(req, today);
+        let stepHtml = '';
+        if (step) {
+            const btn = step.act
+                ? '<button class="att-btn att-btn--primary" type="button" data-act="' + esc(step.act.act) + '" data-portion="' + esc(step.act.portion) + '"' +
+                  (step.act.line ? ' data-line="' + esc(step.act.line) + '"' : '') + '>' + esc(step.label) + '</button>'
+                : '';
+            stepHtml = SV.nextStep(step.text, btn);
+        }
+
         const sections = [];
         if (overdue && state !== 'arranged' && state !== 'cancelled') {
             const late = Math.round((Date.parse(today + 'T00:00:00Z') - Date.parse(sum.neededBy + 'T00:00:00Z')) / DAY_MS);
+            const sentence = 'Needed ' + RA.formatDay(sum.neededBy) + '. Arrange it now or tell the worker when it will arrive.';
+            // The step box already says the sentence: the notice keeps its title.
             sections.push(SV.notice('red', 'alarm-clock', 'Overdue ' + late + (late === 1 ? ' day' : ' days'),
-                esc('Needed ' + RA.formatDay(sum.neededBy) + '. Arrange it now or tell the worker when it will arrive.')));
+                step && step.text === sentence ? '' : esc(sentence)));
         }
         if (req.note) sections.push(SV.section('Note from the worker', '<p class="sv-text">' + esc(req.note) + '</p>'));
         sections.push(SV.section('Items (' + lines.length + ')',
@@ -387,11 +412,14 @@
             title: req.project_name,
             sub: [req.work_name, 'from ' + req.requester_name, teamLabel].filter(Boolean).join(' · '),
             pills: pills,
+            step: stepHtml,
             sections: sections,
             nextLabel: hooks.nextLabel,
         }));
 
-        const ctx = { back: () => draw(panel, req, hooks), done: hooks.onChanged, stillShowing: () => panel.dataset.svId === req.id };
+        // stillShowing: this element is still the open pop-up's panel (not
+        // closed, not replaced by another item's fresh panel) and shows this request.
+        const ctx = { back: () => draw(panel, req, hooks), done: hooks.onChanged, stillShowing: () => panel.isConnected && panel.dataset.svId === req.id };
         // One handler per panel (assigned, not added), so redrawing the same
         // request never stacks a second copy.
         panel.onclick = async (e) => {
@@ -404,6 +432,8 @@
                 b.disabled = true;
                 try {
                     await RA.rpc('pr_office_set_arranged', { p_portion: b.dataset.portion, p_arranged: act === 'arrange' });
+                    if (act === 'arrange') SV.toast('Marked ' + (found ? RA.formatQty(found.portion.quantity) + ' ' + found.line.unit + ' ' : '') + 'arranged');
+                    else SV.toast('Undid "arranged"');
                     hooks.onChanged();
                 } catch (err) { alert(RA.errorMessage(err)); b.disabled = false; }
             } else if (act === 'reduction' && found) reductionForm(panel, found.line, found.portion, ctx);
@@ -417,10 +447,23 @@
             }
         };
 
+        // Opened by the card's next-step button: press this request's own
+        // "What to do now" button — only if the fresh request still has the
+        // exact step the card showed (same action, same portion) and the
+        // pop-up still shows it. Once only: a Cancel redraws with the same hooks.
+        if (hooks.start) {
+            const want = hooks.start;
+            hooks.start = null;
+            const go = panel.querySelector('.sv-step [data-act]');
+            if (go && ctx.stillShowing() && RA.sameStep(want, { act: go.dataset.act, portion: go.dataset.portion })) go.click();
+        }
+
         loadPhotos(panel);
     }
 
-    // hooks: { onChanged(): reload the queue and this panel, nextLabel }.
+    // hooks: { onChanged(): reload the queue and this request, nextLabel,
+    //          start: { act, portion } the card showed — begin that exact
+    //          "What to do now" step once drawn, or null }.
     async function renderRequestPanel(panel, id, hooks) {
         const mine = panelLoads.next();
         if (!panel.dataset.svRestore) panel.innerHTML = '<div class="sv-panel-empty">Loading the request…</div>';
@@ -428,6 +471,8 @@
         try { req = await RA.rpc('pr_office_request', { p_request: id }); }
         catch (e) { if (panelLoads.isLatest(mine)) SV.error(panel, RA.errorMessage(e)); return; }
         if (!panelLoads.isLatest(mine)) return;
+        // The pop-up was closed, or another item opened, while this loaded.
+        if (!panel.isConnected || panel.dataset.svId !== id) return;
         if (!req) { SV.error(panel, RA.errorMessage({ message: 'NOT_FOUND' })); return; }
         draw(panel, req, hooks);
     }

@@ -1,16 +1,20 @@
 // ════════════════════════════════════════════════════════════════════
-// Split view — the shared "triage split view" frame for the office
-// screens (spec docs/superpowers/specs/2026-11-14-office-split-view-
-// redesign-design.md, variant B of the "Dacs Web Admin" design).
+// Office frame (v5) — the shared frame of the office screens (spec
+// docs/superpowers/specs/2026-11-14-office-split-view-redesign-design.md
+// rev 2, design docs/design/office-v5). The file keeps its Phase 1 name.
 //
-// A screen hands the frame its tabs and rows and fills the panel; it
+// A screen hands the frame its tabs and cards and fills the pop-up; it
 // keeps its own data loading, RPCs and role checks. The frame knows
 // nothing about money and must never draw an amount of its own.
 //
-//   SplitView.render(host, cfg)   header · tabs with counts · list | panel
-//   SplitView.panelHtml(p)        the right-hand panel, Dacs Web Detail order
-//   SplitView.form(panel, opts)   a form in the panel (RA.modal's contract)
+//   SplitView.render(host, cfg)   header · tiles · tabs with counts · cards
+//   SplitView.panelHtml(p)        one item in the pop-up (What to do now, Next)
+//   SplitView.page(panel, p)      the shell for an existing item page
+//   SplitView.form(panel, opts)   a form in the pop-up (RA.modal's contract)
+//   SplitView.closePop()          close the pop-up (screen changes call it)
 //   NavCounts                     the red "needs you" counts on the tabs
+// Existing .att-modal forms (RA.modal, Work Plan, Attendance) are styled
+// by css/split-view.css to the v5 form and take the item's place.
 //
 // Works in a browser (window.SplitView, window.NavCounts) and in Node for
 // tests/split-view.test.js (module.exports = pure half).
@@ -95,13 +99,23 @@
         return { reuse: reuse, reload: !reuse || !!refresh };
     }
 
-    // What the panel shows: the item asked for (even one outside the
-    // list), else on a desktop the first row. A phone shows the list until
-    // a row is tapped.
-    function pickSelected(ids, wanted, isPhone) {
-        if (wanted) return wanted;
-        if (isPhone) return null;
-        return (ids || [])[0] || null;
+    // What the pop-up shows (v5): only the item asked for — a card the
+    // user clicked or a link from elsewhere. Nothing opens by itself; ids is
+    // kept so call sites need not change.
+    function pickSelected(ids, wanted) {
+        return wanted || null;
+    }
+
+    // A top tab's count (D5): the sum of the link counts this account sees
+    // under it. A count at zero, a failed one (null) or a nonsense value
+    // adds nothing; a sum of zero shows no badge (null).
+    function navTotal(counts, keys) {
+        let sum = 0;
+        (keys || []).forEach(k => {
+            const n = Number((counts || {})[k]);
+            if ((counts || {})[k] !== null && isFinite(n) && n > 0) sum += n;
+        });
+        return sum > 0 ? sum : null;
     }
 
     // Only the newest request may fill the panel: a slow answer to an
@@ -114,13 +128,29 @@
         };
     }
 
+    // Weekly bonus day dots (v5): one letter per day.
+    const DOTS = {
+        o: ['On time', ''], l: ['Late', 'L'], m: ['Missed', '✕'],
+        u: ['Could not be verified', '?'], t: ['Not yet', ''], x: ['Not a working day', '–'],
+    };
+    function dotsOf(letters) {
+        return String(letters || '').split('').filter(c => DOTS[c]).map(c => ({ tone: c, label: DOTS[c][0], ch: DOTS[c][1] }));
+    }
+
+    // How many cards are ticked (Shopping list → "Record purchase (N)").
+    function tickCount(groups) {
+        let n = 0;
+        (groups || []).forEach(g => (g.rows || []).forEach(r => { if (r.tick && r.tick.on) n += 1; }));
+        return n;
+    }
+
     function badgeText(n) {
         const x = Number(n);
         if (n === null || n === undefined || !isFinite(x) || x <= 0) return null;
         return x > 99 ? '99+' : String(Math.floor(x));
     }
 
-    const pure = { pillClass, pickDefaultTab, flatIds, nextAfter, nextFrom, panelPlan, pickSelected, seq, badgeText };
+    const pure = { pillClass, pickDefaultTab, flatIds, nextAfter, nextFrom, panelPlan, pickSelected, navTotal, dotsOf, tickCount, seq, badgeText };
 
     if (typeof module !== 'undefined' && module.exports) {
         module.exports = pure;
@@ -143,18 +173,12 @@
         return !!(root.matchMedia && root.matchMedia('(max-width: 720px)').matches);
     }
 
-    // Per screen (cfg.key), for this session: list scroll, where the
-    // selected row sat (for Next), which item the panel shows, and whether
-    // a phone is showing the panel rather than the list.
+    // Per screen (cfg.key), for this session: which item the pop-up shows,
+    // the order the user saw when they opened it (for Next), where it sat,
+    // whether "How …" is open, and the latest cfg (Next reads its groups).
     const mem = {};
     function memFor(key) {
-        return mem[key] || (mem[key] = { scroll: 0, lastIndex: 0, current: null, phonePanel: false });
-    }
-
-    // A screen that opens an item from code (e.g. "open this request")
-    // calls this first, so a phone shows the item rather than the list.
-    function openPanel(key) {
-        memFor(key).phonePanel = true;
+        return mem[key] || (mem[key] = { lastIndex: 0, current: null, order: null, howOpen: false, cfg: null, host: null });
     }
 
     function pills(list) {
@@ -162,34 +186,44 @@
             .map(p => '<span class="' + pillClass(p.tone) + '">' + esc(p.text) + '</span>').join('');
     }
 
-    function rowHtml(r, selected) {
-        const cls = 'sv-row' + (r.id === selected ? ' is-selected' : '') +
-            (r.stripe === 'red' ? ' sv-row--stripe-red' : '') + (r.tint ? ' sv-row--tint' : '') + (r.dim ? ' sv-row--dim' : '');
-        return '<button type="button" class="' + cls + '" data-id="' + esc(r.id) + '"' +
-                (r.id === selected ? ' aria-current="true"' : '') + '>' +
-            '<span class="sv-row-main">' +
-              '<span class="sv-row-title">' + esc(r.title) + '</span>' +
-              (r.sub ? '<span class="sv-row-sub">' + esc(r.sub) + '</span>' : '') +
-              (r.meta ? '<span class="sv-row-meta">' + esc(r.meta) + '</span>' : '') +
-              ((r.chips || []).length ? '<span class="sv-row-chips">' + pills(r.chips) + '</span>' : '') +
-            '</span>' +
-            '<span class="sv-row-side">' +
-              (r.right ? '<span class="sv-row-right">' + esc(r.right) + '</span>' : '') +
-              (r.pill ? pills([r.pill]) : '') +
-            '</span>' +
-            '</button>';
+    // One card (v5): status pill, chips and the mono figure on top; title,
+    // sub-line and meta; the next-step button (only when the screen gives
+    // one) and "Open ›" at the bottom.
+    function cardHtml(r, openId) {
+        const on = r.id === openId;
+        const cls = 'sv-card' + (on ? ' is-open' : '') + (r.stripe === 'red' ? ' sv-card--stripe-red' : '') +
+            (r.tint ? ' sv-card--tint' : '') + (r.dim ? ' sv-card--dim' : '');
+        return '<div class="' + cls + '" role="button" tabindex="0" data-id="' + esc(r.id) + '"' + (on ? ' aria-current="true"' : '') + '>' +
+            '<div class="sv-card-top">' +
+              (r.tick ? '<button type="button" class="sv-tick' + (r.tick.on ? ' is-on' : '') + '" data-sv-tick aria-pressed="' + !!r.tick.on + '" aria-label="' +
+                  esc(r.tick.label || 'Tick') + '" title="' + esc(r.tick.label || 'Tick') + '"><i data-lucide="check"></i></button>' : '') +
+              (r.pill ? pills([r.pill]) : '') + pills(r.chips) +
+              (r.right ? '<span class="sv-card-right">' + esc(r.right) + '</span>' : '') +
+            '</div>' +
+            '<div class="sv-card-title">' + esc(r.title) + '</div>' +
+            (r.sub ? '<div class="sv-card-sub">' + esc(r.sub) + '</div>' : '') +
+            (r.meta ? '<div class="sv-card-meta">' + esc(r.meta) + '</div>' : '') +
+            (r.dots ? '<div class="sv-dots">' + dotsOf(r.dots).map(d =>
+                '<span class="sv-dot sv-dot--' + d.tone + '" title="' + esc(d.label) + '">' + esc(d.ch) + '</span>').join('') + '</div>' : '') +
+            '<div class="sv-card-foot">' +
+              (r.nextLabel ? '<button type="button" class="sv-card-step" data-sv-next-step>' + esc(r.nextLabel) + '</button>' : '') +
+              '<span class="sv-card-open">Open ›</span>' +
+            '</div>' +
+            '</div>';
     }
 
-    function groupHtml(g, selected) {
-        return '<div class="sv-group">' +
-            '<div class="sv-group-head sv-tone-' + esc(g.tone || 'ink') + '">' +
-              '<span class="sv-group-title">' + esc(g.title) + '</span>' +
+    function groupHtml(g, openId) {
+        const rows = g.rows || [];
+        // A group with no title is just its cards (a screen with one list).
+        const head = g.title ? '<div class="sv-group-head">' +
+              '<span class="sv-group-title sv-tone-' + esc(g.tone || 'ink') + '">' + esc(g.title) + '</span>' +
+              '<span class="sv-group-count">· ' + rows.length + '</span>' +
               (g.badge ? pills([g.badge]) : '') +
-              (g.meta ? '<span class="sv-group-meta">' + g.meta + '</span>' : '') +
-              '<span class="sv-group-count">' + (g.rows || []).length + '</span>' +
-            '</div>' +
-            (g.rows || []).map(r => rowHtml(r, selected)).join('') +
-            '</div>';
+              (g.meta ? '<div class="sv-group-meta">' + g.meta + '</div>' : '') +
+            '</div>' : '';
+        return '<section class="sv-group">' + head +
+            '<div class="sv-cards">' + rows.map(r => cardHtml(r, openId)).join('') + '</div>' +
+            '</section>';
     }
 
     function menuHtml(items) {
@@ -199,129 +233,360 @@
             '</div>';
     }
 
-    // Fill the window below the split's own top, so the list and the panel
-    // scroll on their own. Phones scroll the page instead (CSS).
-    function measure(scope) {
-        (scope || document).querySelectorAll('.sv-split').forEach(el => {
-            const top = el.getBoundingClientRect().top + (root.scrollY || 0);
-            el.style.setProperty('--sv-top', Math.max(0, Math.round(top)) + 'px');
+    // "How …": explanations and legends that are text, folded by default.
+    function howHtml(how, open) {
+        if (!how) return '';
+        return '<details class="sv-how"' + (open ? ' open' : '') + '><summary><i data-lucide="circle-help"></i><span>' + esc(how.title) + '</span></summary>' +
+            '<div class="sv-how-body">' +
+              (how.text ? '<p class="sv-how-text">' + esc(how.text) + '</p>' : '') +
+              (how.rows || []).map(r => '<div class="sv-how-row"><strong>' + esc(r[0]) + '</strong><span>' + esc(r[1]) + '</span></div>').join('') +
+            '</div></details>';
+    }
+
+    // ── The pop-up (one per page, on <body>) ────────────────────────
+    // Screens fill its .sv-panel through cfg.onSelect; living outside every
+    // screen host, it survives the screen's re-renders untouched.
+    let pop = null;
+    function popEl() {
+        if (pop) return pop;
+        pop = document.createElement('div');
+        pop.id = 'svPop';
+        pop.className = 'sv-pop';
+        pop.hidden = true;
+        pop.innerHTML =
+            '<div class="sv-pop-scrim" data-sv-scrim></div>' +
+            '<div class="sv-pop-box" role="dialog" aria-modal="true" aria-labelledby="svPopTitle">' +
+              '<button type="button" class="sv-pop-x" data-sv-close aria-label="Close"><i data-lucide="x"></i></button>' +
+              '<section class="sv-panel" aria-live="polite"></section>' +
+            '</div>';
+        document.body.appendChild(pop);
+        pop.addEventListener('click', e => {
+            if (e.target.closest('[data-sv-close]')) { closePop(); return; }
+            // A click outside the box closes it — but never drops an open
+            // form: a stray click must not lose what was typed.
+            // A page that holds typed work (page({ keep: true }), e.g. Record
+            // purchase) is never closed by a stray click either.
+            if (e.target.closest('[data-sv-scrim]')) { if (!popPanel().querySelector('form.sv-form, [data-sv-keep]')) closePop(); return; }
+            const m = mem[pop.dataset.svKey];
+            if (m && e.target.closest('[data-sv-next]')) nextIn(m);
+        });
+        // Escape closes the pop-up; with a form open it goes back to the
+        // item instead, wherever the focus is (the form also stops its own
+        // Escape). Tab and Shift+Tab stay inside the box.
+        document.addEventListener('keydown', e => {
+            if (!pop || pop.hidden) return;
+            // An existing form (.att-modal: RA.modal, Work Plan, Attendance)
+            // open over the item owns Escape and Tab until it closes.
+            if (document.querySelector('.att-modal')) return;
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                const back = pop.querySelector('.sv-panel .sv-form-back');
+                if (back) { back.click(); return; }
+                // A kept page (Record purchase) closes only through ✕ or its
+                // own Cancel, never by Escape.
+                if (pop.querySelector('.sv-panel [data-sv-keep]')) return;
+                closePop();
+                return;
+            }
+            if (e.key === 'Tab') trapTab(e, pop.querySelector('.sv-pop-box'));
+        });
+        return pop;
+    }
+    function trapTab(e, box) {
+        const list = Array.from(box.querySelectorAll('button, [href], input, select, textarea, summary, [tabindex]:not([tabindex="-1"])'))
+            .filter(el => !el.disabled && el.offsetParent !== null);
+        if (!list.length) return;
+        const first = list[0], last = list[list.length - 1];
+        if (!box.contains(document.activeElement)) { e.preventDefault(); first.focus(); }
+        else if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    }
+    function popPanel() { return popEl().querySelector('.sv-panel'); }
+    // A new item gets a new, empty panel element: listeners a screen put on
+    // the old one (panel.onclick, addEventListener) can never fire for the
+    // next item or another screen. A refresh of the same item keeps it.
+    function freshPanel() {
+        const old = popPanel();
+        const fresh = old.cloneNode(false);
+        fresh.dataset.svId = '';
+        fresh.dataset.svRestore = '';
+        old.replaceWith(fresh);
+        return fresh;
+    }
+    function popOwner() { return pop && !pop.hidden ? pop.dataset.svKey : null; }
+
+    function openPop(key) {
+        const p = popEl();
+        p.dataset.svKey = key;
+        if (p.hidden) {
+            p.hidden = false;
+            // The page behind stays still while the pop-up is open.
+            document.documentElement.classList.add('sv-pop-on');
+            const x = p.querySelector('.sv-pop-x');
+            if (x) x.focus({ preventScroll: true });
+        }
+        return popPanel();
+    }
+
+    // Close the pop-up: tell the screen (it forgets the item — it must not
+    // redraw from here) and put focus back on the item's card.
+    function closePop() {
+        if (!pop || pop.hidden) return;
+        const m = mem[pop.dataset.svKey];
+        pop.hidden = true;
+        document.documentElement.classList.remove('sv-pop-on');
+        const panel = popPanel();
+        panel.dataset.svId = '';
+        if (!m) return;
+        const was = m.current;
+        m.current = null;
+        let card = null;
+        if (m.host) {
+            m.host.querySelectorAll('.sv-card.is-open').forEach(c => { c.classList.remove('is-open'); c.removeAttribute('aria-current'); });
+            card = was ? m.host.querySelector('.sv-card[data-id="' + (root.CSS && CSS.escape ? CSS.escape(was) : was) + '"]') : null;
+        }
+        if (card && card.offsetParent !== null) card.focus({ preventScroll: true });
+        if (m.cfg && m.cfg.onClose) m.cfg.onClose(was);
+    }
+
+    function markOpen(m, id) {
+        if (!m.host) return;
+        m.host.querySelectorAll('.sv-card').forEach(c => {
+            const on = c.dataset.id === id;
+            c.classList.toggle('is-open', on);
+            if (on) c.setAttribute('aria-current', 'true'); else c.removeAttribute('aria-current');
         });
     }
-    if (root.addEventListener) root.addEventListener('resize', () => measure());
 
-    // cfg: see docs/superpowers/plans/2026-11-14-office-split-view-phase1.md, Task 2.
-    // Plain strings (titles, subs, row text, pill text) are escaped here.
-    // Fields that take HTML — aside, notice, listTools, group meta, empty,
-    // and in the panel the sections, facts values, history html and
-    // actions — must arrive already escaped by the screen (RA.esc).
+    // Open one item in the pop-up. start: it was opened by the card's
+    // next-step button, so the screen begins that step.
+    function showIn(m, id, start) {
+        const cfg = m.cfg;
+        m.current = id;
+        m.order = flatIds(cfg.groups);
+        const i = m.order.indexOf(id);
+        if (i >= 0) m.lastIndex = i;
+        markOpen(m, id);
+        openPop(cfg.key);
+        popEl().querySelector('.sv-pop-box').classList.remove('sv-pop-box--wide');
+        const panel = freshPanel();
+        panel.dataset.svId = id;
+        panel.dataset.svRestore = '';
+        cfg.onSelect(id, panel, { start: !!start });
+    }
+
+    // Open one item of a screen from code (a screen whose content is its own,
+    // e.g. Attendance's worker's day): that screen's onSelect fills the pop-up.
+    function openItem(key, id) {
+        const m = mem[key];
+        if (!m || !m.cfg || !m.host || !m.host.isConnected) return false;
+        showIn(m, id, false);
+        return true;
+    }
+
+    // Next: the card that was after this one when it was opened.
+    function nextIn(m) {
+        const n = nextFrom(m.order, m.current, flatIds(m.cfg.groups), m.lastIndex);
+        if (!n) return;
+        const order = m.order;
+        showIn(m, n, false);
+        if (order) m.order = order;
+        const card = m.host && m.host.querySelector('.sv-card[data-id="' + (root.CSS && CSS.escape ? CSS.escape(n) : n) + '"]');
+        if (card && card.scrollIntoView) card.scrollIntoView({ block: 'nearest' });
+    }
+
+    // A switch that is off (Stock, Tools): one card with its title, the
+    // sentence and the switch-on button (who may press it is the screen's).
+    function offHtml(off) {
+        return '<div class="sv-off"><div class="sv-off-title">' + esc(off.title) + '</div>' +
+            (off.text ? '<div class="sv-off-text">' + esc(off.text) + '</div>' : '') +
+            (off.button ? '<button type="button" class="sv-primary" data-sv-off>' + esc(off.button.label) + '</button>' : '') +
+            '</div>';
+    }
+
+    // An existing item page in the pop-up: the shell draws kicker, title,
+    // pills, sub, "What to do now" (p.step) and the footer with Next, and
+    // returns the element the page's own renderer fills. p.wide: the
+    // largest pages and forms (Record purchase) get a wider box. p.keep: the
+    // page holds typed work — a click outside or Escape never closes it.
+    function page(panel, p) {
+        popEl().querySelector('.sv-pop-box').classList.toggle('sv-pop-box--wide', !!p.wide);
+        panel.innerHTML = '<div class="sv-panel-in">' +
+            '<header class="sv-panel-head">' +
+              (p.kicker ? '<div class="sv-kicker">' + esc(p.kicker) + '</div>' : '') +
+              (p.title ? '<h3 class="sv-panel-title" id="svPopTitle">' + esc(p.title) + '</h3>' : '') +
+              ((p.pills || []).length ? '<div class="sv-panel-pills">' + pills(p.pills) + '</div>' : '') +
+            '</header>' +
+            '<div class="sv-panel-body sv-page-body">' +
+              (p.sub ? '<div class="sv-panel-sub">' + esc(p.sub) + '</div>' : '') +
+              (p.step || '') +
+              '<div class="sv-page-host"' + (p.keep ? ' data-sv-keep' : '') + '></div>' +
+            '</div>' +
+            // The item's buttons (p.actions, already escaped) on the left of
+            // the footer and Next on the right, as panelHtml draws them.
+            ((p.actions || p.nextLabel) ? '<footer class="sv-panel-foot"><div class="sv-panel-actions">' + (p.actions || '') + '</div>' +
+              (p.nextLabel ? '<button type="button" class="sv-next" data-sv-next>' + esc(p.nextLabel) + '<i data-lucide="chevron-right"></i></button>' : '') +
+              '</footer>' : '') +
+            '</div>';
+        icons();
+        return panel.querySelector('.sv-page-host');
+    }
+
+    // cfg: see docs/superpowers/plans/2026-11-16-office-v5-phase1.md, Task 2,
+    // and 2026-11-16-office-v5-remaining-screens.md, Task 1 (seg, tiles, lede,
+    // strips, off, legend, dots, ticks, tickBar, search: false).
+    // Plain strings (titles, subs, card text, pill text, help, how) are
+    // escaped here. Fields that take HTML — notice, aside, toolbar, group
+    // meta, empty, and in the pop-up the sections, step, facts values,
+    // history html and actions — must arrive already escaped (RA.esc).
     function render(host, cfg) {
         const m = memFor(cfg.key);
-        const phone = isPhone();
+        m.cfg = cfg;
+        m.host = host;
 
-        // Keep the list where it was and the search box focused across
-        // re-renders of the same screen.
-        const oldBody = host.dataset.svKey === cfg.key ? host.querySelector('.sv-list-body') : null;
-        if (oldBody) m.scroll = oldBody.scrollTop;
-        const oldSearch = host.querySelector('.sv-search input');
+        // Keep the search box focused across re-renders of the same screen.
+        const oldSearch = host.dataset.svKey === cfg.key ? host.querySelector('.sv-search input') : null;
         const hadFocus = !!(oldSearch && document.activeElement === oldSearch);
         const caret = hadFocus ? oldSearch.selectionStart : null;
-        const oldPanel = host.dataset.svKey === cfg.key ? host.querySelector('.sv-panel') : null;
-        const oldPanelBody = oldPanel ? oldPanel.querySelector('.sv-panel-body') : null;
-        const oldPanelScroll = oldPanelBody ? oldPanelBody.scrollTop : 0;
 
         const ids = flatIds(cfg.groups);
-        const selected = phone ? (m.phonePanel ? (cfg.selectedId || null) : null) : pickSelected(ids, cfg.selectedId, false);
-        const plan = panelPlan(m.current, oldPanel ? (oldPanel.dataset.svId || null) : null, selected, cfg.refreshPanel);
-        // A newly chosen item: remember the order the user sees now, for Next.
+        const selected = pickSelected(ids, cfg.selectedId);
+        const owned = popOwner() === cfg.key;
+        const panelId = owned ? (popPanel().dataset.svId || null) : null;
+        const plan = panelPlan(m.current, panelId, selected, cfg.refreshPanel);
+        // A newly opened item: remember the order the user sees now, for Next.
         if (selected && selected !== m.current) {
             m.order = ids.slice();
             if (ids.indexOf(selected) >= 0) m.lastIndex = ids.indexOf(selected);
         }
-        m.current = selected;
 
         const tabs = (cfg.tabs || []).map(t => {
             const on = t.id === cfg.tab;
             const hasCount = t.count !== null && t.count !== undefined;
-            const cntCls = 'sv-tab-n' + (on ? ' is-on' : (t.needs && t.count ? ' is-needs' : ''));
+            const cntCls = 'sv-tab-n' + (on ? ' is-on' : '') + (t.needs && t.count ? ' is-needs' : '');
             return '<button type="button" role="tab" class="sv-tab' + (on ? ' is-on' : '') + '" aria-selected="' + on + '" data-sv-tab="' + esc(t.id) + '">' +
                 esc(t.label) + (hasCount ? '<span class="' + cntCls + '">' + esc(t.count) + '</span>' : '') + '</button>';
         }).join('');
+        const help = (cfg.tabs || []).filter(t => t.id === cfg.tab).map(t => t.help || '')[0] || '';
+        const prim = cfg.primary;
+        const primIcon = prim ? (/^(Add|New|Register|Create)\b/.test(prim.label) ? 'plus' : prim.icon) : null;
+        const seg = cfg.seg ? '<div class="sv-seg" role="group">' + cfg.seg.options.map(o =>
+            '<button type="button" class="sv-seg-btn' + (o.id === cfg.seg.value ? ' is-on' : '') + '" aria-pressed="' + (o.id === cfg.seg.value) + '" data-sv-seg="' + esc(o.id) + '">' +
+            esc(o.label) + '</button>').join('') + '</div>' : '';
+        const tiles = (cfg.tiles || []).length ? '<div class="sv-tiles">' + cfg.tiles.map(t =>
+            '<button type="button" class="sv-tile' + (t.tab === cfg.tab ? ' is-on' : '') + '" data-sv-tile="' + esc(t.tab || '') + '">' +
+              '<span class="sv-tile-n sv-tone-' + esc(t.tone || 'ink') + '">' + esc(t.n) + '</span><span class="sv-tile-label">' + esc(t.label) + '</span></button>').join('') + '</div>' : '';
+        const legend = (cfg.legend || []).length ? '<div class="sv-legend">' + cfg.legend.map(l =>
+            '<span class="sv-legend-item"><span class="sv-dot sv-dot--' + esc(l.tone) + '"></span>' + esc(l.label) + '</span>').join('') + '</div>' : '';
+        const ticked = cfg.tickBar ? tickCount(cfg.groups) : 0;
 
         host.dataset.svKey = cfg.key;
         host.innerHTML =
-            '<div class="sv' + (selected && phone ? ' sv--panel' : '') + '">' +
+            '<div class="sv">' +
               '<div class="sv-head">' +
-                '<h2 class="sv-title">' + esc(cfg.title) + '</h2>' +
-                (cfg.sub ? '<span class="sv-sub">' + esc(cfg.sub) + '</span>' : '<span class="sv-sub"></span>') +
-                (cfg.aside ? '<div class="sv-head-aside">' + cfg.aside + '</div>' : '') +
+                '<div class="sv-head-text">' +
+                  '<h2 class="sv-title">' + esc(cfg.title) + '</h2>' +
+                  (cfg.sub ? '<div class="sv-sub">' + esc(cfg.sub) + '</div>' : '') +
+                '</div>' +
                 (cfg.live ? '<span class="sv-live"><span class="sv-live-dot"></span>' + esc(cfg.live) + '</span>' : '') +
-                ((cfg.more || []).length ? '<div class="sv-more"><button type="button" class="sv-icon-btn" data-sv-more-toggle aria-haspopup="menu" aria-expanded="false" aria-label="More"><i data-lucide="ellipsis"></i></button>' + menuHtml(cfg.more) + '</div>' : '') +
-                (cfg.primary ? '<button type="button" class="sv-primary" data-sv-primary>' +
-                    (cfg.primary.icon ? '<i data-lucide="' + esc(cfg.primary.icon) + '"></i>' : '') + esc(cfg.primary.label) + '</button>' : '') +
+                seg +
+                ((cfg.more || []).length ? '<div class="sv-more"><button type="button" class="sv-more-btn" data-sv-more-toggle aria-haspopup="menu" aria-expanded="false">More<i data-lucide="ellipsis"></i></button>' + menuHtml(cfg.more) + '</div>' : '') +
+                (prim ? '<button type="button" class="sv-primary" data-sv-primary>' +
+                    (primIcon ? '<i data-lucide="' + esc(primIcon) + '"></i>' : '') + esc(prim.label) + '</button>' : '') +
               '</div>' +
               (cfg.notice || '') +
-              '<div class="sv-tabs"><div class="sv-tabs-track" role="tablist">' + tabs + '</div></div>' +
-              '<div class="sv-split">' +
-                '<section class="sv-list" aria-label="List">' +
-                  '<div class="sv-list-tools">' +
-                    '<label class="sv-search"><i data-lucide="search"></i>' +
-                      '<input type="search" aria-label="Search" placeholder="' + esc((cfg.search || {}).placeholder || 'Search…') + '" value="' + esc((cfg.search || {}).value || '') + '"></label>' +
-                    (cfg.listTools || '') +
-                    (cfg.listMeta ? '<div class="sv-list-meta" aria-live="polite">' + esc(cfg.listMeta) + '</div>' : '') +
-                  '</div>' +
-                  '<div class="sv-list-body">' +
-                    (ids.length ? (cfg.groups || []).filter(g => (g.rows || []).length).map(g => groupHtml(g, selected)).join('')
-                                : '<div class="sv-empty">' + (cfg.empty || '') + '</div>') +
-                  '</div>' +
-                '</section>' +
-                '<section class="sv-panel" aria-live="polite"></section>' +
+              (cfg.off ? offHtml(cfg.off) : (
+              tiles +
+              (cfg.lede ? '<div class="sv-lede">' + esc(cfg.lede) + '</div>' : '') +
+              (cfg.strips || []).map(t => '<div class="sv-strip"><i data-lucide="info"></i><span>' + esc(t) + '</span></div>').join('') +
+              howHtml(cfg.how, m.howOpen) +
+              '<div class="sv-tabs" role="tablist">' + tabs + '</div>' +
+              (help ? '<div class="sv-tab-help">' + esc(help) + '</div>' : '') +
+              (cfg.aside ? '<div class="sv-aside">' + cfg.aside + '</div>' : '') +
+              '<div class="sv-toolbar">' +
+                (cfg.search === false ? '' : '<label class="sv-search"><i data-lucide="search"></i>' +
+                  '<input type="search" aria-label="Search" placeholder="' + esc((cfg.search || {}).placeholder || 'Search…') + '" value="' + esc((cfg.search || {}).value || '') + '"></label>') +
+                (cfg.toolbar || '') +
+                (cfg.showing ? '<span class="sv-showing" aria-live="polite">' + esc(cfg.showing) + '</span>' : '') +
               '</div>' +
+              legend +
+              // cfg.custom: a tab that keeps its own content (sections, tables,
+              // its own buttons) inside the frame; cfg.onCustom(el) fills it.
+              (cfg.custom ? '<div class="sv-custom" data-sv-custom></div>' :
+              '<div class="sv-body">' +
+                (ids.length ? (cfg.groups || []).filter(g => (g.rows || []).length).map(g => groupHtml(g, selected)).join('')
+                            : '<div class="sv-empty"><i data-lucide="circle-check"></i><div>' + (cfg.empty || '') + '</div></div>') +
+              '</div>') +
+              (cfg.tickBar && ticked > 0 ? '<div class="sv-tickbar"><button type="button" class="sv-tickbar-btn" data-sv-tickbar>' +
+                  esc(cfg.tickBar.label) + ' (' + ticked + ')</button></div>' : ''))) +
             '</div>';
 
         const rootEl = host.querySelector('.sv');
-        let panel = host.querySelector('.sv-panel');
-        // The same item keeps its panel element: an open form, what was typed
-        // in it and where it was scrolled survive a search keystroke, a filter
-        // or a tab change, with no refetch.
-        if (plan.reuse) {
-            panel.replaceWith(oldPanel);
-            panel = oldPanel;
-            const pb = panel.querySelector('.sv-panel-body');
-            if (pb) pb.scrollTop = oldPanelScroll;
-        }
-        const body = host.querySelector('.sv-list-body');
-        body.scrollTop = m.scroll;
-
-        function show(id) {
-            m.current = id;
-            m.order = flatIds(cfg.groups);
-            const i = m.order.indexOf(id);
-            if (i >= 0) m.lastIndex = i;
-            host.querySelectorAll('.sv-row').forEach(b => {
-                const on = b.dataset.id === id;
-                b.classList.toggle('is-selected', on);
-                if (on) b.setAttribute('aria-current', 'true'); else b.removeAttribute('aria-current');
-            });
-            if (isPhone()) { m.phonePanel = true; rootEl.classList.add('sv--panel'); root.scrollTo && root.scrollTo(0, 0); }
-            panel.dataset.svId = id;
-            panel.dataset.svRestore = '';
-            cfg.onSelect(id, panel);
-        }
-
+        const show = (id, start) => showIn(m, id, start);
         host.querySelectorAll('[data-sv-tab]').forEach(b => b.addEventListener('click', () => {
-            if (b.dataset.svTab !== cfg.tab && cfg.onTab) cfg.onTab(b.dataset.svTab);
+            if (b.dataset.svTab === cfg.tab) return;
+            if (popOwner() === cfg.key) closePop();
+            if (cfg.onTab) cfg.onTab(b.dataset.svTab);
         }));
+        const how = host.querySelector('.sv-how');
+        if (how) how.addEventListener('toggle', () => { m.howOpen = how.open; });
         const search = host.querySelector('.sv-search input');
-        search.addEventListener('input', () => { if (cfg.search && cfg.search.onInput) cfg.search.onInput(search.value); });
-        if (hadFocus) { search.focus(); try { search.setSelectionRange(caret, caret); } catch (e) { /* type=search */ } }
-        body.addEventListener('click', e => {
-            const b = e.target.closest('.sv-row');
-            if (b) show(b.dataset.id);
+        if (search) {
+            search.addEventListener('input', () => { if (cfg.search && cfg.search.onInput) cfg.search.onInput(search.value); });
+            if (hadFocus) { search.focus(); try { search.setSelectionRange(caret, caret); } catch (e) { /* type=search */ } }
+        }
+        host.querySelectorAll('[data-sv-seg]').forEach(b => b.addEventListener('click', () => {
+            if (b.dataset.svSeg === cfg.seg.value) return;
+            if (popOwner() === cfg.key) closePop();
+            cfg.seg.onChange(b.dataset.svSeg);
+        }));
+        host.querySelectorAll('[data-sv-tile]').forEach(b => b.addEventListener('click', () => {
+            const tab = b.dataset.svTile;
+            if (!tab || tab === cfg.tab || !cfg.onTab) return;
+            if (popOwner() === cfg.key) closePop();
+            cfg.onTab(tab);
+        }));
+        const offBtn = host.querySelector('[data-sv-off]');
+        if (offBtn) offBtn.addEventListener('click', () => cfg.off.button.onClick());
+        const tickBar = host.querySelector('[data-sv-tickbar]');
+        if (tickBar) tickBar.addEventListener('click', () => cfg.tickBar.onClick());
+
+        const body = host.querySelector('.sv-body');
+        if (body) body.addEventListener('click', e => {
+            const tick = e.target.closest('[data-sv-tick]');
+            if (tick) {
+                // A tick box chooses the card for the tick bar; it never
+                // opens the card.
+                e.stopPropagation();
+                const card = tick.closest('.sv-card');
+                if (card && cfg.onTick) cfg.onTick(card.dataset.id, tick.getAttribute('aria-pressed') !== 'true');
+                return;
+            }
+            const step = e.target.closest('[data-sv-next-step]');
+            if (step) {
+                // The card's next-step button: open the item and start that
+                // step. Stop here, so the press is not also a card click.
+                e.stopPropagation();
+                const card = step.closest('.sv-card');
+                if (card) show(card.dataset.id, true);
+                return;
+            }
+            const card = e.target.closest('.sv-card');
+            if (!card) return;
+            if (card.dataset.id === m.current && popOwner() === cfg.key) closePop();
+            else show(card.dataset.id, false);
         });
-        if (cfg.onListTools) cfg.onListTools(rootEl);
+        if (body) body.addEventListener('keydown', e => {
+            const card = e.target.classList && e.target.classList.contains('sv-card') ? e.target : null;
+            if (card && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); show(card.dataset.id, false); }
+        });
+
+        if (cfg.onToolbar) cfg.onToolbar(rootEl);
+        const custom = host.querySelector('[data-sv-custom]');
+        if (custom && cfg.onCustom) cfg.onCustom(custom);
         if (cfg.onEmpty && !ids.length) cfg.onEmpty(rootEl);
-        const prim = host.querySelector('[data-sv-primary]');
-        if (prim) prim.addEventListener('click', () => cfg.primary.onClick());
+        const primBtn = host.querySelector('[data-sv-primary]');
+        if (primBtn) primBtn.addEventListener('click', () => cfg.primary.onClick());
         const toggle = host.querySelector('[data-sv-more-toggle]');
         if (toggle) {
             const menu = toggle.parentNode.querySelector('.sv-menu');
@@ -337,44 +602,24 @@
                 close(); cfg.more[+b.dataset.svMore].onClick();
             }));
         }
-        // Next and Back live in the panel, which the screen redraws and the
-        // frame may carry over between renders: one listener per panel
-        // element, reading the state of the latest render.
-        panel._svState = {
-            next() {
-                const n = nextFrom(m.order, m.current, flatIds(cfg.groups), m.lastIndex);
-                if (!n) return;
-                show(n);
-                const row = host.querySelector('.sv-row[data-id="' + (root.CSS && CSS.escape ? CSS.escape(n) : n) + '"]');
-                if (row && row.scrollIntoView) row.scrollIntoView({ block: 'nearest' });
-            },
-            back() {
-                m.phonePanel = false;
-                rootEl.classList.remove('sv--panel');
-            },
-        };
-        if (!panel._svBound) {
-            panel._svBound = true;
-            panel.addEventListener('click', e => {
-                const st = panel._svState;
-                if (e.target.closest('[data-sv-next]')) st.next();
-                else if (e.target.closest('[data-sv-back]')) st.back();
-            });
-        }
-
-        measure(host);
         icons();
+
         if (selected) {
-            panel.dataset.svId = selected;
+            m.current = selected;
             if (plan.reload) {
-                // A reload of the same item keeps its content until the new
-                // answer lands, then restores the scroll (fill()).
-                panel.dataset.svRestore = plan.reuse ? String(oldPanelScroll) : '';
-                cfg.onSelect(selected, panel);
+                // A reload of the same item keeps its element and content
+                // until the new answer lands, then restores its scroll
+                // (fill()); another item (a link from elsewhere) gets a
+                // fresh element.
+                openPop(cfg.key);
+                const panel = plan.reuse ? popPanel() : freshPanel();
+                const pb = panel.querySelector('.sv-panel-body');
+                panel.dataset.svId = selected;
+                panel.dataset.svRestore = plan.reuse && pb ? String(pb.scrollTop) : '';
+                cfg.onSelect(selected, panel, {});
             }
-        } else {
-            panel.dataset.svId = '';
-            panel.innerHTML = '<div class="sv-panel-empty">Pick something on the left.</div>';
+        } else if (owned) {
+            closePop();
         }
     }
 
@@ -388,24 +633,52 @@
         icons();
     }
 
-    // The right-hand panel, in the order of the design's "Dacs Web Detail":
-    // kicker · title · sub · pills, then the sections, then a footer bar
-    // with the actions on the left and Next on the right.
+    // One item in the pop-up (v5): kicker · title · pills on top; then the
+    // sub-line, "What to do now" (p.step, from nextStep()), the sections;
+    // a footer with the actions on the left and Next on the right.
     function panelHtml(p) {
         return '<div class="sv-panel-in">' +
             '<header class="sv-panel-head">' +
-              '<button type="button" class="sv-back" data-sv-back><i data-lucide="arrow-left"></i>Back</button>' +
               (p.kicker ? '<div class="sv-kicker">' + esc(p.kicker) + '</div>' : '') +
-              '<h3 class="sv-panel-title">' + esc(p.title) + '</h3>' +
-              (p.sub ? '<div class="sv-panel-sub">' + esc(p.sub) + '</div>' : '') +
+              '<h3 class="sv-panel-title" id="svPopTitle">' + esc(p.title) + '</h3>' +
               ((p.pills || []).length ? '<div class="sv-panel-pills">' + pills(p.pills) + '</div>' : '') +
             '</header>' +
-            '<div class="sv-panel-body">' + (p.sections || []).filter(Boolean).join('') + '</div>' +
+            '<div class="sv-panel-body">' +
+              (p.sub ? '<div class="sv-panel-sub">' + esc(p.sub) + '</div>' : '') +
+              (p.step || '') +
+              (p.sections || []).filter(Boolean).join('') +
+            '</div>' +
             ((p.actions || p.nextLabel) ? '<footer class="sv-panel-foot">' +
               '<div class="sv-panel-actions">' + (p.actions || '') + '</div>' +
-              (p.nextLabel ? '<button type="button" class="sv-next" data-sv-next>' + esc(p.nextLabel) + '<i data-lucide="arrow-right"></i></button>' : '') +
+              (p.nextLabel ? '<button type="button" class="sv-next" data-sv-next>' + esc(p.nextLabel) + '<i data-lucide="chevron-right"></i></button>' : '') +
             '</footer>' : '') +
             '</div>';
+    }
+
+    // "What to do now": one sentence and at most one button. buttonHtml is
+    // the screen's own button for that action (same data-act as the real
+    // one inside the item), already escaped; '' for a sentence alone.
+    function nextStep(text, buttonHtml) {
+        return '<div class="sv-step"><div class="sv-step-main"><div class="sv-step-k">What to do now</div>' +
+            '<div class="sv-step-text">' + esc(text) + '</div></div>' + (buttonHtml || '') + '</div>';
+    }
+
+    // A short "done" message at the bottom of the screen.
+    let toastTimer = null;
+    function toast(text) {
+        let el = document.getElementById('svToast');
+        if (!el) {
+            el = document.createElement('div');
+            el.id = 'svToast';
+            el.className = 'sv-toast';
+            el.setAttribute('role', 'status');
+            document.body.appendChild(el);
+        }
+        el.innerHTML = '<i data-lucide="check"></i><span>' + esc(text) + '</span>';
+        el.hidden = false;
+        icons();
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => { el.hidden = true; }, 3200);
     }
 
     function section(title, html) {
@@ -437,13 +710,10 @@
             list.length + '</span></summary>' + inner + '</details>';
     }
 
-    // In a panel the error keeps Back: on a phone the list is hidden while a
-    // panel shows, so without it the office would be stuck on the error.
+    // An error message. In the pop-up the box keeps its ✕, so the office
+    // is never stuck on it.
     function error(where, message) {
-        const inPanel = !!(where.classList && where.classList.contains('sv-panel'));
-        where.innerHTML =
-            (inPanel ? '<div class="sv-error-back"><button type="button" class="sv-back" data-sv-back><i data-lucide="arrow-left"></i>Back</button></div>' : '') +
-            '<div class="sv-error"><i data-lucide="alert-triangle"></i><div>' + esc(message) + '</div></div>';
+        where.innerHTML = '<div class="sv-error"><i data-lucide="alert-triangle"></i><div>' + esc(message) + '</div></div>';
         icons();
     }
 
@@ -451,15 +721,18 @@
         return String((err && (err.message || err.error_description)) || err || 'Something went wrong.');
     }
 
-    // A form in the panel, with RA.modal's contract: onSubmit throws to
-    // keep the form open with the message; success runs onDone. Cancel and
-    // Escape run onCancel (usually: redraw the item).
+    // A form in the pop-up, with RA.modal's contract: onSubmit throws to
+    // keep the form open with the message; success runs onDone and shows
+    // opts.doneText as a toast. "Back without saving", Cancel and Escape
+    // run onCancel (usually: redraw the item) — Escape stops there, so it
+    // does not also close the pop-up.
     function form(panel, opts) {
         panel.innerHTML =
             '<div class="sv-panel-in">' +
-              '<header class="sv-panel-head">' +
+              '<header class="sv-panel-head sv-form-head">' +
+                '<button type="button" class="sv-form-back" data-cancel><i data-lucide="arrow-left"></i>Back without saving</button>' +
                 (opts.kicker ? '<div class="sv-kicker">' + esc(opts.kicker) + '</div>' : '') +
-                '<h3 class="sv-panel-title">' + esc(opts.title) + '</h3>' +
+                '<h3 class="sv-panel-title sv-form-title" id="svPopTitle">' + esc(opts.title) + '</h3>' +
                 (opts.sub ? '<div class="sv-panel-sub">' + esc(opts.sub) + '</div>' : '') +
               '</header>' +
               '<form class="sv-form" autocomplete="off" novalidate>' +
@@ -478,9 +751,9 @@
         let closed = false;
         function close() { closed = true; f.removeEventListener('keydown', onKey); }
         function cancel() { if (closed) return; close(); if (opts.onCancel) opts.onCancel(); }
-        function onKey(e) { if (e.key === 'Escape') { e.preventDefault(); cancel(); } }
+        function onKey(e) { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); cancel(); } }
         f.addEventListener('keydown', onKey);
-        panel.querySelector('[data-cancel]').addEventListener('click', cancel);
+        panel.querySelectorAll('[data-cancel]').forEach(b => b.addEventListener('click', cancel));
         f.addEventListener('submit', async (e) => {
             e.preventDefault();
             if (closed || submit.disabled) return;
@@ -489,6 +762,7 @@
             try {
                 await opts.onSubmit(f);
                 close();
+                if (opts.doneText) toast(opts.doneText);
                 if (opts.onDone) opts.onDone();
             } catch (err) {
                 errorBox.textContent = (opts.errorMessage || defaultMessage)(err);
@@ -520,6 +794,12 @@
     function paint() {
         document.querySelectorAll('[data-nav-count]').forEach(el => {
             const text = badgeText(counts[el.dataset.navCount]);
+            el.textContent = text || '';
+            el.hidden = !text;
+        });
+        // A top tab: the sum of its links' counts (D5); zero shows nothing.
+        document.querySelectorAll('[data-nav-total]').forEach(el => {
+            const text = badgeText(navTotal(counts, el.dataset.navTotal.split(' ')));
             el.textContent = text || '';
             el.hidden = !text;
         });
@@ -555,6 +835,6 @@
     root.NavCounts = { register, set, get, refresh, paint };
 
     root.SplitView = Object.assign({}, pure, {
-        render, panelHtml, section, notice, facts, history, pills, form, error, fill, openPanel, esc, isPhone,
+        render, panelHtml, page, section, notice, facts, history, pills, form, nextStep, toast, closePop, open: openItem, error, fill, esc, isPhone,
     });
 })(typeof window !== 'undefined' ? window : globalThis);

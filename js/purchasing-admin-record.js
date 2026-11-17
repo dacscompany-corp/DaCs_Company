@@ -413,7 +413,9 @@
     }
 
     async function renderRecord(host, me) {
-        if (!ctx) { PA.ui.tab = 'list'; return PA.renderPurchasing(host.closest('.content-view') || host.parentNode); }
+        // Opened in the Purchasing pop-up by PA.openRecord; without its context
+        // (nothing to record) go back to the Shopping list.
+        if (!ctx) { PA.ui.tab = 'list'; root.switchView('reqPurchasing'); return; }
         let suppliers, buyers, folders;
         try {
             const [s, b, f, cr] = await Promise.all([

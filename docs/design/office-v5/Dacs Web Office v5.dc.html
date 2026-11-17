@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Playfair+Display:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<script src="./lc-icon.js"></script>
+<script src="./dacs-data-att.js"></script>
+<script src="./dacs-data-req.js"></script>
+<script src="./dacs-data-buy.js"></script>
+<script src="./dacs-data-wp.js"></script>
+<style>
+@keyframes dvIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@keyframes dvPop{from{opacity:0;transform:translateY(14px) scale(.96)}to{opacity:1;transform:none}}
+@keyframes dvFade{from{opacity:0}to{opacity:1}}
+body{margin:0}
+a{color:#1A5C3A}
+a:hover{color:#134428}
+</style>
+</helmet>
+<div style="position:relative;height:100vh;display:flex;flex-direction:column;background:#F5F5F5;font-family:'Barlow',sans-serif;color:#1C1C1E;overflow:hidden;font-size:15px">
+
+  <header style="flex:none;background:#fff;border-bottom:1px solid #E5E5E5;padding:10px {{ padX }};display:flex;align-items:center;gap:18px">
+    <div style="display:flex;align-items:center;gap:10px;flex:none">
+      <div style="width:36px;height:36px;border-radius:9px;border:1px solid #E5E5E5;display:grid;place-items:center;overflow:hidden"><img src="assets/dacs-mark.png" alt="DAC's" style="width:28px;height:28px;object-fit:contain"></div>
+      <sc-if value="{{ wide }}" hint-placeholder-val="{{ true }}"><div style="font-family:'Playfair Display',serif;font-size:18px;font-weight:700;white-space:nowrap">DAC's Portal</div></sc-if>
+    </div>
+    <nav style="flex:1;min-width:0;display:flex;align-items:center;gap:2px;flex-wrap:wrap">
+      <sc-for list="{{ tops }}" as="t" hint-placeholder-count="9"><button onClick="{{ t.go }}" style="padding:7px 11px;font-family:inherit;font-size:13.5px;font-weight:600;color:{{ t.color }};background:{{ t.bg }};border:0;border-radius:999px;cursor:pointer;display:flex;align-items:center;gap:6px;white-space:nowrap;flex-shrink:0">{{ t.label }}<sc-if value="{{ t.hasBadge }}"><span style="font-size:11px;font-weight:700;background:#C0392B;color:#fff;padding:1px 6px;border-radius:999px">{{ t.badge }}</span></sc-if></button></sc-for>
+    </nav>
+    <div style="display:flex;align-items:center;gap:10px;flex:none">
+      <sc-if value="{{ wide }}" hint-placeholder-val="{{ true }}"><span style="font-size:12.5px;color:#6C6C70;white-space:nowrap">Signed in as <strong style="color:#1C1C1E;font-weight:600">{{ role }}</strong></span></sc-if>
+      <button title="Construction notifications" style="width:38px;height:38px;border-radius:10px;display:grid;place-items:center;color:#3A3A3C;background:transparent;border:0;cursor:pointer" style-hover="background:#F5F5F5"><lc-icon name="bell" size="18"></lc-icon></button>
+    </div>
+  </header>
+
+  <div style="flex:none;background:#fff;padding:0 {{ padX }};border-bottom:1px solid #E5E5E5;display:flex;align-items:stretch;gap:2px;min-height:48px;position:relative;z-index:8;overflow-x:{{ modsOverflow }};scrollbar-width:none">
+    <sc-for list="{{ mods }}" as="m" hint-placeholder-count="6">
+      <button onClick="{{ m.go }}" style="display:flex;align-items:center;gap:7px;padding:0 13px;border:0;border-bottom:3px solid {{ m.line }};background:none;font-family:inherit;font-size:14.5px;font-weight:{{ m.fw }};color:{{ m.color }};cursor:pointer;white-space:nowrap;flex-shrink:0" style-hover="color:#1A5C3A"><lc-icon name="{{ m.icon }}" size="16"></lc-icon>{{ m.label }}<sc-if value="{{ m.hasN }}"><span style="min-width:18px;height:18px;padding:0 5px;box-sizing:border-box;border-radius:9px;background:#C0392B;color:#fff;font-size:11px;font-weight:700;display:inline-flex;align-items:center;justify-content:center">{{ m.n }}</span></sc-if><sc-if value="{{ m.isMenu }}"><lc-icon name="chevron-down" size="14"></lc-icon></sc-if></button>
+    </sc-for>
+    <sc-if value="{{ setupOpen }}" hint-placeholder-val="{{ false }}">
+      <div style="position:absolute;top:46px;left:{{ setupLeft }};min-width:230px;background:#fff;border:1px solid #E5E5E5;border-radius:12px;box-shadow:0 16px 48px rgba(0,0,0,.12);padding:6px;animation:dvIn .15s ease both">
+        <sc-for list="{{ setupItems }}" as="i"><button onClick="{{ i.go }}" style="width:100%;display:flex;align-items:center;gap:10px;padding:10px 12px;border:0;background:{{ i.bg }};border-radius:8px;font-family:inherit;font-size:14.5px;color:#1C1C1E;cursor:pointer;text-align:left" style-hover="background:#F5F5F5"><lc-icon name="{{ i.icon }}" size="16"></lc-icon>{{ i.label }}</button></sc-for>
+      </div>
+    </sc-if>
+  </div>
+
+  <div ref="{{ scRef }}" style="flex:1;min-height:0;overflow-y:auto;overflow-anchor:none">
+    <div style="max-width:1280px;margin:0 auto;box-sizing:border-box;padding:22px {{ padX }} 44px;display:flex;flex-direction:column;gap:14px">
+      <sc-if value="{{ isOther }}" hint-placeholder-val="{{ false }}"><div style="background:#fff;border:1px dashed #D0D0CE;border-radius:18px;padding:44px 28px;text-align:center;color:#6C6C70;font-size:15px">{{ otherText }}</div></sc-if>
+
+      <sc-if value="{{ notForm }}" hint-placeholder-val="{{ true }}">
+        <div style="display:flex;align-items:flex-start;gap:14px;flex-wrap:wrap">
+          <div style="flex:1;min-width:240px">
+            <h1 style="font-family:'Playfair Display',serif;font-size:30px;font-weight:600;letter-spacing:-.01em;margin:0;line-height:1.15">{{ title }}</h1>
+            <div style="font-size:15px;color:#6C6C70;margin-top:5px;line-height:1.5;text-wrap:pretty;max-width:760px">{{ sub }}</div>
+          </div>
+          <sc-if value="{{ hasSeg }}"><div style="display:inline-flex;gap:3px;padding:4px;background:#E8E8E4;border-radius:999px;flex-wrap:wrap"><sc-for list="{{ seg }}" as="o"><button onClick="{{ o.go }}" style="padding:9px 16px;font-family:inherit;font-size:14px;border-radius:999px;border:0;background:{{ o.bg }};color:{{ o.color }};font-weight:600;cursor:pointer;white-space:nowrap">{{ o.label }}</button></sc-for></div></sc-if>
+          <sc-if value="{{ hasMore }}">
+            <div style="position:relative">
+              <button onClick="{{ toggleMore }}" style="height:44px;padding:0 16px;border:1px solid #D8D8D6;border-radius:999px;background:#fff;color:#1C1C1E;cursor:pointer;display:inline-flex;align-items:center;gap:7px;font-family:inherit;font-size:14.5px;font-weight:600">More<lc-icon name="ellipsis" size="16"></lc-icon></button>
+              <sc-if value="{{ moreOpen }}"><div style="position:absolute;top:50px;right:0;z-index:9;min-width:250px;background:#fff;border:1px solid #E5E5E5;border-radius:14px;box-shadow:0 16px 48px rgba(0,0,0,.12);padding:6px;animation:dvIn .15s ease both"><sc-for list="{{ more }}" as="i"><button onClick="{{ i.go }}" style="width:100%;padding:11px 12px;border:0;background:none;border-radius:9px;font-family:inherit;font-size:15px;color:{{ i.fg }};cursor:pointer;text-align:left;white-space:nowrap" style-hover="background:#F5F5F5">{{ i.label }}</button></sc-for></div></sc-if>
+            </div>
+          </sc-if>
+          <sc-if value="{{ hasPrimary }}"><button onClick="{{ primary.go }}" style="height:44px;display:inline-flex;align-items:center;gap:8px;border:0;background:#1A5C3A;color:#fff;border-radius:999px;padding:0 20px;font-family:inherit;font-size:15px;font-weight:600;cursor:pointer;white-space:nowrap" style-hover="background:#134428"><sc-if value="{{ primary.plus }}"><lc-icon name="plus" size="17"></lc-icon></sc-if>{{ primary.label }}</button></sc-if>
+        </div>
+
+        <sc-if value="{{ isOff }}" hint-placeholder-val="{{ false }}">
+          <div style="background:#fff;border:1px dashed #D0D0CE;border-radius:18px;padding:44px 28px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:10px">
+            <div style="font-family:'Playfair Display',serif;font-size:22px;font-weight:600">{{ off.t }}</div>
+            <div style="font-size:15px;color:#6C6C70;max-width:520px;text-wrap:pretty">{{ off.s }}</div>
+            <button onClick="{{ off.go }}" style="margin-top:8px;height:44px;border:0;background:#1A5C3A;color:#fff;border-radius:999px;padding:0 20px;font-family:inherit;font-size:15px;font-weight:600;cursor:pointer">{{ off.label }}</button>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ hasTiles }}">
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px">
+            <sc-for list="{{ tiles }}" as="u"><button onClick="{{ u.go }}" style="text-align:left;padding:14px 16px;border-radius:16px;background:#fff;border:1.5px solid {{ u.border }};font-family:inherit;cursor:pointer;display:flex;flex-direction:column;gap:2px;transition:transform .15s,border-color .15s" style-hover="border-color:#1A5C3A;transform:translateY(-2px)"><span style="font-family:'IBM Plex Mono',monospace;font-size:26px;font-weight:500;color:{{ u.fg }}">{{ u.n }}</span><span style="font-size:14px;color:#55555A;font-weight:500">{{ u.label }}</span></button></sc-for>
+          </div>
+        </sc-if>
+        <sc-if value="{{ hasLede }}"><div style="font-size:16px;line-height:1.55;color:#3A3A3C;text-wrap:pretty">{{ lede }}</div></sc-if>
+        <sc-for list="{{ strips }}" as="x"><div style="background:#EAF2EC;border-radius:14px;padding:12px 16px;display:flex;gap:10px;font-size:14.5px;line-height:1.5;color:#134428"><span style="flex:none;margin-top:1px"><lc-icon name="info" size="17"></lc-icon></span><span>{{ x.text }}</span></div></sc-for>
+        <sc-if value="{{ hasHow }}">
+          <div style="background:#fff;border:1px solid #E5E5E5;border-radius:14px">
+            <button onClick="{{ toggleHow }}" style="width:100%;min-height:46px;display:flex;align-items:center;gap:8px;padding:0 16px;border:0;background:none;font-family:inherit;font-size:14.5px;font-weight:600;color:#1A5C3A;cursor:pointer;text-align:left"><lc-icon name="circle-help" size="17"></lc-icon><span style="flex:1">{{ how.t }}</span><lc-icon name="{{ how.chev }}" size="16"></lc-icon></button>
+            <sc-if value="{{ how.open }}"><div style="padding:0 16px 12px;font-size:14.5px;line-height:1.55;color:#3A3A3C"><sc-if value="{{ how.hasX }}"><div style="text-wrap:pretty">{{ how.x }}</div></sc-if><sc-for list="{{ how.rows }}" as="r"><div style="display:flex;gap:12px;padding:7px 0;border-top:1px solid #F0F0EE;flex-wrap:wrap"><strong style="flex:0 0 190px;font-weight:600">{{ r.a }}</strong><span style="flex:1;min-width:200px;color:#55555A">{{ r.v }}</span></div></sc-for></div></sc-if>
+          </div>
+        </sc-if>
+      </sc-if>
+
+      <sc-if value="{{ showBody }}" hint-placeholder-val="{{ true }}">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px">
+          <sc-for list="{{ tabs }}" as="c" hint-placeholder-count="4"><button onClick="{{ c.go }}" style="display:inline-flex;align-items:center;gap:8px;height:44px;padding:0 16px;border:1.5px solid {{ c.line }};border-radius:999px;background:#fff;font-family:inherit;font-size:15px;font-weight:{{ c.fw }};color:{{ c.color }};cursor:pointer;white-space:nowrap">{{ c.label }}<span style="min-width:22px;height:22px;padding:0 6px;box-sizing:border-box;border-radius:11px;background:{{ c.nBg }};color:{{ c.nColor }};font-size:12px;font-weight:700;display:inline-flex;align-items:center;justify-content:center">{{ c.n }}</span></button></sc-for>
+        </div>
+        <sc-if value="{{ hasWeek }}">
+          <div style="align-self:flex-start;display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:14px;color:#55555A;padding:10px 16px;background:#fff;border:1px solid #E5E5E5;border-radius:14px"><strong style="color:#1C1C1E">This week</strong><sc-for list="{{ week.d }}" as="w"><span>{{ w.k }} <strong style="font-family:'IBM Plex Mono',monospace;font-weight:500;color:#1C1C1E;white-space:nowrap">{{ w.v }}</strong></span></sc-for><button onClick="{{ week.go }}" style="border:0;background:none;padding:0;font-family:inherit;font-size:14px;font-weight:600;color:#1A5C3A;cursor:pointer;text-decoration:underline">{{ week.label }}</button></div>
+        </sc-if>
+        <sc-if value="{{ hasTabHelp }}"><div style="font-size:15px;line-height:1.5;color:#3A3A3C;text-wrap:pretty">{{ tabHelp }}<sc-if value="{{ hasWeek }}"><span style="color:#6C6C70"> {{ week.n }}</span></sc-if></div></sc-if>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <div style="flex:1;min-width:220px;max-width:380px;display:flex;align-items:center;gap:8px;height:44px;box-sizing:border-box;border:1px solid #DCDCDA;border-radius:999px;padding:0 16px;color:#9A9A9E;background:#fff"><lc-icon name="search" size="16"></lc-icon><input value="{{ q }}" onChange="{{ onSearch }}" placeholder="{{ searchPh }}" style="border:0;outline:none;background:transparent;font-family:inherit;font-size:15px;color:#1C1C1E;width:100%"></div>
+          <sc-for list="{{ tabActs }}" as="a"><button onClick="{{ a.go }}" style="height:44px;border:1px solid {{ a.border }};background:{{ a.bg }};color:{{ a.fg }};border-radius:999px;padding:0 16px;font-family:inherit;font-size:14.5px;font-weight:600;cursor:pointer;white-space:nowrap">{{ a.label }}</button></sc-for>
+          <sc-for list="{{ filters }}" as="f"><span style="display:inline-flex;align-items:center;gap:6px;height:38px;border:1px solid #DCDCDA;border-radius:999px;padding:0 13px;font-size:14px;color:#3A3A3C;background:#fff;white-space:nowrap">{{ f.label }}<lc-icon name="chevron-down" size="13"></lc-icon></span></sc-for>
+          <span style="font-size:13.5px;color:#6C6C70;white-space:nowrap">{{ showing }}</span>
+        </div>
+        <sc-if value="{{ hasTabNote }}"><div style="font-size:14px;color:#6C6C70;line-height:1.5">{{ tabNote }}</div></sc-if>
+        <div style="display:flex;gap:12px;flex-wrap:wrap"><sc-for list="{{ legend }}" as="l"><span style="display:inline-flex;align-items:center;gap:6px;font-size:13.5px;color:#55555A"><span style="width:16px;height:16px;border-radius:5px;background:{{ l.bg }};border:1px solid {{ l.bd }};box-sizing:border-box"></span>{{ l.label }}</span></sc-for></div>
+
+        <sc-for list="{{ groups }}" as="g" hint-placeholder-count="2">
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <sc-if value="{{ g.hasHead }}"><div style="margin-top:6px"><span style="font-size:16px;font-weight:700;color:{{ g.color }}">{{ g.title }}</span><span style="font-size:14px;color:#6C6C70;font-weight:500"> · {{ g.count }}</span><sc-if value="{{ g.hasSub }}"><div style="font-size:14px;color:#6C6C70;line-height:1.45;margin-top:2px;text-wrap:pretty">{{ g.sub }}</div></sc-if></div></sc-if>
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px">
+              <sc-for list="{{ g.rows }}" as="row" hint-placeholder-count="3">
+                <div onClick="{{ row.go }}" tabindex="0" onKeyDown="{{ row.key }}" style="background:#fff;border:1.5px solid {{ row.bd }};border-radius:18px;padding:16px;box-shadow:{{ row.shadow }};cursor:pointer;display:flex;flex-direction:column;gap:6px;opacity:{{ row.op }};outline:none;overflow:hidden;transition:transform .15s,border-color .15s" style-hover="transform:translateY(-2px);border-color:#1A5C3A" style-focus="border-color:#1A5C3A">
+                  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;min-height:26px">
+                    <sc-if value="{{ row.ck }}"><span onClick="{{ row.tick }}" title="Add to the purchase" style="flex:none;width:28px;height:28px;border-radius:8px;border:2px solid {{ row.ckBd }};background:{{ row.ckBg }};color:#fff;display:grid;place-items:center;box-sizing:border-box"><lc-icon name="check" size="16"></lc-icon></span></sc-if>
+                    <sc-if value="{{ row.hasPill }}"><span style="border-radius:999px;padding:3px 10px;font-size:12px;font-weight:700;background:{{ row.pill.bg }};color:{{ row.pill.fg }}">{{ row.pill.text }}</span></sc-if>
+                    <sc-for list="{{ row.chips }}" as="p"><span style="border-radius:999px;padding:3px 9px;font-size:11.5px;font-weight:700;background:{{ p.bg }};color:{{ p.fg }}">{{ p.text }}</span></sc-for>
+                    <span style="flex:1"></span>
+                    <span style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:#55555A;white-space:nowrap">{{ row.r }}</span>
+                  </div>
+                  <div style="font-weight:600;font-size:17px;line-height:1.3;margin-top:2px">{{ row.t }}</div>
+                  <sc-if value="{{ row.hasS }}"><div style="font-size:14.5px;color:#55555A;line-height:1.45;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">{{ row.s }}</div></sc-if>
+                  <sc-if value="{{ row.hasM }}"><div style="font-size:13.5px;color:#6C6C70;line-height:1.45">{{ row.m }}</div></sc-if>
+                  <sc-if value="{{ row.hasDots }}"><div style="display:flex;gap:5px;margin-top:4px"><sc-for list="{{ row.dots }}" as="d"><span style="width:30px;height:26px;border-radius:7px;background:{{ d.bg }};border:1px solid {{ d.bd }};box-sizing:border-box;color:{{ d.fg }};font-size:12px;font-weight:700;display:grid;place-items:center">{{ d.ch }}</span></sc-for></div></sc-if>
+                  <div style="flex:1"></div>
+                  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:6px">
+                    <sc-if value="{{ row.hasNx }}"><button onClick="{{ row.nxGo }}" style="height:44px;border:0;background:#1A5C3A;color:#fff;border-radius:999px;padding:0 18px;font-family:inherit;font-size:14.5px;font-weight:600;cursor:pointer" style-hover="background:#134428">{{ row.nxLabel }}</button></sc-if>
+                    <span style="height:44px;display:inline-flex;align-items:center;gap:4px;font-size:14.5px;font-weight:600;color:#1A5C3A">Open<lc-icon name="chevron-right" size="16"></lc-icon></span>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </sc-for>
+        <sc-if value="{{ listEmpty }}" hint-placeholder-val="{{ false }}"><div style="background:#fff;border:1px dashed #D0D0CE;border-radius:18px;padding:40px 24px;text-align:center;color:#55555A;font-size:16px;line-height:1.5;display:flex;flex-direction:column;align-items:center;gap:10px"><span style="color:#1A5C3A"><lc-icon name="circle-check" size="26"></lc-icon></span>{{ emptyText }}<sc-if value="{{ hasQ }}"><button onClick="{{ clearQ }}" style="height:44px;border:1px solid #DCDCDA;background:#fff;border-radius:999px;padding:0 16px;font-family:inherit;font-size:14.5px;font-weight:600;cursor:pointer">Clear filters</button></sc-if></div></sc-if>
+        <sc-if value="{{ hasTick }}"><div style="position:sticky;bottom:14px;display:flex;justify-content:center;z-index:5"><button onClick="{{ tickGo }}" style="height:52px;border:0;background:#1A5C3A;color:#fff;border-radius:999px;padding:0 28px;font-family:inherit;font-size:16px;font-weight:600;cursor:pointer;box-shadow:0 10px 28px rgba(26,92,58,.35)">{{ tickLabel }}</button></div></sc-if>
+      </sc-if>
+    </div>
+  </div>
+
+  <sc-if value="{{ modal }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ closeModal }}" style="position:absolute;inset:0;z-index:40;background:rgba(28,28,30,.45);animation:dvFade .2s ease both"></div>
+    <div style="position:absolute;inset:0;z-index:41;display:flex;align-items:center;justify-content:center;padding:{{ modalPad }};box-sizing:border-box;pointer-events:none">
+      <div style="pointer-events:auto;position:relative;width:100%;max-width:780px;max-height:100%;background:#fff;border-radius:{{ modalRad }};box-shadow:0 30px 80px rgba(0,0,0,.3);display:flex;flex-direction:column;overflow:hidden;animation:dvPop .24s cubic-bezier(.2,.9,.3,1.1) both">
+        <button onClick="{{ closeModal }}" title="Close" style="position:absolute;top:14px;right:14px;z-index:2;width:44px;height:44px;border-radius:50%;border:0;background:#F0F0EE;color:#1C1C1E;display:grid;place-items:center;cursor:pointer" style-hover="background:#E5E5E3"><lc-icon name="x" size="20"></lc-icon></button>
+        <sc-if value="{{ isForm }}" hint-placeholder-val="{{ false }}">
+          
+                <div style="flex:1;min-height:0;overflow-y:auto;padding:24px 26px;display:flex;flex-direction:column;gap:14px">
+                  <button onClick="{{ form.close }}" style="align-self:flex-start;border:0;background:none;padding:0;font-family:inherit;font-size:14px;font-weight:600;color:#1A5C3A;cursor:pointer;display:inline-flex;align-items:center;gap:5px"><lc-icon name="arrow-left" size="15"></lc-icon>Back without saving</button>
+                  <div><div style="font-family:'Playfair Display',serif;font-size:24px;font-weight:600;line-height:1.2">{{ form.t }}</div><sc-if value="{{ form.hasI }}"><div style="font-size:15px;line-height:1.55;color:#3A3A3C;margin-top:6px;text-wrap:pretty;max-width:640px">{{ form.i }}</div></sc-if></div>
+                  <sc-if value="{{ form.hasW }}"><div style="background:#FBEDEB;border-radius:10px;padding:12px 14px;display:flex;gap:10px;font-size:14.5px;line-height:1.55;color:#8E2A20;max-width:640px"><span style="flex:none;margin-top:2px"><lc-icon name="triangle-alert" size="17"></lc-icon></span><span>{{ form.w }}</span></div></sc-if>
+                  <sc-for list="{{ form.fields }}" as="f">
+                    <div style="display:flex;flex-direction:column;gap:5px;max-width:640px">
+                      <sc-if value="{{ f.isHead }}"><div style="font-size:16px;font-weight:700;color:#1A5C3A;padding-top:10px;border-top:1px solid #E5E5E5;margin-top:4px">{{ f.label }}</div></sc-if>
+                      <sc-if value="{{ f.isNote }}"><div style="background:#F5F5F5;border-radius:9px;padding:10px 13px;font-size:14px;line-height:1.55;color:#3A3A3C;text-wrap:pretty">{{ f.label }}</div></sc-if>
+                      <sc-if value="{{ f.isBig }}"><div style="font-family:'IBM Plex Mono',monospace;font-size:22px;font-weight:500;padding:14px 16px;border:1px dashed #1A5C3A;border-radius:10px;background:#EAF2EC;color:#134428">{{ f.label }}</div></sc-if>
+                      <sc-if value="{{ f.hasLabel }}"><label style="font-size:14px;font-weight:600;color:#1C1C1E">{{ f.label }}</label></sc-if>
+                      <sc-if value="{{ f.isInput }}"><input type="{{ f.type }}" placeholder="{{ f.ph }}" onChange="{{ f.set }}" style="height:44px;border:1px solid #CFCFCC;border-radius:9px;padding:0 13px;font-family:{{ f.font }};font-size:15px;color:#1C1C1E;outline:none;background:#fff" style-focus="border-color:#1A5C3A;box-shadow:0 0 0 3px #EAF2EC"></sc-if>
+                      <sc-if value="{{ f.isArea }}"><textarea placeholder="{{ f.ph }}" onChange="{{ f.set }}" rows="3" style="border:1px solid #CFCFCC;border-radius:9px;padding:10px 13px;font-family:inherit;font-size:15px;color:#1C1C1E;outline:none;resize:vertical" style-focus="border-color:#1A5C3A;box-shadow:0 0 0 3px #EAF2EC"></textarea></sc-if>
+                      <sc-if value="{{ f.isSelect }}"><select style="height:44px;border:1px solid #CFCFCC;border-radius:9px;padding:0 10px;font-family:inherit;font-size:15px;color:#1C1C1E;background:#fff;outline:none"><sc-for list="{{ f.opts }}" as="o"><option>{{ o.o }}</option></sc-for></select></sc-if>
+                      <sc-if value="{{ f.isOpts }}"><div style="display:flex;flex-direction:{{ f.dir }};gap:8px;flex-wrap:wrap"><sc-for list="{{ f.opts }}" as="o"><button onClick="{{ o.go }}" style="display:flex;align-items:center;gap:10px;text-align:left;padding:{{ f.optPad }};border:1px solid {{ o.bd }};background:{{ o.bg }};border-radius:9px;font-family:inherit;font-size:14.5px;color:#1C1C1E;cursor:pointer;font-weight:{{ o.fw }}"><sc-if value="{{ f.isRadio }}"><span style="flex:none;width:18px;height:18px;border-radius:50%;border:2px solid {{ o.dotBd }};box-sizing:border-box;display:grid;place-items:center"><span style="width:8px;height:8px;border-radius:50%;background:{{ o.dot }}"></span></span></sc-if>{{ o.o }}</button></sc-for></div></sc-if>
+                      <sc-if value="{{ f.isCheck }}"><button onClick="{{ f.toggle }}" style="display:flex;align-items:center;gap:10px;text-align:left;padding:8px 0;border:0;background:none;font-family:inherit;font-size:15px;color:#1C1C1E;cursor:pointer"><span style="flex:none;width:22px;height:22px;border-radius:6px;border:2px solid {{ f.ckBd }};background:{{ f.ckBg }};color:#fff;display:grid;place-items:center;box-sizing:border-box"><lc-icon name="check" size="14"></lc-icon></span>{{ f.text }}</button></sc-if>
+                      <sc-if value="{{ f.isPhoto }}"><div style="border:1.5px dashed #BDBDBA;border-radius:10px;padding:16px;display:flex;align-items:center;gap:12px;color:#55555A;font-size:14.5px;background:#FAFAFA"><lc-icon name="image-plus" size="20"></lc-icon><span><strong style="color:#1A5C3A;font-weight:600">{{ f.text }}</strong> {{ f.ph }}</span></div></sc-if>
+                      <sc-if value="{{ f.isList }}"><div style="border:1px solid #E5E5E5;border-radius:9px"><sc-for list="{{ f.opts }}" as="o"><div style="display:flex;align-items:center;gap:10px;padding:9px 12px;border-top:{{ o.top }};font-size:14.5px"><span style="flex:1">{{ o.o }}</span><button style="border:0;background:none;font-family:inherit;font-size:13.5px;font-weight:600;color:#C0392B;cursor:pointer">{{ f.act }}</button></div></sc-for></div></sc-if>
+                      <sc-if value="{{ f.hasHelp }}"><div style="font-size:13.5px;line-height:1.5;color:#6C6C70;text-wrap:pretty">{{ f.help }}</div></sc-if>
+                    </div>
+                  </sc-for>
+                  <sc-if value="{{ form.hasCf }}"><div style="display:flex;flex-direction:column;gap:5px;max-width:640px;padding:14px;border:1px solid #F0DAD7;background:#FDF7F6;border-radius:10px"><label style="font-size:14px;font-weight:700;color:#8E2A20">{{ form.cfLabel }}</label><input placeholder="{{ form.cf }}" onChange="{{ form.onCf }}" style="height:44px;border:1px solid #CFCFCC;border-radius:9px;padding:0 13px;font-family:'IBM Plex Mono',monospace;font-size:15px;outline:none;background:#fff"></div></sc-if>
+                  <sc-if value="{{ form.hasErr }}"><div style="display:flex;gap:9px;font-size:14.5px;line-height:1.5;color:#C0392B;font-weight:500;max-width:640px"><span style="flex:none;margin-top:2px"><lc-icon name="circle-alert" size="17"></lc-icon></span>{{ form.err }}</div></sc-if>
+                </div>
+                <div style="flex:none;padding:12px 26px;border-top:1px solid #E5E5E5;display:flex;gap:10px;flex-wrap:wrap;background:#fff">
+                  <button onClick="{{ form.save }}" style="height:44px;border:0;background:#1A5C3A;color:#fff;border-radius:10px;padding:0 22px;font-family:inherit;font-size:15px;font-weight:600;cursor:pointer;opacity:{{ form.okOp }}">{{ form.ok }}</button>
+                  <sc-if value="{{ form.showCancel }}"><button onClick="{{ form.close }}" style="height:44px;border:1px solid #D8D8D6;background:#fff;color:#1C1C1E;border-radius:10px;padding:0 18px;font-family:inherit;font-size:15px;font-weight:600;cursor:pointer">{{ form.cancel }}</button></sc-if>
+                </div>
+              
+        </sc-if>
+        <sc-if value="{{ hasDetail }}" hint-placeholder-val="{{ false }}">
+        <div style="flex:none;padding:24px 70px 12px 26px"><div style="font-size:12.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#6C6C70">{{ P.k }}</div><div style="font-family:'Playfair Display',serif;font-size:26px;font-weight:600;line-height:1.2;margin-top:4px">{{ P.t }}</div><sc-if value="{{ P.hasPills }}"><div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px"><sc-for list="{{ P.pills }}" as="p"><span style="border-radius:999px;padding:4px 11px;font-size:12.5px;font-weight:700;background:{{ p.bg }};color:{{ p.fg }}">{{ p.text }}</span></sc-for></div></sc-if></div>
+                <div style="flex:1;min-height:0;overflow-y:auto;padding:4px 26px 20px;display:flex;flex-direction:column;gap:16px">
+                  <sc-if value="{{ false }}" hint-placeholder-val="{{ false }}"><button onClick="{{ back }}" style="align-self:flex-start;height:40px;border:1px solid #D8D8D6;background:#fff;border-radius:10px;padding:0 14px;font-family:inherit;font-size:14.5px;font-weight:600;color:#1C1C1E;cursor:pointer;display:inline-flex;align-items:center;gap:6px"><lc-icon name="arrow-left" size="16"></lc-icon>Back</button></sc-if>
+                  <sc-if value="{{ P.hasS }}"><div style="font-size:15px;color:#55555A;line-height:1.5">{{ P.s }}</div></sc-if>
+                  <sc-if value="{{ P.hasNx }}">
+                    <div style="background:#EAF2EC;border-radius:12px;padding:16px 18px;display:flex;gap:14px;align-items:center;flex-wrap:wrap">
+                      <div style="flex:1;min-width:240px"><div style="font-size:12.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#1A5C3A">What to do now</div><div style="font-size:15.5px;line-height:1.5;color:#134428;margin-top:4px;text-wrap:pretty">{{ P.nx.text }}</div></div>
+                      <sc-if value="{{ P.nx.hasBtn }}"><button onClick="{{ P.nx.go }}" style="height:46px;border:0;background:#1A5C3A;color:#fff;border-radius:10px;padding:0 22px;font-family:inherit;font-size:15.5px;font-weight:600;cursor:pointer;white-space:nowrap" style-hover="background:#134428">{{ P.nx.label }}</button></sc-if>
+                    </div>
+                  </sc-if>
+                  <sc-for list="{{ P.notices }}" as="n"><div style="background:{{ n.bg }};border-radius:10px;padding:11px 14px;font-size:14.5px;line-height:1.5;color:{{ n.fg }};text-wrap:pretty">{{ n.text }}</div></sc-for>
+                  <sc-for list="{{ P.blocks }}" as="b">
+                    <div style="display:flex;flex-direction:column;gap:8px">
+                      <sc-if value="{{ b.hasTitle }}"><div style="font-size:15px;font-weight:700">{{ b.title }}</div></sc-if>
+                      <sc-if value="{{ b.isF }}"><div style="border:1px solid #E5E5E5;border-radius:10px"><sc-for list="{{ b.rows }}" as="r"><div style="display:flex;gap:12px;padding:9px 14px;border-top:{{ r.top }};font-size:14.5px;flex-wrap:wrap"><span style="flex:0 0 170px;color:#6C6C70">{{ r.a }}</span><span style="flex:1;min-width:160px;font-weight:500;line-height:1.45">{{ r.v }}</span></div></sc-for></div></sc-if>
+                      <sc-if value="{{ b.isX }}"><div style="font-size:15px;line-height:1.6;color:#3A3A3C;text-wrap:pretty;max-width:720px">{{ b.body }}</div></sc-if>
+                      <sc-if value="{{ b.isN }}"><div style="display:flex;gap:9px;font-size:14px;line-height:1.55;color:#55555A;max-width:720px"><span style="flex:none;margin-top:2px;color:#1A5C3A"><lc-icon name="info" size="16"></lc-icon></span><span>{{ b.body }}</span></div></sc-if>
+                      <sc-if value="{{ b.isL }}"><div style="display:flex;flex-direction:column;gap:8px"><sc-for list="{{ b.lines }}" as="l">
+                        <div style="border:1px solid #E5E5E5;border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:8px">
+                          <div style="display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap"><div style="flex:1;min-width:180px"><div style="font-size:15px;font-weight:600;line-height:1.35">{{ l.t }}</div><sc-if value="{{ l.hasS }}"><div style="font-size:13.5px;color:#6C6C70;margin-top:2px;line-height:1.45">{{ l.s }}</div></sc-if></div><sc-for list="{{ l.pills }}" as="p"><span style="border-radius:999px;padding:3px 10px;font-size:12px;font-weight:700;background:{{ p.bg }};color:{{ p.fg }}">{{ p.text }}</span></sc-for></div>
+                          <sc-if value="{{ l.hasN }}"><div style="background:#FBEDEB;border-radius:8px;padding:9px 12px;font-size:14px;line-height:1.5;color:#8E2A20">{{ l.n }}</div></sc-if>
+                          <sc-if value="{{ l.hasF }}"><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:6px 16px"><sc-for list="{{ l.facts }}" as="r"><div style="font-size:13.5px;line-height:1.4"><span style="color:#6C6C70">{{ r.a }}: </span><span style="font-weight:500">{{ r.v }}</span></div></sc-for></div></sc-if>
+                          <sc-if value="{{ l.hasA }}"><div style="display:flex;gap:8px;flex-wrap:wrap"><sc-for list="{{ l.acts }}" as="a"><button onClick="{{ a.go }}" style="height:36px;border:1px solid {{ a.border }};background:{{ a.bg }};color:{{ a.fg }};border-radius:9px;padding:0 13px;font-family:inherit;font-size:14px;font-weight:600;cursor:pointer;white-space:nowrap">{{ a.label }}</button></sc-for></div></sc-if>
+                        </div>
+                      </sc-for></div></sc-if>
+                      <sc-if value="{{ b.isH }}"><div style="display:flex;flex-direction:column"><sc-for list="{{ b.ev }}" as="e"><div style="display:flex;gap:12px;padding:7px 0;border-top:1px solid #F0F0EE;font-size:14px;flex-wrap:wrap"><span style="flex:0 0 230px;font-family:'IBM Plex Mono',monospace;font-size:12.5px;color:#6C6C70">{{ e.w }}</span><span style="flex:1;min-width:180px">{{ e.x }}</span></div></sc-for><sc-if value="{{ b.none }}"><div style="font-size:14px;color:#6C6C70">No history yet.</div></sc-if></div></sc-if>
+                      <sc-if value="{{ b.isPh }}"><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px"><sc-for list="{{ b.ph }}" as="p"><div title="Click opens full size" style="aspect-ratio:4/3;border-radius:10px;border:1px solid #E5E5E5;background:repeating-linear-gradient(135deg,#F5F5F5 0 10px,#EDEDEB 10px 20px);display:flex;align-items:flex-end;padding:8px;box-sizing:border-box;cursor:zoom-in"><span style="font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:#55555A;background:#fff;border-radius:5px;padding:3px 6px;line-height:1.35">{{ p.c }}</span></div></sc-for></div></sc-if>
+                      <sc-if value="{{ b.isTb }}"><div style="border:1px solid #E5E5E5;border-radius:10px;overflow-x:auto"><div style="min-width:{{ b.minW }}"><div style="display:grid;grid-template-columns:{{ b.grid }};background:#F5F5F5"><sc-for list="{{ b.cols }}" as="c"><div style="padding:8px 12px;font-size:12px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#6C6C70">{{ c.c }}</div></sc-for></div><sc-for list="{{ b.trs }}" as="tr"><div style="display:grid;grid-template-columns:{{ b.grid }};border-top:1px solid #F0F0EE"><sc-for list="{{ tr.cells }}" as="c"><div style="padding:9px 12px;font-size:13.5px;line-height:1.45">{{ c.c }}</div></sc-for></div></sc-for></div></div></sc-if>
+                      <sc-if value="{{ b.isSw }}"><div style="border:1px solid #E5E5E5;border-radius:10px"><sc-for list="{{ b.sws }}" as="w"><div style="display:flex;gap:14px;align-items:center;padding:12px 14px;border-top:{{ w.top }}"><div style="flex:1"><div style="font-size:15px;font-weight:600">{{ w.label }}</div><div style="font-size:13.5px;color:#6C6C70;line-height:1.45;margin-top:2px">{{ w.help }}</div></div><button onClick="{{ w.go }}" style="flex:none;display:flex;align-items:center;gap:8px;border:0;background:none;cursor:pointer;font-family:inherit;font-size:13.5px;font-weight:700;color:{{ w.fg }}">{{ w.word }}<span style="width:44px;height:26px;border-radius:13px;background:{{ w.bg }};position:relative;display:block"><span style="position:absolute;top:3px;left:{{ w.left }};width:20px;height:20px;border-radius:50%;background:#fff;transition:left .15s"></span></span></button></div></sc-for></div></sc-if>
+                    </div>
+                  </sc-for>
+                </div>
+                <div style="flex:none;padding:12px 26px;border-top:1px solid #EDEDEB;display:flex;gap:8px;flex-wrap:wrap;align-items:center;background:#FAFAF8">
+                  <sc-for list="{{ P.acts }}" as="a"><button onClick="{{ a.go }}" style="height:42px;border:1px solid {{ a.border }};background:{{ a.bg }};color:{{ a.fg }};border-radius:10px;padding:0 16px;font-family:inherit;font-size:14.5px;font-weight:600;cursor:pointer;white-space:nowrap">{{ a.label }}</button></sc-for>
+                  <span style="flex:1"></span>
+                  <button onClick="{{ next }}" style="height:42px;border:1px solid #D8D8D6;background:#fff;color:#1C1C1E;border-radius:10px;padding:0 16px;font-family:inherit;font-size:14.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;white-space:nowrap">Next<lc-icon name="chevron-right" size="16"></lc-icon></button>
+                </div>
+              </sc-if>
+
+              
+              
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ hasToast }}" hint-placeholder-val="{{ false }}">
+    <div style="position:absolute;left:50%;bottom:24px;transform:translateX(-50%);z-index:40;max-width:90%;padding:12px 18px;border-radius:10px;background:#1C1C1E;color:#fff;font-size:14.5px;font-weight:500;box-shadow:0 8px 24px rgba(0,0,0,.25);display:flex;align-items:center;gap:10px;animation:dvIn .25s ease both"><span style="color:#8FD6A8;flex:none"><lc-icon name="check" size="16"></lc-icon></span>{{ toast }}</div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;role&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;Main owner&quot;,&quot;Owner account&quot;,&quot;Staff buyer&quot;,&quot;Staff&quot;],&quot;default&quot;:&quot;Main owner&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Who is signed in&quot;},&quot;stockOn&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Switches&quot;},&quot;toolsOn&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Switches&quot;},&quot;screenState&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;Normal&quot;,&quot;Loading&quot;,&quot;Error&quot;],&quot;default&quot;:&quot;Normal&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Screen state&quot;}}">
+class Component extends DCLogic {
+  state = { top: 'att', scr: 'today', tab: {}, sel: {}, seg: {}, open: false, form: null, formLabel: '', fs: {}, err: null, saving: false, more: false, setup: false, how: false, toast: null, ticks: {}, sw: {}, q: '', narrow: window.innerWidth <= 720, ready: !!(window.DACS && window.DACS.n >= 4) };
+  fv = {};
+  scRef = React.createRef();
+  prev = { form: null, sel: {}, open: false };
+  noScroll() { const el = this.scRef.current, s = this.state, ps = this.prev; this.prev = { form: s.form, sel: s.sel, open: s.open }; if (!el) return;
+    const later = fn => requestAnimationFrame(() => requestAnimationFrame(() => { const e = this.scRef.current; if (e) fn(e); }));
+    if (s.form && !ps.form) { this.keep = el.scrollTop; later(e => { e.scrollTop = 0; }); }
+    else if (s.form && s.form !== ps.form) later(e => { e.scrollTop = 0; });
+    else if (!s.form && ps.form && this.keep != null) { const k = this.keep; this.keep = null; later(e => { e.scrollTop = k; }); }
+    else if (s.open && !s.form && (s.sel !== ps.sel || !ps.open)) later(e => { const r = e.querySelector('[data-open-row="1"]'); if (r) { const d = r.getBoundingClientRect().top - e.getBoundingClientRect().top; if (d < 0 || d > e.clientHeight * .5) e.scrollTop += d - 12; } });
+  }
+  componentDidMount() {
+    this.rs = () => { const n = window.innerWidth <= 720; if (n !== this.state.narrow) this.setState({ narrow: n }); };
+    window.addEventListener('resize', this.rs);
+    this.key = e => { if (e.key === 'Escape') this.setState(z => z.form ? { form: null, err: null } : { open: false }); };
+    window.addEventListener('keydown', this.key);
+    this.iv = setInterval(() => { if (window.DACS && window.DACS.n >= 4) { clearInterval(this.iv); this.setState({ ready: true }); } }, 100);
+  }
+  componentWillUnmount() { window.removeEventListener('resize', this.rs); window.removeEventListener('keydown', this.key); clearInterval(this.iv); clearTimeout(this.tt); }
+  say(msg) { clearTimeout(this.tt); this.setState({ toast: msg }); this.tt = setTimeout(() => this.setState({ toast: null }), 3200); }
+  goScr(id, tab, row) {
+    const sc = window.DACS.screens.find(x => x.id === id); if (!sc) return;
+    this.setState(s => ({ top: sc.top, scr: id, tab: tab ? { ...s.tab, [id]: tab } : s.tab, sel: row ? { ...s.sel, [id]: row } : s.sel, open: !!row, form: null, err: null, more: false, setup: false, how: false, q: '' }));
+  }
+  act(t, label) {
+    if (!t) return this.say(label + ' — saved');
+    if (t[0] === '!') return this.say(t.slice(1));
+    if (t[0] === '>') { const [sc, tab, row] = t.slice(1).split(':'); return this.goScr(sc, tab, row); }
+    this.fv = {}; this.setState({ form: t, formLabel: label, fs: {}, err: null, more: false });
+  }
+  formDef() { const k = this.state.form; if (!k) return null; const clean = (this.state.formLabel || '').replace('…', ''); return window.DACS.forms[k] || { t: clean, ok: clean }; }
+  save() {
+    const f = this.formDef(); if (this.state.saving) return;
+    if (f.cf && (this.fv.cf || '').trim() !== f.cf) return this.setState({ err: (f.cfLabel || 'Type ' + f.cf + ' to confirm') + ' — type exactly: ' + f.cf });
+    if (f.er) { const fl = f.f || []; let i = f.rq != null ? f.rq : fl.findIndex(x => 'tna'.includes(x[0]) && x[0].length === 1); if (i >= 0 && !(this.fv[i] || '').trim()) return this.setState({ err: f.er }); }
+    this.setState({ saving: true, err: null });
+    setTimeout(() => { if (f.nx) { this.fv = {}; this.setState({ saving: false, form: f.nx, fs: {} }); } else { this.setState({ saving: false, form: null }); this.say(f.done || 'Saved'); } }, 450);
+  }
+
+  renderVals() {
+    const s = this.state, D = window.DACS;
+    const narrow = s.narrow, padX = narrow ? '14px' : '32px';
+    if (!s.ready || !D) return { padX, wide: !narrow, role: '', notForm: false, showBody: false, isForm: false, hasDetail: false, modal: false, tops: [], mods: [], showTop: false, showSplit: false, isOther: true, otherText: 'Loading…', hasToast: false };
+    const role = this.props.role ?? 'Main owner';
+    const MO = role === 'Main owner', OW = MO || role === 'Owner account', BUY = role !== 'Staff';
+    const ok = w => !w || (w === 'mo' && MO) || (w === 'ow' && OW) || (w === 'st' && !OW) || (w === 'nmo' && !MO) || (w === 'buy' && BUY);
+    const swOn = k => !k || (this.props[k] ?? true);
+    const C = { g: '#1A5C3A', gT: '#EAF2EC', r: '#C0392B' };
+    const T = { d: ['#EAF2EC', '#1A5C3A'], w: ['#F5EFE2', '#7C5E2A'], r: ['#FBEDEB', '#C0392B'], c: ['#E8EEF6', '#2A4D7A'], p: ['#EDEBE6', '#5C5344'], n: ['#F0F0EE', '#6C6C70'], R: ['#C0392B', '#fff'] };
+    const pill = a => ({ text: a[0], bg: (T[a[1]] || T.n)[0], fg: (T[a[1]] || T.n)[1] });
+    const btn = a => { const k = a[2]; return { label: a[0], go: e => { e && e.stopPropagation && e.stopPropagation(); this.act(a[1], a[0]); }, bg: k === 'p' ? C.g : k === 'w' ? '#F5EFE2' : '#fff', fg: k === 'p' ? '#fff' : k === 'w' ? '#7C5E2A' : k === 'd' ? C.r : '#1C1C1E', border: k === 'p' ? C.g : k === 'w' ? '#E6D9BD' : k === 'd' ? '#F0DAD7' : '#D8D8D6' }; };
+    const btns = l => (l || []).filter(a => a && ok(a[3])).map(btn);
+    const ORDER = ['today', 'workers', 'sites', 'hours', 'bonus', 'updates', 'queue', 'buy', 'stock', 'tools', 'batches', 'teams', 'catalogue', 'itemhist', 'projects', 'board', 'meet'];
+    const vis = ORDER.map(id => D.screens.find(x => x.id === id)).filter(x => x && ok(x.who) && (swOn(x.sw) || MO));
+    const tabsOf = (sc, sg) => (sc.tabs || []).filter(t => ok(t[3]) && (t[4] == null || t[4] === sg));
+    const rowsOf = (sc, sg) => sc.rows.filter(r => ok(r.who) && (r.sg == null || r.sg === sg));
+    const inTab = (r, id) => (' ' + r.tab + ' ').includes(' ' + id + ' ');
+    const badgeOf = sc => (sc.badge && swOn(sc.sw)) ? rowsOf(sc, 0).filter(r => inTab(r, sc.badge)).length : 0;
+
+    const TOPS = [['pc', 'Project Control'], ['pm', 'Project Management'], ['att', 'Attendance'], ['req', 'Requests'], ['wp', 'Work Plan'], ['qt', 'Quotations'], ['ap', 'Appointments'], ['co', 'Construction'], ['us', 'Users']];
+    const tops = TOPS.map(([id, label]) => { const scs = vis.filter(x => x.top === id), a = s.top === id, n = scs.reduce((x, y) => x + badgeOf(y), 0); return { label, color: a ? '#fff' : '#3A3A3C', bg: a ? C.g : 'transparent', hasBadge: n > 0 && !a, badge: n, go: () => scs.length ? this.goScr(scs[0].id) : this.setState({ top: id, form: null, setup: false, more: false }) }; });
+    const base = { scRef: this.scRef, notForm: false, showBody: false, isForm: false, isOff: false, hasDetail: false, modal: false, padX, wide: !narrow, narrow, role, tops, hasToast: !!s.toast, toast: s.toast, modsOverflow: s.setup ? 'visible' : 'auto' };
+    const scrSt = this.props.screenState ?? 'Normal'; if (scrSt !== 'Normal') return { ...base, mods: [], showTop: false, showSplit: false, isOther: true, otherText: scrSt === 'Loading' ? 'Loading… (also "Loading requests…", "Loading the task…")' : 'Could not load attendance: … (also "Could not load …", "Something went wrong: …")' };
+    const inTop = vis.filter(x => x.top === s.top);
+    if (!inTop.length) return { ...base, mods: [], showTop: false, showSplit: false, isOther: true, otherText: 'This tab is not part of this redesign. Attendance, Requests and Work Plan are.' };
+    const S = inTop.find(x => x.id === s.scr) || inTop[0];
+    const modBtn = (x, a) => { const n = badgeOf(x); return { label: x.label, icon: x.icon, hasN: n > 0, n, isMenu: false, line: a ? C.g : 'transparent', fw: a ? 700 : 500, color: a ? C.g : '#3A3A3C', go: () => this.goScr(x.id) }; };
+    const mods = inTop.filter(x => !x.grp).map(x => modBtn(x, x.id === S.id));
+    const setups = inTop.filter(x => x.grp);
+    if (setups.length === 1) mods.push(modBtn(setups[0], setups[0].id === S.id));
+    if (setups.length > 1) mods.push({ label: S.grp ? 'Setup: ' + S.label : 'Setup', icon: 'settings', hasN: false, isMenu: true, line: S.grp ? C.g : 'transparent', fw: S.grp ? 700 : 500, color: S.grp ? C.g : '#3A3A3C', go: () => this.setState(z => ({ setup: !z.setup, more: false })) });
+    const setupItems = setups.map(x => ({ label: x.label, icon: x.icon, bg: x.id === S.id ? '#EAF2EC' : 'none', go: () => this.goScr(x.id) }));
+
+    const off = !swOn(S.sw);
+    const sg = S.seg ? (s.seg[S.id] || 0) : 0;
+    const bySeg = S.seg && S.rows.some(r => r.sg != null);
+    const sgF = bySeg ? sg : 0;
+    const allRows = rowsOf(S, sgF), tbs = tabsOf(S, sgF);
+    const count = id => allRows.filter(r => inTab(r, id)).length;
+    let cur = s.tab[S.id]; if (!tbs.some(t => t[0] === cur)) cur = (tbs.find(t => count(t[0]) > 0) || tbs[0] || [null])[0];
+    const q = s.q.trim().toLowerCase();
+    const rows = allRows.filter(r => (!cur || inTab(r, cur)) && (!q || (r.t + ' ' + (r.s || '') + ' ' + (r.m || '')).toLowerCase().includes(q)));
+    let selId = s.sel[S.id]; if (!rows.some(r => r.id === selId)) selId = rows[0] && rows[0].id;
+    const selRow = rows.find(r => r.id === selId);
+    const pickRow = id => this.setState(z => ({ sel: { ...z.sel, [S.id]: id }, open: true, form: null, err: null, more: false }));
+    const DOT = { o: [C.g, C.g, '#fff', ''], l: ['#E3C47A', '#C9A54E', '#5A4310', 'L'], m: [C.r, C.r, '#fff', '✕'], u: ['#E8EEF6', '#2A4D7A', '#2A4D7A', '?'], t: ['#fff', '#CFCFCC', '#9A9A9E', ''], x: ['#F0F0EE', '#F0F0EE', '#9A9A9E', '–'] };
+    const tk = s.ticks[S.id] || {};
+    const mapRow = r => { const a = r.id === selId && s.open; const nx = r.P && r.P.nx; return { t: r.t, s: r.s, hasS: !!r.s, m: r.m, hasM: !!r.m, r: (r.amt != null ? (OW ? r.amt : '') : r.r) || '', hasPill: !!r.p, pill: r.p ? pill(r.p) : {}, chips: (r.c || []).map(pill), hasChips: !!(r.c && r.c.length), hasDots: !!r.d, dots: (r.d || '').split('').map(c => ({ bg: DOT[c][0], bd: DOT[c][1], fg: DOT[c][2], ch: DOT[c][3] })), bg: a ? '#EDF4EF' : '#fff', stripe: a ? 'inset 4px 0 0 ' + C.g : r.stripe ? 'inset 4px 0 0 ' + C.r : 'none', op: r.dim ? .62 : 1, ck: !!r.ck, ckBd: tk[r.id] ? C.g : '#BDBDBA', ckBg: tk[r.id] ? C.g : '#fff', tick: e => { e.stopPropagation(); this.setState(z => ({ ticks: { ...z.ticks, [S.id]: { ...(z.ticks[S.id] || {}), [r.id]: !tk[r.id] } } })); }, id: r.id, isOpen: a, openAttr: a ? '1' : undefined, P: {}, bd: a ? C.g : '#E5E5E5', shadow: a ? '0 14px 40px rgba(26,92,58,.14)' : r.stripe ? 'inset 5px 0 0 ' + C.r : 'none', chev: a ? 'chevron-up' : 'chevron-down', hasNx: !!(nx && nx[1]) && !a, nxLabel: nx ? nx[1] : '', nxGo: e => { e.stopPropagation(); pickRow(r.id); this.act(nx[2], nx[1]); }, go: () => a ? this.setState({ open: false }) : pickRow(r.id), key: e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pickRow(r.id); } } }; };
+    const gKey = r => (S.seg && !bySeg && sg === 1 ? r.g2 : r.g) || '';
+    const groups = []; rows.forEach(r => { const k = gKey(r); let g = groups.find(x => x.k === k); if (!g) { const [title, sub, tone] = k.split('|'); g = { k, title, sub, hasSub: !!sub, hasHead: !!k, color: tone === 'r' ? C.r : '#1C1C1E', rows: [] }; groups.push(g); } g.rows.push(mapRow(r)); });
+    groups.forEach(g => g.count = g.rows.length);
+    const tabCfg = (S.tb && S.tb[cur]) || {};
+    const curTab = tbs.find(t => t[0] === cur);
+    const nTick = Object.values(tk).filter(Boolean).length;
+
+    // panel
+    const blk = b => { const k = b[0], o = { isF: k === 'f', isX: k === 'x', isN: k === 'n', isL: k === 'l', isH: k === 'h', isPh: k === 'ph', isTb: k === 'tb', isSw: k === 'sw', title: k === 'h' ? 'History' : b[1] }; o.hasTitle = !!o.title;
+      if (k === 'f') o.rows = b[2].filter(r => ok(r[2])).map(([a, v], i) => ({ a, v, top: i ? '1px solid #F0F0EE' : 'none' }));
+      if (k === 'x' || k === 'n') o.body = b[2];
+      if (k === 'l') o.lines = b[2].filter(l => ok(l.who)).map(l => { const f = (l.f || []).filter(r => ok(r[2])).map(([a, v]) => ({ a, v })), acts = btns(l.a); return { t: l.t, s: l.s, hasS: !!l.s, pills: (l.p || []).map(pill), n: l.n, hasN: !!l.n, facts: f, hasF: f.length > 0, acts, hasA: acts.length > 0 }; });
+      if (k === 'h') { o.ev = b[1].map(([w, x]) => ({ w, x })); o.none = !b[1].length; }
+      if (k === 'ph') { o.ph = b[2].map(c => ({ c })); if (!b[2].length) { o.isPh = false; o.isX = true; o.body = 'No photos.'; } }
+      if (k === 'tb') { o.cols = b[2].map(c => ({ c })); o.grid = 'repeat(' + b[2].length + ',minmax(0,1fr))'; o.minW = b[2].length * 110 + 'px'; o.trs = b[3].map(r => ({ cells: r.map(c => ({ c })) })); }
+      if (k === 'sw') o.sws = b[2].map(([label, on, help, conf], i) => { const key = S.id + selId + label, v = s.sw[key] ?? on; return { label, help, word: v ? 'On' : 'Off', fg: v ? C.g : '#6C6C70', bg: v ? C.g : '#C9C8C3', left: v ? '21px' : '3px', top: i ? '1px solid #F0F0EE' : 'none', go: () => { this.setState(z => ({ sw: { ...z.sw, [key]: !v } })); this.say(v && conf ? conf : label + (v ? ' — switched off' : ' — switched on')); } }; });
+      return o; };
+    const p = selRow && selRow.P;
+    const NT = { w: ['#F5EFE2', '#5F4718'], r: ['#FBEDEB', '#8E2A20'], d: ['#EAF2EC', '#134428'], n: ['#F5F5F5', '#3A3A3C'] };
+    const P = p ? { k: p.k, t: p.t, s: p.s, hasS: !!p.s, pills: (p.pl || []).filter(Boolean).map(pill), hasPills: !!(p.pl && p.pl.filter(Boolean).length), hasNx: !!p.nx, nx: p.nx ? { text: p.nx[0], hasBtn: !!p.nx[1], label: p.nx[1], go: () => this.act(p.nx[2], p.nx[1]) } : {}, notices: (p.no || []).map(([t, text]) => ({ text, bg: NT[t][0], fg: NT[t][1] })), blocks: (p.b || []).map(blk), acts: btns(p.a) } : {};
+    const next = () => { const i = rows.findIndex(r => r.id === selId); if (rows.length) pickRow(rows[(i + 1) % rows.length].id); };
+
+    // form
+    const fd = this.formDef();
+    const form = fd ? { t: fd.t, i: fd.i, hasI: !!fd.i, w: fd.w, hasW: !!fd.w, hasCf: !!fd.cf, cf: fd.cf, cfLabel: fd.cfLabel, onCf: e => { this.fv.cf = e.target.value; }, err: s.err, hasErr: !!s.err, ok: s.saving ? (fd.busy || 'Saving…') : fd.ok || 'Save', okOp: s.saving ? .6 : 1, cancel: fd.cancel || 'Cancel', showCancel: !fd.noCancel, save: () => this.save(), close: () => this.setState({ form: null, err: null }),
+      fields: (fd.f || []).map((f, i) => { const k = f[0], opt = f[2], isOpts = k === 'r' || k === 'b' || k === 'days';
+        const o = { isHead: k === 'h', isNote: k === 'x', isBig: k === 'big', isInput: k === 't' || k === 'n' || k === 'd', isArea: k === 'a', isSelect: k === 's', isOpts, isRadio: k === 'r', isCheck: k === 'c', isPhoto: k === 'p', isList: k === 'list', label: f[1], hasLabel: !!f[1] && !'hxc'.includes(k) && k !== 'big' && k !== 'p', help: f[3], hasHelp: !!f[3] && k !== 'list', type: k === 'd' ? 'date' : 'text', font: k === 'n' ? "'IBM Plex Mono',monospace" : 'inherit', ph: typeof opt === 'string' ? opt : '', set: e => { this.fv[i] = e.target.value; }, text: f[1], act: f[3], dir: k === 'r' ? 'column' : 'row', optPad: k === 'r' ? '11px 13px' : '8px 13px' };
+        if (k === 'c') { const v = !!s.fs[i]; o.ckBd = v ? C.g : '#BDBDBA'; o.ckBg = v ? C.g : '#fff'; o.toggle = () => this.setState(z => ({ fs: { ...z.fs, [i]: !v } })); }
+        if (Array.isArray(opt)) o.opts = opt.map((x, j) => { const on = k === 'r' ? (s.fs[i] ?? 0) === j : k === 'days' ? (s.fs[i + '_' + j] ?? j < 5) : false; return { o: x, top: j ? '1px solid #F0F0EE' : 'none', bd: on ? C.g : '#D8D8D6', bg: on ? '#EAF2EC' : '#fff', fw: on ? 600 : 500, dotBd: on ? C.g : '#BDBDBA', dot: on ? C.g : 'transparent', go: () => k === 'r' ? this.setState(z => ({ fs: { ...z.fs, [i]: j } })) : k === 'days' ? this.setState(z => ({ fs: { ...z.fs, [i + '_' + j]: !on } })) : this.say(x) }; });
+        return o; }) } : {};
+
+    const tiles = (S.tiles || []).filter(t => ok(t[5]) && (t[4] == null || t[4] === sgF)).map(([n, label, tab, tone]) => ({ n, label, fg: tone === 'r' ? C.r : tone === 'w' ? '#7C5E2A' : '#1C1C1E', border: tab === cur ? C.g : '#E5E5E5', go: () => this.setState(z => ({ tab: { ...z.tab, [S.id]: tab } })) }));
+    const lede0 = (!OW && S.ledeSt) || S.lede, lede = Array.isArray(lede0) ? lede0[sgF] : lede0;
+    const showPanel = !narrow || s.open, showList = !narrow || !s.open;
+    const filters = (tabCfg.f || S.filters || []).map(label => ({ label }));
+    const tabActs = btns(tabCfg.a), legend = (S.legend || []).map(([c, label]) => ({ label, bg: DOT[c][0], bd: DOT[c][1] }));
+    const moreL = (S.more || []).filter(a => ok(a[3]));
+    return { ...base, mods, setupOpen: s.setup, setupItems, setupLeft: narrow ? '14px' : 'auto',
+      showTop: !narrow || !s.open, title: S.title, sub: S.sub,
+      hasSeg: !!S.seg && !off, seg: (S.seg || []).map((label, i) => ({ label, bg: i === sg ? '#fff' : 'transparent', color: i === sg ? '#1C1C1E' : '#55555A', go: () => this.setState(z => ({ seg: { ...z.seg, [S.id]: i }, form: null })) })),
+      hasMore: moreL.length > 0 && !off, moreOpen: s.more, toggleMore: () => this.setState(z => ({ more: !z.more, setup: false })), more: moreL.map(a => ({ label: a[0], fg: a[2] === 'd' ? C.r : '#1C1C1E', go: () => this.act(a[1], a[0]) })),
+      hasPrimary: !!S.primary && !off, primary: S.primary ? { plus: /^(Add|New|Register|Create)/.test(S.primary[0]), label: S.primary[0], go: () => this.act(S.primary[1], S.primary[0]) } : {},
+      isOff: off, off: off ? { t: S.off.t, s: S.off.s, label: S.off.a[0], go: () => this.act(S.off.a[1], S.off.a[0]) } : {},
+      hasTiles: tiles.length > 0 && !off, tiles, hasLede: !!lede && !off, lede, strips: off ? [] : (S.strip || []).map(text => ({ text })),
+      hasHow: !!S.how && !off, how: S.how ? { t: S.how.t, open: s.how, chev: s.how ? 'chevron-up' : 'chevron-down', x: S.how.x, hasX: !!S.how.x, rows: (S.how.f || []).map(([a, v]) => ({ a, v })) } : {}, toggleHow: () => this.setState(z => ({ how: !z.how })),
+      showSplit: !off || !!fd, isOther: false,
+      tabs: tbs.map(([id, label]) => { const a = id === cur, n = count(id), hot = (id === 'needs' || id === S.badge) && n > 0; return { label, n, line: a ? C.g : 'transparent', fw: a ? 700 : 500, color: a ? C.g : '#3A3A3C', nBg: hot ? C.r : a ? '#EAF2EC' : '#EAEAE8', nColor: hot ? '#fff' : a ? C.g : '#55555A', go: () => this.setState(z => ({ tab: { ...z.tab, [S.id]: id }, form: null, q: '', open: false })) }; }),
+      hasWeek: !!S.week, week: S.week ? { d: S.week.d.map(([k, v]) => ({ k, v })), n: S.week.n, label: S.week.a[0], go: () => this.act(S.week.a[1]) } : {},
+      tabHelp: curTab && curTab[2], hasTabHelp: !!(curTab && curTab[2]),
+      hasTabBar: !!(tabActs.length || filters.length || tabCfg.n || legend.length), tabActs, filters, tabNote: tabCfg.n, hasTabNote: !!tabCfg.n, legend,
+      q: s.q, onSearch: e => this.setState({ q: e.target.value }), searchPh: S.search || 'Search…', showing: 'Showing ' + rows.length + ' of ' + (cur ? count(cur) : allRows.length), hasQ: !!q, clearQ: () => this.setState({ q: '' }),
+      groups, listEmpty: !rows.length, emptyText: q ? ((S.e && S.e.q) || 'Nothing matches this search.') : ((S.e && S.e[cur]) || (cur === 'needs' ? "Nothing here. You're done." : 'Nothing in this tab.')),
+      hasTick: !!tabCfg.ck && nTick > 0, tickLabel: tabCfg.ck ? tabCfg.ck[0] + ' (' + nTick + ')' : '', tickGo: () => tabCfg.ck && this.act(tabCfg.ck[1], tabCfg.ck[0]),
+      showList, showPanel, gridCols: narrow ? 'minmax(0,1fr)' : 'minmax(320px,440px) minmax(0,1fr)', splitMin: narrow ? 'calc(100vh - 150px)' : 'max(520px, calc(100vh - 170px))',
+      isForm: !!fd, form, notForm: true, showBody: !off, hasDetail: !fd && s.open && !!p, P, next, modal: !!fd || (s.open && !!p), modalPad: narrow ? '0' : '32px', modalRad: narrow ? '0' : '22px', closeModal: () => this.setState({ open: false, form: null, err: null }), groups: (groups.forEach(g => g.rows.forEach(x => { if (x.isOpen) { x.P = P; x.next = next; } })), groups) };
+  }
+}
+</script>
+</body>
+</html>

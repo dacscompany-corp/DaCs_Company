@@ -2287,7 +2287,8 @@ const PRIMARY_NAV = [
         // Plain-language labels, matching the redesign: an owner reads
         // "Sites & schedule", not "Projects". The VIEW ids are unchanged —
         // ATT_VIEWS, _FOCUS_SUBVIEWS and switchView all key off those.
-        { view: 'attToday',    label: 'Today on site',    icon: 'calendar-check' },
+        // count: the D5 "needs you" counts (NavCounts, js/split-view.js).
+        { view: 'attToday',    label: 'Today on site',    icon: 'calendar-check', count: 'attToday' },
         { view: 'attWorkers',  label: 'Workers',          icon: 'user-round' },
         { view: 'attProjects', label: 'Sites & schedule', icon: 'hard-hat' },
         { view: 'attReports',  label: 'Hours report',     icon: 'file-bar-chart' },
@@ -2310,16 +2311,16 @@ const PRIMARY_NAV = [
         // on this module and on the Requests tab — requests still to
         // arrange or resolve, the Queue's "Needs action" tab.
         { view: 'reqQueue',    label: 'Queue',          icon: 'inbox', count: 'requests' },
-        { view: 'reqPurchasing', label: 'Purchasing',   icon: 'shopping-cart' },
-        { view: 'reqStock',    label: 'Stock',          icon: 'warehouse' },
-        { view: 'reqTools',    label: 'Tools',          icon: 'wrench' },
+        { view: 'reqPurchasing', label: 'Purchasing',   icon: 'shopping-cart', count: 'purchasing' },
+        { view: 'reqStock',    label: 'Stock',          icon: 'warehouse', count: 'stock' },
+        { view: 'reqTools',    label: 'Tools',          icon: 'wrench', count: 'tools' },
         // group: 'setup' — drawn together under one "Setup ▾" menu in the
         // modules row (office split-view redesign). Drawing only: the
         // views, _visibleNav() and every role rule are unchanged.
         { view: 'reqBatches',  label: 'Weekly batches', icon: 'calendar-days', group: 'setup' },
         { view: 'reqTeams',    label: 'Teams',          icon: 'users',         group: 'setup' },
         { view: 'reqCatalog',  label: 'Catalogue',      icon: 'package-search', group: 'setup' },
-        { view: 'reqHistory',  label: 'Item history',   icon: 'images',        group: 'setup' },
+        { view: 'reqHistory',  label: 'Item history',   icon: 'images',        group: 'setup', count: 'history' },
         { view: 'reqProjects', label: 'Projects',       icon: 'hard-hat',      group: 'setup' },
         // One request's detail: routable, highlighted under Requests, but
         // not a button in the secondary row (like Appointments' dashboard).
@@ -2334,8 +2335,8 @@ const PRIMARY_NAV = [
     // account gets it only with 'workplan' in allowed_modules.
     { id: 'workplan', label: 'Work Plan', sub: 'Meetings & Tasks', defaultView: 'wpBoard',
       modules: [
-        { view: 'wpBoard',    label: 'Board',    icon: 'clipboard-list' },
-        { view: 'wpMeetings', label: 'Meetings', icon: 'book-open' },
+        { view: 'wpBoard',    label: 'Board',    icon: 'clipboard-list', count: 'board' },
+        { view: 'wpMeetings', label: 'Meetings', icon: 'book-open', count: 'meetings' },
         // Drill-downs: routable and highlighted under Work Plan, but not
         // buttons in the secondary row (like reqDetail).
         { view: 'wpMeeting',  label: 'Meeting',  icon: 'book-open', hidden: true },
@@ -2584,7 +2585,8 @@ function _buildTabsBar(activePrimaryId) {
     // just move the active class — and the pill glides.
     // A section that gains or loses its counted module (module focus) also
     // needs new markup, so the count marker is part of the signature.
-    const sig = nav.map(p => p.id + (p.modules.some(m => m.count && !m.hidden) ? '*' : '')).join('|');
+    const countKeys = p => p.modules.filter(m => m.count && !m.hidden).map(m => m.count);
+    const sig = nav.map(p => p.id + ':' + countKeys(p).join(',')).join('|');
     const rebuilt = tabs.dataset.navSig !== sig;
 
     if (rebuilt) {
@@ -2598,11 +2600,12 @@ function _buildTabsBar(activePrimaryId) {
                 const badge = (p.id === 'expenses' || p.id === 'pm')
                     ? `<span class="rm rm-count rm-sm" data-ptab-badge="${p.id}" style="margin-left:6px;" hidden></span>`
                     : '';
-                // A "needs you" count (NavCounts, js/split-view.js) for a
-                // section whose visible modules carry one.
-                const counted = p.modules.find(m => m.count && !m.hidden);
-                const count = counted
-                    ? `<span class="sv-count sv-count--tab" data-nav-count="${counted.count}" hidden></span>`
+                // The tab's "needs you" count (D5, NavCounts in
+                // js/split-view.js): the sum of the counts of the links this
+                // account sees under it, so the numbers always add up.
+                const keys = p.modules.filter(m => m.count && !m.hidden).map(m => m.count);
+                const count = keys.length
+                    ? `<span class="sv-count sv-count--tab" data-nav-total="${keys.join(' ')}" hidden></span>`
                     : '';
                 return `<button class="portal-ptab" data-primary="${p.id}">${p.label}${badge}${count}</button>`;
             }).join('');
@@ -2642,13 +2645,12 @@ function renderPortalChrome() {
     }
 
     // "Needs you" counts (NavCounts, js/split-view.js), fetched in the
-    // background once the role is known — and only for sections this
-    // account can see (a Purchasing-only or admin-pm@ account has no Queue,
-    // so it loads nothing extra).
+    // background once the role is known — and only for the counted links
+    // this account can see (a Purchasing-only or admin-pm@ account has no
+    // Queue, so it loads nothing extra). A loader returns null when this
+    // account cannot act on its count (D5): no badge, adds nothing.
     if (window.NavCounts && currentUserRole) {
-        window.NavCounts.refresh(_visibleNav()
-            .filter(p => p.modules.some(m => m.count))
-            .map(p => p.modules.find(m => m.count).count));
+        window.NavCounts.refresh(_visibleNav().flatMap(p => p.modules.filter(m => m.count && !m.hidden).map(m => m.count)));
     }
 }
 
@@ -2685,8 +2687,10 @@ function _setupMenuOpen(btn, items, view) {
     menu.style.left = Math.round(r.left) + 'px';
     menu.innerHTML = items.map(m =>
         `<button type="button" role="menuitem" class="sv-menu-item${m.view === view ? ' is-on' : ''}" data-view="${m.view}">` +
-        `<i data-lucide="${m.icon}"></i>${m.label}</button>`).join('');
+        `<i data-lucide="${m.icon}"></i>${m.label}` +
+        (m.count ? `<span class="sv-count" data-nav-count="${m.count}" hidden></span>` : '') + `</button>`).join('');
     document.body.appendChild(menu);
+    if (window.NavCounts) window.NavCounts.paint();
     btn.setAttribute('aria-expanded', 'true');
     menu.querySelectorAll('[data-view]').forEach(b => b.addEventListener('click', () => {
         _setupMenuClose();
@@ -2701,9 +2705,17 @@ function _setupMenuOpen(btn, items, view) {
     if (first) first.focus({ preventScroll: true });
 }
 
+// The office v5 sections (spec 2026-11-14-office-split-view-redesign-design):
+// they get v5's light grey page and underlined module row (css/split-view.css,
+// body.sv-v5); every other section keeps the portal's white page.
+const V5_SECTIONS = ['attendance', 'requests', 'workplan'];
+
 function syncPortalChrome(view) {
+    // An item open in the office pop-up belongs to the screen being left.
+    if (window.SplitView && window.SplitView.closePop) window.SplitView.closePop();
     const primary = findPrimaryForView(view);
     if (!primary) return;
+    document.body.classList.toggle('sv-v5', V5_SECTIONS.indexOf(primary.id) >= 0);
     _setupMenuClose();
 
     // Rebuild tabs bar with correct active state
@@ -2729,7 +2741,7 @@ function syncPortalChrome(view) {
                 setupDrawn = true;
                 return `<button type="button" class="portal-module-link sv-setup${activeSetup ? ' active-link' : ''}" aria-haspopup="menu" aria-expanded="false">
                 <i data-lucide="settings-2" style="width:14px;height:14px;"></i>
-                <span>${activeSetup ? activeSetup.label : 'Setup'}</span>
+                <span>${activeSetup ? activeSetup.label : 'Setup'}</span>${setup.some(x => x.count) ? `<span class="sv-count" data-nav-total="${setup.filter(x => x.count).map(x => x.count).join(' ')}" hidden></span>` : ''}
                 <i data-lucide="chevron-down" style="width:14px;height:14px;"></i>
             </button>`;
             }

@@ -10,31 +10,35 @@
 // reason is required where the server asks). A leader's check never
 // replaces the office approval.
 //
-// Layout (same pattern as the Requests detail page): what needs the office
-// is said first, in a banner; the main column holds the problems, the
-// instructions and the photos; the side column holds the task's facts, the
-// people (and who has read the current version) and the history, collapsed
-// when long. Cancel / Decline sits apart, away from Edit and Approve.
+// Office redesign v5: the task opens in the Board's pop-up
+// (WP.renderTaskPanel, called by js/workplan-admin-board.js) through the
+// frame's page shell — kicker, title, pills, "What to do now" (the one
+// decision: approve reported work, publish a draft or proposal), and the
+// task's buttons in the footer beside Next. Inside, one column of the
+// frame's sections (v5): what needs the office (notices), Problems and
+// waiting, Instructions, From the meeting notes, Photos, People (and who
+// has read the current version), the facts, and the history, folded when
+// long. Cancel / Decline sits apart at the bottom, away from Edit and
+// Approve. Its forms (WP.modal) take the task's place in the pop-up.
 // ════════════════════════════════════════════════════════════════════
 (function (root) {
     'use strict';
     const WP = root.WorkPlanAdmin;
     if (!WP) return;
     const esc = WP.esc;
+    const SV = root.SplitView;
     const tickets = WP.loadTickets();   // only the newest task load may draw
+    const PILL_TONE = { 'att-pill--done': 'done', 'att-pill--working': 'gold', 'att-pill--abandoned': 'red', 'att-pill--pc': 'check', 'att-pill--pm': 'pm' };
 
-    function card(title, body) {
-        return '<div class="att-card"><div class="att-card-head"><div><div class="att-card-title">' + esc(title) +
-            '</div></div></div><div class="att-card-body">' + body + '</div></div>';
-    }
     function btn(act, label, cls) {
         return '<button class="att-btn' + (cls ? ' ' + cls : '') + '" type="button" data-act="' + act + '">' + esc(label) + '</button>';
     }
 
     const LIVE = ['not_started', 'in_progress', 'reported_done', 'leader_checked'];
 
-    // The decisions in the header: the one the office is here to make, then Edit.
-    // Cancel is NOT here (see dangerHtml): it sat next to Edit and Approve.
+    // The task's buttons, in the pop-up's footer: the decision the office is
+    // here to make, then Edit, then its meeting. Cancel is NOT here (see
+    // dangerHtml): it sat next to Edit and Approve.
     function actionsHtml(t) {
         const out = [];
         if (t.status === 'reported_done' || t.status === 'leader_checked') {
@@ -44,6 +48,7 @@
         if (t.status === 'draft') out.push(btn('publish', 'Publish', 'att-btn--primary'));
         if (t.status === 'completed') out.push(btn('reopen', 'Reopen'));
         if (t.status !== 'completed' && t.status !== 'cancelled') out.push(btn('edit', 'Edit'));
+        if (t.meeting_id) out.push('<button class="att-btn" type="button" data-meeting>See its meeting</button>');
         return out.join('');
     }
 
@@ -54,28 +59,29 @@
             (decline ? 'Decline this proposal…' : 'Cancel this task…') + '</button></div>';
     }
 
-    // What needs the office, said once and first.
-    function alertsHtml(t) {
+    // What needs the office, said once and first, as the frame's notices.
+    // A decision the "What to do now" box already says (step) is not repeated.
+    function alertsHtml(t, step) {
         const out = [];
         const blockers = (t.blockers || []).length;
-        if (t.status === 'reported_done' || t.status === 'leader_checked') {
-            out.push('<div class="wp-alert wp-alert--gold"><i data-lucide="clipboard-check"></i><div><strong>' +
-                (t.status === 'leader_checked' ? 'Checked by the team leader, waiting for your approval' : 'Reported done, waiting for your approval') +
-                '</strong><div>Approve it as completed, or send it back with what needs fixing.' +
-                (t.status === 'leader_checked' ? ' A leader\'s check never replaces the office approval.' : '') + '</div></div></div>');
+        if (!step && (t.status === 'reported_done' || t.status === 'leader_checked')) {
+            out.push(SV.notice('gold', 'clipboard-check',
+                t.status === 'leader_checked' ? 'Checked by the team leader, waiting for your approval' : 'Reported done, waiting for your approval',
+                esc('Approve it as completed, or send it back with what needs fixing.' +
+                    (t.status === 'leader_checked' ? ' A leader\'s check never replaces the office approval.' : ''))));
         }
         if (LIVE.includes(t.status) && t.blocked) {
-            out.push('<div class="wp-alert wp-alert--red"><i data-lucide="octagon-alert"></i><div><strong>This task is blocked</strong>' +
-                '<div>' + (blockers ? blockers + (blockers === 1 ? ' open problem' : ' open problems') + ' below. Clear each one after checking it is really solved.' :
-                    'It waits for another task to be approved.') + '</div></div></div>');
+            out.push(SV.notice('red', 'octagon-alert', 'This task is blocked',
+                esc(blockers ? blockers + (blockers === 1 ? ' open problem' : ' open problems') + ' below. Clear each one after checking it is really solved.' :
+                    'It waits for another task to be approved.')));
         }
-        if (t.status === 'draft' && t.proposed_by) {
-            out.push('<div class="wp-alert wp-alert--gold"><i data-lucide="lightbulb"></i><div><strong>Proposed by a team leader</strong>' +
-                '<div>Publish it to make it a task, or decline it with a reason the leader will see.</div></div></div>');
+        if (!step && t.status === 'draft' && t.proposed_by) {
+            out.push(SV.notice('gold', 'lightbulb', 'Proposed by a team leader',
+                esc('Publish it to make it a task, or decline it with a reason the leader will see.')));
         }
         if ((t.office_flags || []).length) {
-            out.push('<div class="wp-alert wp-alert--gold"><i data-lucide="flag"></i><div><strong>To check before publishing</strong>' +
-                '<ul class="wp-flags">' + t.office_flags.map(f => '<li>' + esc(f) + '</li>').join('') + '</ul></div></div>');
+            out.push(SV.notice('gold', 'flag', 'To check before publishing',
+                '<ul class="wp-flags">' + t.office_flags.map(f => '<li>' + esc(f) + '</li>').join('') + '</ul>'));
         }
         return out.join('');
     }
@@ -127,16 +133,10 @@
             '</div></div>').join('') + '</div>';
     }
 
-    function historyHtml(t) {
+    function historySection(t) {
         const events = (t.history || []).slice().reverse();
-        if (!events.length) return '<div class="wp-pad req-muted">No history yet.</div>';
-        return '<ul class="wp-timeline">' + events.map(e =>
-            '<li><div class="wp-tl-text">' + esc(WP.eventText(e)) + '</div>' +
-            '<div class="req-muted">' + esc(e.by) + ' · ' + esc(WP.formatManila(e.at)) + '</div></li>').join('') + '</ul>';
-    }
-
-    function metaRow(label, value) {
-        return value ? '<div class="req-meta-row"><dt>' + esc(label) + '</dt><dd>' + value + '</dd></div>' : '';
+        if (!events.length) return SV.section('History', '<div class="wp-pad req-muted">No history yet.</div>');
+        return SV.history(events.map(e => ({ when: e.by + ' · ' + WP.formatManila(e.at), html: esc(WP.eventText(e)) })), 6);
     }
 
     function textModal(o) {
@@ -149,8 +149,9 @@
         });
     }
 
+    // scope: the pop-up's panel (the shell's "What to do now" button is the
+    // same data-act as the decision buttons, so it runs the same form).
     function wire(host, t, rerender) {
-        host.querySelector('[data-back]').addEventListener('click', () => root.switchView('wpBoard'));
         const meeting = host.querySelector('[data-meeting]');
         if (meeting) meeting.addEventListener('click', () => WP.openMeeting(t.meeting_id));
         host.querySelectorAll('[data-open]').forEach(b => b.addEventListener('click', () => WP.openTask(b.dataset.open)));
@@ -198,63 +199,74 @@
         }));
     }
 
-    async function renderTask(host) {
-        const id = WP.state.taskId;
-        if (!id) { root.switchView('wpBoard'); return; }
+    // One task in the pop-up's panel. hooks: { onChanged(): reload the Board
+    // and this task, nextLabel, start: { act } the card showed, or null }.
+    async function renderTaskPanel(panel, id, hooks) {
         const ticket = tickets.take();
-        const current = () => tickets.isLatest(ticket) && WP.state.taskId === id;
-        host.innerHTML = '<div class="att-stack wp wp-task"><div class="att-empty">Loading the task…</div></div>';
+        // Only the newest load may draw, and only while the pop-up still
+        // shows this task (not closed, not replaced by another item).
+        const current = () => tickets.isLatest(ticket) && panel.isConnected && panel.dataset.svId === id;
+        if (!panel.dataset.svRestore) panel.innerHTML = '<div class="sv-panel-empty">Loading the task…</div>';
         let t;
-        try { t = await WP.rpc('wp_office_task', { p_task: id }); } catch (e) { if (current()) WP.fail(host, e); return; }
-        if (!current()) return;   // an older load answered late: draw nothing
+        try { t = await WP.rpc('wp_office_task', { p_task: id }); } catch (e) { if (current()) SV.error(panel, WP.errorMessage(e)); return; }
+        if (!current()) return;   // an older load answered late, or the pop-up moved on: draw nothing
         const live = LIVE.includes(t.status);
         const editable = t.status !== 'completed' && t.status !== 'cancelled';
-        const sub = t.project_name + ' · ' + t.work_name + (t.planned_start || t.planned_end ? ' · ' + WP.plannedLabel(t) : '');
+        const sub = t.work_name + (t.planned_start || t.planned_end ? ' · ' + WP.plannedLabel(t) : '');
         const problems = (t.blockers || []).length + (t.waiting_for || []).length;
         const photos = (t.photos || []).length;
-        const events = (t.history || []).length;
         const team = t.team_name ? (/^team\b/i.test(t.team_name) ? t.team_name : 'Team ' + t.team_name) : 'Individual task (no team)';
+        const step = WP.taskNextStep(t);
+        const pills = [{ text: WP.statusLabel(t), tone: PILL_TONE[WP.statusPill(t)] || 'none' }];
+        if (live && t.blocked) pills.push({ text: 'Blocked', tone: 'red' });
+        if (t.status === 'in_progress' && t.sent_back) pills.push({ text: 'Sent back', tone: 'gold' });
 
-        const main =
-            (problems
-                ? card('Problems and waiting', problemsHtml(t))
-                : '<div class="wp-clear"><i data-lucide="circle-check"></i> Nothing is holding this task.</div>') +
-            card('Instructions', t.instructions
+        const sections = [
+            alertsHtml(t, step),
+            SV.section('Problems and waiting', problems
+                ? problemsHtml(t)
+                : '<div class="wp-clear"><i data-lucide="circle-check"></i> Nothing is holding this task.</div>'),
+            SV.section('Instructions', t.instructions
                 ? '<p class="wp-text">' + esc(t.instructions) + '</p>'
-                : '<div class="req-muted">No instructions yet.' + (editable ? ' Use Edit to add them.' : '') + '</div>') +
-            (t.source_passage ? card('From the meeting notes', '<blockquote class="wp-passage">' + esc(t.source_passage) + '</blockquote>') : '') +
-            (photos ? card('Photos (' + photos + ')', photosHtml(t)) : '');
+                : '<div class="req-muted">No instructions yet.' + (editable ? ' Use Edit to add them.' : '') + '</div>'),
+            t.source_passage ? SV.section('From the meeting notes', '<blockquote class="wp-passage">' + esc(t.source_passage) + '</blockquote>') : '',
+            photos ? SV.section('Photos (' + photos + ')', photosHtml(t)) : '',
+            SV.section('People', peopleHtml(t)),
+            SV.facts([
+                ['Task', esc(t.title)],
+                ['Project', esc(t.project_name)],
+                ['Work', esc(t.work_name)],
+                ['Team', esc(team)],
+                ['Planned', (t.planned_start || t.planned_end) ? esc(WP.plannedLabel(t)) : ''],
+                ['Version', t.version ? esc(t.version) : ''],
+            ]),
+            historySection(t),
+            dangerHtml(t),
+        ];
 
-        const side =
-            '<div class="att-card"><div class="att-card-head"><div class="att-card-title">Task</div></div>' +
-              '<dl class="req-meta wp-meta">' +
-                metaRow('Project', esc(t.project_name)) +
-                metaRow('Work', esc(t.work_name)) +
-                metaRow('Planned', (t.planned_start || t.planned_end) ? esc(WP.plannedLabel(t)) : '') +
-                metaRow('Team', esc(team)) +
-                metaRow('Version', t.version ? esc(t.version) : '') +
-              '</dl></div>' +
-            '<div class="att-card"><div class="att-card-head"><div class="att-card-title">People</div></div>' + peopleHtml(t) + '</div>' +
-            '<details class="att-card wp-hist"' + (events <= 6 ? ' open' : '') + '>' +
-              '<summary>History <span class="req-muted">' + events + '</span></summary>' + historyHtml(t) + '</details>' +
-            dangerHtml(t);
-
-        host.innerHTML = '<div class="att-stack wp wp-task">' +
-            '<div class="att-crumbs"><button class="att-link" type="button" data-back>← Work Plan</button>' +
-              (t.meeting_id ? '<span class="wp-dot">·</span><button class="att-link" type="button" data-meeting>See its meeting</button>' : '') +
-            '</div>' +
-            WP.head(t.title, sub, actionsHtml(t)) +
-            '<div class="req-summary"><span class="att-pill ' + WP.statusPill(t) + '">' + esc(WP.statusLabel(t)) + '</span>' +
-              (live && t.blocked ? '<span class="wp-chip wp-chip--red">Blocked</span>' : '') +
-              (t.status === 'in_progress' && t.sent_back ? '<span class="wp-chip wp-chip--gold">Sent back</span>' : '') +
-            '</div>' +
-            alertsHtml(t) +
-            '<div class="wp-layout"><div class="wp-main">' + main + '</div><aside class="wp-side">' + side + '</aside></div>' +
-            '</div>';
-        wire(host, t, () => renderTask(host));
-        WP.signImages(host);
+        const body = SV.page(panel, {
+            kicker: 'Task · ' + t.project_name,
+            title: t.title,
+            pills: pills,
+            sub: sub,
+            step: step ? SV.nextStep(step.text, '<button class="att-btn att-btn--primary" type="button" data-act="' + esc(step.act) + '">' + esc(step.label) + '</button>') : '',
+            actions: actionsHtml(t),
+            nextLabel: hooks.nextLabel,
+        });
+        body.innerHTML = '<div class="wp wp-task">' + sections.filter(Boolean).join('') + '</div>';
+        wire(panel, t, hooks.onChanged);
+        // Opened by the card's next-step button: press the task's own "What
+        // to do now" button — only the step the card showed, only once.
+        if (hooks.start) {
+            const want = hooks.start;
+            hooks.start = null;
+            const go = panel.querySelector('.sv-step [data-act]');
+            if (go && current() && want.act === go.dataset.act) go.click();
+        }
+        WP.signImages(panel);
         WP.icons();
     }
 
-    WP.views.wpTask = renderTask;
+    WP.renderTaskPanel = renderTaskPanel;
+
 })(window);

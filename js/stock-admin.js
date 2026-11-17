@@ -324,7 +324,8 @@
     const RA = root.RequestsAdmin;
     if (!RA) return;
     const esc = RA.esc;
-    const ui = { tab: 'stock', itemId: null };
+    const ui = { tab: 'stock', itemId: null, sel: null, text: '' };
+    const SV = root.SplitView;
     let cache = { choices: null, status: null };
 
     const newOp = () => (root.crypto && root.crypto.randomUUID) ? root.crypto.randomUUID()
@@ -745,15 +746,45 @@
 
     // ── The view ────────────────────────────────────────────────────
 
-    function tabs() {
-        const t = (id, label) => '<button type="button" class="att-seg-btn' + (ui.tab === id ? ' is-on' : '') + '" data-tab="' + id + '">' + label + '</button>';
-        return '<div class="att-seg" role="tablist" aria-label="Stock">' +
-            t('stock', 'Stock') + t('receiving', 'Receiving') + t('pending', 'Waiting for owner') + t('history', 'History') + '</div>';
-    }
+    // Office redesign v5: tabs with counts, cards, one item / receiving line /
+    // record in the frame's pop-up. Waiting for owner keeps its own content
+    // (the records and, for the main owner, the cost-move cards).
+    const TAB_HELP = {
+        stock: 'One card per catalogue item, and where it is.',
+        receiving: 'Warehouse purchases awaiting delivery or a match.',
+        history: 'Every stock record.',
+    };
+    const TONE = { done: 'done', working: 'gold', abandoned: 'red', pc: 'check', pm: 'pm', none: 'none', hidden: 'none' };
 
-    function actions() {
-        const b = (act, label, primary) => '<button type="button" class="att-btn att-btn--sm' + (primary ? ' att-btn--primary' : '') + '" data-action="' + act + '">' + label + '</button>';
-        return '<div class="stk-actions">' + b('move', 'Issue / move', true) + b('leftover', 'Record leftovers') + b('count', 'Count') + b('opening', 'Opening stock') + '</div>';
+    function lineKey(l) { return l.purchase_id + ':' + l.line_no; }
+
+    // A receiving line's one next step: match it first, then receive it.
+    function lineStep(l) {
+        if (!l.match) return { act: 'match', label: 'Match…', text: 'Match this purchase line to a catalogue item first.' };
+        if (Number(l.awaiting) > 0) return { act: 'receive', label: 'Received…', text: 'This warehouse purchase is awaiting delivery.' };
+        return null;
+    }
+    // A card's button starts only the step it showed.
+    function sameKey(want, have) { return !!(want && have && want.act === have.act); }
+
+    function itemRow(i) {
+        return { id: 'i:' + i.item_id, title: i.name + (i.spec ? ' · ' + i.spec : ''),
+                 sub: i.places.map(p => p.name + ': ' + qty(p.quantity)).join(' · '), right: qty(i.total) + ' ' + i.unit };
+    }
+    function lineRow(l) {
+        const step = lineStep(l);
+        return { id: 'l:' + lineKey(l), title: l.item_name,
+                 sub: qty(l.quantity) + ' ' + l.unit + ' · bought ' + RA.formatDay(l.purchase_date) + ' by ' + l.bought_by_name,
+                 meta: 'Received ' + qty(l.received) + (Number(l.not_delivered) > 0 ? ' · not delivered ' + qty(l.not_delivered) : '') + ' · awaiting ' + qty(l.awaiting),
+                 right: qty(l.awaiting) + ' ' + l.unit,
+                 pill: l.match ? { text: 'Counts as ' + l.match.item_name, tone: 'done' } : { text: 'Not matched yet', tone: 'gold' },
+                 nextLabel: step ? step.label : '' };
+    }
+    function recRow(r) {
+        const st = recordState(r);
+        return { id: 'r:' + r.id, title: KIND_LABEL[r.kind] || r.kind, sub: recordText(r),
+                 meta: r.recorded_by_name + ' · ' + RA.formatDay(r.on),
+                 pill: st ? { text: st[0], tone: TONE[st[1]] || 'none' } : null, dim: !!r.reversed };
     }
 
     function recordRow(r, m) {
@@ -823,14 +854,17 @@
             '</div></div></div>';
     }
 
-    async function renderItem(body, itemId, reload) {
-        body.innerHTML = '<div class="att-empty">Loading…</div>';
+    // One catalogue item in the pop-up: its lots, Issue / move, Count, its records.
+    async function renderItem(panel, itemId, reload, nextLabel) {
+        const sid = panel.dataset.svId;
+        panel.innerHTML = '<div class="sv-panel-empty">Loading…</div>';
         let it;
-        try { it = await RA.rpc('stk_item', { p_item: itemId }); } catch (e) { RA.fail(body, e); return; }
+        try { it = await RA.rpc('stk_item', { p_item: itemId }); } catch (e) { if (panel.isConnected && panel.dataset.svId === sid) SV.error(panel, errorMessage(e)); return; }
+        if (!panel.isConnected || panel.dataset.svId !== sid) return;   // closed or moved on while this loaded
         const m = me();
+        const body = SV.page(panel, { kicker: 'Stock item', title: itemLabel(it), nextLabel: nextLabel });
+        body.classList.add('stk-tab', 'req-detail');
         body.innerHTML =
-            '<button type="button" class="att-btn att-btn--sm" data-back>← All items</button>' +
-            '<h3 class="stk-h">' + esc(itemLabel(it)) + '</h3>' +
             '<div class="stk-lots">' + (it.lots.length ? it.lots.map(l =>
                 '<div class="stk-lot"><div><strong>' + esc(l.untraced ? 'Untraced (old stock)' : (l.line_item || 'Purchase')) + '</strong> · ' +
                   esc(l.untraced ? 'counted ' : 'bought ') + esc(RA.formatDay(l.since)) +
@@ -843,7 +877,6 @@
               '<button type="button" class="att-btn att-btn--sm" data-item-act="count">Count</button></div>' +
             '<h3 class="stk-h">History</h3>' +
             '<div class="stk-recs">' + (it.records.map(r => recordRow(r, m)).join('') || '<div class="att-empty">Nothing yet.</div>') + '</div>';
-        body.querySelector('[data-back]').addEventListener('click', () => { ui.itemId = null; reload(); });
         body.querySelector('[data-item-act="move"]').addEventListener('click', () => openMove({ itemId: it.item_id }, reload));
         body.querySelector('[data-item-act="count"]').addEventListener('click', () => openCount({ itemId: it.item_id }, reload));
         wireRecords(body, it.records, reload);
@@ -873,71 +906,120 @@
         }));
     }
 
-    async function render(host) {
-        host.innerHTML = '<div class="att-stack stk-tab req-detail"><div class="att-empty">Loading…</div></div>';
+    async function render(host, opts) {
+        if (!host.querySelector('.sv')) host.innerHTML = '<div class="sv"><div class="sv-empty">Loading…</div></div>';
         let status;
         try { status = await RA.rpc('stk_status'); } catch (e) { RA.fail(host, e); return; }
         cache.status = status;
         root.currentStockMainOwner = !!(status && status.is_main_owner);
         if (!status || !status.enabled) return renderOff(host, status);
-        const reload = () => render(host);
-        host.innerHTML =
-            '<div class="att-stack stk-tab req-detail">' +
-              RA.head('Stock', 'Where goods are, in catalogue units. When goods reach someone else\'s project, the main owner approves where their cost goes.', tabs()) +
-              actions() +
-              '<div data-body><div class="att-empty">Loading…</div></div>' +
-              // 2B-b: the pilot's way back (Q30) — the main owner only, typed.
-              (status.is_main_owner ? '<div class="stk-switch-off"><button type="button" class="att-btn att-btn--sm att-btn--ghost" data-switch-off>Switch stock off…</button></div>' : '') +
-            '</div>';
-        host.querySelectorAll('[data-tab]').forEach(b => b.addEventListener('click', () => {
-            if (ui.tab === b.dataset.tab) return;
-            ui.tab = b.dataset.tab; ui.itemId = null;
-            render(host);
-        }));
-        host.querySelector('[data-action="move"]').addEventListener('click', () => openMove({}, reload));
-        host.querySelector('[data-action="leftover"]').addEventListener('click', () => openLeftover(reload));
-        host.querySelector('[data-action="count"]').addEventListener('click', () => openCount({}, reload));
-        host.querySelector('[data-action="opening"]').addEventListener('click', () => openOpening(reload));
-        const off = host.querySelector('[data-switch-off]');
-        if (off) off.addEventListener('click', () => openSwitchOff());
-        const body = host.querySelector('[data-body]');
+        const reload = () => render(host, { refreshPanel: true });
         cache.choices = null;
-        if (ui.tab === 'stock' && ui.itemId) return renderItem(body, ui.itemId, reload);
         let ov;
-        try { ov = await RA.rpc('stk_overview'); } catch (e) { RA.fail(body, e); return; }
+        try { ov = await RA.rpc('stk_overview'); } catch (e) { RA.fail(host, e); return; }
         const m = me();
-        if (ui.tab === 'receiving') {
-            body.innerHTML = '<div class="stk-actions"><button type="button" class="att-btn att-btn--sm" data-project-match>Match a project purchase line…</button></div>' +
-                (ov.awaiting.length ? ov.awaiting.map(lineCard).join('')
-                : '<div class="att-empty">No warehouse purchase is awaiting delivery or a match.</div>');
-            body.querySelector('[data-project-match]').addEventListener('click', () => openProjectMatch(reload));
-            body.querySelectorAll('[data-line-act]').forEach(b => b.addEventListener('click', () => {
-                const key = b.closest('[data-line]').dataset.line;
-                const l = ov.awaiting.find(x => x.purchase_id + ':' + x.line_no === key);
-                if (!l) return;
-                if (b.dataset.lineAct === 'receive') return openReceive(l, reload);
-                if (b.dataset.lineAct === 'nd') return openNotDelivered(l, reload);
-                return openMatch(l, reload);
-            }));
-        } else if (ui.tab === 'pending') {
-            body.innerHTML = (ov.pending.length ? '<div class="stk-recs">' + ov.pending.map(r => recordRow(r, m)).join('') + '</div>'
-                : '<div class="att-empty">No count or opening stock is waiting for the owner.</div>') +
-                (m.isMainOwner ? '<div data-costs></div>'
-                    : '<p class="req-muted">Only the main owner confirms counts and opening stock, and approves where moved goods\' cost goes.</p>');
-            wireRecords(body, ov.pending, reload);
-            // 2C: the main owner's pending cost moves, the same cards as Purchasing → Owner approvals.
-            if (m.isMainOwner && root.StockCostAdmin) root.StockCostAdmin.renderApprovals(body.querySelector('[data-costs]'));
-        } else if (ui.tab === 'history') {
-            body.innerHTML = ov.recent.length ? '<div class="stk-recs">' + ov.recent.map(r => recordRow(r, m)).join('') + '</div>'
-                : '<div class="att-empty">No stock records yet.</div>';
-            wireRecords(body, ov.recent, reload);
-        } else {
-            body.innerHTML = (ov.pending.length ? '<div class="att-info"><i data-lucide="clock"></i><div>' + ov.pending.length +
-                    ' waiting for the owner.</div></div>' : '') +
-                (ov.items.length ? ov.items.map(itemCard).join('') : '<div class="att-empty">No stock yet. Receive a warehouse purchase, record leftovers or opening stock.</div>');
-            body.querySelectorAll('[data-item]').forEach(c => c.addEventListener('click', () => { ui.itemId = c.dataset.item; render(host); }));
-        }
-        RA.icons();
+        if (root.NavCounts && m.isMainOwner) root.NavCounts.set('stock', ov.pending.length);
+        const draw = (o) => {
+            const text = String(ui.text || '').trim().toLowerCase();
+            const hit = r => !text || (r.title + ' ' + (r.sub || '') + ' ' + (r.meta || '')).toLowerCase().includes(text);
+            const rows = ui.tab === 'stock' ? ov.items.map(itemRow) : ui.tab === 'receiving' ? ov.awaiting.map(lineRow)
+                : ui.tab === 'history' ? ov.recent.map(recRow) : [];
+            const shown = rows.filter(hit);
+            if (o && o.leaveSelection && ui.sel && !shown.some(r => r.id === ui.sel)) ui.sel = null;
+            const empty = {
+                stock: 'No stock yet. Receive a warehouse purchase, record leftovers or opening stock.',
+                receiving: 'No warehouse purchase is awaiting delivery or a match.',
+                history: 'No stock records yet.',
+            }[ui.tab];
+            root.SplitView.render(host, {
+                key: 'reqStock',
+                title: 'Stock',
+                sub: 'Where goods are, in catalogue units. When goods reach someone else\'s project, the main owner approves where their cost goes.',
+                primary: { label: 'Issue / move', onClick: () => openMove({}, reload) },
+                more: [
+                    { label: 'Record leftovers', onClick: () => openLeftover(reload) },
+                    { label: 'Count', onClick: () => openCount({}, reload) },
+                    { label: 'Opening stock', onClick: () => openOpening(reload) },
+                ],
+                // Receiving keeps its own button: the phone sends the office here
+                // (Dacs Web → Stock → Receiving) to match a project purchase line.
+                toolbar: ui.tab === 'receiving' ? '<button type="button" class="att-btn" data-project-match>Match a project purchase line…</button>' : '',
+                onToolbar: el => { if (el.querySelector('[data-project-match]')) el.querySelector('[data-project-match]').addEventListener('click', () => openProjectMatch(reload)); },
+                lede: ui.tab === 'stock' && ov.pending.length ? ov.pending.length + ' waiting for the owner.' : '',
+                tabs: [['stock', 'Stock', ov.items.length], ['receiving', 'Receiving', ov.awaiting.length],
+                       ['pending', 'Waiting for owner', ov.pending.length], ['history', 'History', ov.recent.length]]
+                    .map(([id, label, count]) => ({ id, label, count, needs: id === 'pending' && m.isMainOwner, help: TAB_HELP[id] || '' })),
+                tab: ui.tab,
+                onTab: id => { ui.tab = id; ui.sel = null; ui.text = ''; draw(); },
+                search: ui.tab === 'pending' ? false : { placeholder: 'Search an item…', value: ui.text, onInput: t => { ui.text = t; draw({ leaveSelection: true }); } },
+                showing: text ? 'Showing ' + shown.length + ' of ' + rows.length : '',
+                groups: [{ title: '', rows: shown }],
+                empty: text ? 'Nothing matches the search.' : empty,
+                custom: ui.tab === 'pending',
+                onCustom: el => {
+                    el.classList.add('stk-tab', 'req-detail');
+                    el.innerHTML = (ov.pending.length ? '<div class="stk-recs">' + ov.pending.map(r => recordRow(r, m)).join('') + '</div>'
+                        : '<div class="att-empty">No count or opening stock is waiting for the owner.</div>') +
+                        (m.isMainOwner ? '<div data-costs></div>'
+                            : '<p class="req-muted">Only the main owner confirms counts and opening stock, and approves where moved goods\' cost goes.</p>');
+                    wireRecords(el, ov.pending, reload);
+                    // 2C: the main owner's pending cost moves, the same cards as Purchasing → Owner approvals.
+                    if (m.isMainOwner && root.StockCostAdmin) root.StockCostAdmin.renderApprovals(el.querySelector('[data-costs]'));
+                },
+                selectedId: ui.sel,
+                refreshPanel: !!(o && o.refreshPanel),
+                onSelect: (id, panel, so) => {
+                    ui.sel = id;
+                    const kind = id.slice(0, 2), key = id.slice(2);
+                    if (kind === 'i:') return renderItem(panel, key, reload, 'Next item');
+                    if (kind === 'l:') {
+                        const l = ov.awaiting.find(x => lineKey(x) === key);
+                        if (!l) return SV.error(panel, 'This purchase line is no longer awaiting delivery or a match.');
+                        const step = lineStep(l);
+                        const body = SV.page(panel, {
+                            kicker: 'Receiving', title: l.item_name,
+                            sub: qty(l.quantity) + ' ' + l.unit + ' · bought ' + RA.formatDay(l.purchase_date) + ' by ' + l.bought_by_name,
+                            step: step ? SV.nextStep(step.text, '<button type="button" class="att-btn att-btn--primary" data-line="' + esc(key) +
+                                '" data-line-act="' + esc(step.act) + '">' + esc(step.label) + '</button>') : '',
+                            nextLabel: 'Next line',
+                        });
+                        body.classList.add('stk-tab', 'req-detail');
+                        body.innerHTML = lineCard(l);
+                        // One handler per panel (assigned): a fresh panel per item.
+                        panel.onclick = e => {
+                            const btn = e.target.closest('[data-line-act]');
+                            if (!btn) return;
+                            if (btn.dataset.lineAct === 'receive') return openReceive(l, reload);
+                            if (btn.dataset.lineAct === 'nd') return openNotDelivered(l, reload);
+                            return openMatch(l, reload);
+                        };
+                        // The card's button: only the step it showed.
+                        const want = so && so.start ? lineStep(l) : null;
+                        const go = panel.querySelector('.sv-step [data-line-act]');
+                        if (want && go && sameKey(want, { act: go.dataset.lineAct })) go.click();
+                        RA.icons();
+                        return;
+                    }
+                    const r = ov.recent.find(x => x.id === key) || ov.pending.find(x => x.id === key);
+                    if (!r) return SV.error(panel, 'This stock record is no longer listed.');
+                    const st = recordState(r);
+                    const body = SV.page(panel, { kicker: 'Stock record', title: KIND_LABEL[r.kind] || r.kind,
+                        pills: st ? [{ text: st[0], tone: TONE[st[1]] || 'none' }] : [], sub: recordText(r), nextLabel: 'Next record' });
+                    body.classList.add('stk-tab', 'req-detail');
+                    body.innerHTML = '<div class="stk-recs">' + recordRow(r, m) + '</div>';
+                    wireRecords(body, [r], reload);
+                    RA.icons();
+                },
+                onClose: () => { ui.sel = null; },
+            });
+            // 2B-b: the pilot's way back (Q30) — the main owner only, typed; at the bottom.
+            host.querySelector('.sv').insertAdjacentHTML('beforeend',
+                (status.is_main_owner ? '<div class="stk-switch-off"><button type="button" class="att-btn att-btn--sm att-btn--ghost" data-switch-off>Switch stock off…</button></div>' : ''));
+            const off = host.querySelector('[data-switch-off]');
+            if (off) off.addEventListener('click', () => openSwitchOff());
+            RA.icons();
+        };
+        draw(opts);
     }
 
     // Switch stock off again (2B-b): for a pilot that failed before launch.
@@ -970,15 +1052,15 @@
             RA.icons();
             return;
         }
-        host.innerHTML =
-            '<div class="att-stack stk-tab">' +
-              RA.head('Stock', 'Not switched on yet.', '') +
-              '<div class="att-info att-info--warn"><i data-lucide="alert-triangle"></i><div>' +
-                'Switch stock on <strong>only at launch</strong> — after owner-confirmed cost moves (2C) and the phone (2B-b) are ready. ' +
-                'Once it is on, the old "Add to inventory" tick stops working, and staff start recording stock here.</div></div>' +
-              '<button type="button" class="att-btn att-btn--warn" data-switch>Switch stock on…</button>' +
-            '</div>';
-        host.querySelector('[data-switch]').addEventListener('click', () => RA.modal({
+        root.SplitView.render(host, { key: 'reqStock', title: 'Stock', sub: 'Not switched on yet.', search: false, tabs: [],
+            off: { title: 'Not switched on yet.',
+                   text: 'Switch stock on only at launch — after owner-confirmed cost moves (2C) and the phone (2B-b) are ready. ' +
+                         'Once it is on, the old "Add to inventory" tick stops working, and staff start recording stock here.',
+                   button: { label: 'Switch stock on…', onClick: () => switchOn() } } });
+        RA.icons();
+    }
+    function switchOn() {
+        return RA.modal({
             title: 'Switch stock on',
             sub: 'Type STOCK to confirm. Do this only at launch.',
             warn: true,
@@ -991,8 +1073,7 @@
                 root.currentStockOn = true;
             },
             onDone: () => root.location.reload(),
-        }));
-        RA.icons();
+        });
     }
 
     // The shopping list's "Issue from stock": the issue form for one request line.
@@ -1003,4 +1084,15 @@
 
     root.StockAdmin = Object.assign({}, pure, { openIssue, render });
     RA.views.reqStock = render;
+
+    // D5: the red count on Stock — counts and opening stock waiting for the
+    // owner, for the main owner (who alone confirms them); nobody else counts it.
+    if (root.NavCounts) {
+        root.NavCounts.register('stock', async () => {
+            const st = await RA.rpc('stk_status');
+            if (!st || !st.enabled || !st.is_main_owner) return null;
+            const ov = await RA.rpc('stk_overview');
+            return ((ov && ov.pending) || []).length;
+        });
+    }
 })(typeof window !== 'undefined' ? window : globalThis);
