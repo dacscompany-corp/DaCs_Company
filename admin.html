@@ -21,7 +21,7 @@
     <!-- Client Reimbursement Tracker Styles -->
     <link rel="stylesheet" href="css/reimbursement-module.css">
     <link rel="stylesheet" href="css/attendance-admin.css">
-    <link rel="stylesheet" href="css/requests-admin.css?v=20261012a">
+    <link rel="stylesheet" href="css/requests-admin.css?v=20261114c">
     <link rel="stylesheet" href="css/purchasing-admin.css?v=20261028a">
     <link rel="stylesheet" href="css/workplan-admin.css?v=20261014a">
     <!-- Warranty Retention Register + Fund Styles -->
@@ -51,6 +51,8 @@
     <!-- Renovation: site-wide design refresh (must load LAST so overrides win) -->
     <link rel="stylesheet" href="css/admin-renovation.css">
     <link rel="stylesheet" href="css/closeout-dialog.css?v=20260803f">
+    <!-- Office split-view frame (Attendance / Requests / Work Plan redesign), js/split-view.js -->
+    <link rel="stylesheet" href="css/split-view.css?v=20261114c">
     <!-- Mobile (iOS/Android) responsiveness layer — loads AFTER everything so it overrides module grids at phone widths -->
     <link rel="stylesheet" href="css/admin-mobile.css">
 </head>
@@ -5552,7 +5554,7 @@
 <!-- ?v= is a cache-buster, same convention as expenses-module.js below. Bump
      it whenever a change to this file must reach an already-open browser —
      admin.js carries PRIMARY_NAV, so a stale copy silently hides new tabs. -->
-<script src="js/admin.js?v=20261018a"></script>
+<script src="js/admin.js?v=20261114c"></script>
 <script src="js/print-utils.js?v=20261114c"></script>
 <script src="js/receipt-storage.js?v=20261031a"></script>
 <script src="js/expense-split-rows.js?v=20261028a"></script>
@@ -5566,9 +5568,11 @@
 <script src="js/quotation-module.js"></script>
 <script src="js/attendance-admin.js"></script>
 <script src="js/app-updates-admin.js"></script>
-<script src="js/requests-admin-core.js?v=20261013a"></script>
-<script src="js/requests-admin-queue.js?v=20261012a"></script>
-<script src="js/requests-admin-detail.js?v=20261012a"></script>
+<!-- The shared split-view frame + NavCounts; before every screen that uses it. -->
+<script src="js/split-view.js?v=20261114c"></script>
+<script src="js/requests-admin-core.js?v=20261114c"></script>
+<script src="js/requests-admin-queue.js?v=20261114c"></script>
+<script src="js/requests-admin-detail.js?v=20261114c"></script>
 <script src="js/requests-admin-setup.js?v=20261104b"></script>
 <script src="js/requests-admin-history.js?v=20261012a"></script>
 <script src="js/requests-admin-gallery.js?v=20261012a"></script>

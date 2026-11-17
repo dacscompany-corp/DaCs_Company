@@ -1,6 +1,11 @@
 // ════════════════════════════════════════════════════════════════════
 // Requests → one request (WorkMate, 0086). Owner + staff.
 //
+// Office split-view redesign (Phase 1): the request opens in the Queue's
+// right-hand panel (RA.renderRequestPanel, called by js/requests-admin-
+// queue.js) and its forms open in that same panel (SplitView.form), not
+// as pop-ups.
+//
 // Every office action on a request: mark portions arranged, move an
 // unarranged portion to another weekly batch, resolve a worker's
 // reduction of arranged quantity, change or cancel an item (with a
@@ -12,8 +17,11 @@
     'use strict';
     const RA = root.RequestsAdmin;
     if (!RA) return;
+    const SV = root.SplitView;
     const esc = RA.esc;
     const PHOTO_BUCKET = 'request-photos';
+    const DAY_MS = 24 * 60 * 60 * 1000;
+    const panelLoads = SV ? SV.seq() : { next() { return 0; }, isLatest() { return true; } };
 
     function kindLabel(kind) { return kind === 'tool' ? 'Tool' : 'Material'; }
 
@@ -122,8 +130,8 @@
         return '<img class="req-photo" alt="Request photo" data-photo-path="' + esc(ph.path) + '">';
     }
 
-    async function loadPhotos(host) {
-        const imgs = host.querySelectorAll('img[data-photo-path]');
+    async function loadPhotos(scope) {
+        const imgs = scope.querySelectorAll('img[data-photo-path]');
         for (const img of imgs) {
             const { data, error } = await root.sbClient.storage.from(PHOTO_BUCKET).createSignedUrl(img.dataset.photoPath, 600);
             if (error || !data) { img.alt = 'Photo unavailable'; continue; }
@@ -132,19 +140,21 @@
         }
     }
 
-    function historyHtml(req) {
+    function historySection(req) {
         const byLine = {};
         (req.lines || []).forEach(l => { byLine[l.id] = (l.position + 1) + '. ' + l.description; });
         const events = (req.events || []).slice().reverse();
-        if (!events.length) return '<div class="att-empty">No history yet.</div>';
-        return '<ul class="req-history">' + events.map(e =>
-            '<li class="req-history-item"><div class="req-history-when">' + esc(RA.formatManila(e.created_at)) + '</div>' +
-            '<div><strong>' + esc(e.actor_name) + '</strong> — ' + esc(RA.eventText(e)) +
-            (e.line_id && byLine[e.line_id] ? ' <span class="req-muted">(' + esc(byLine[e.line_id]) + ')</span>' : '') +
-            '</div></li>').join('') + '</ul>';
+        if (!events.length) return SV.section('History', '<div class="sv-empty-inline">No history yet.</div>');
+        return SV.history(events.map(e => ({
+            when: RA.formatManila(e.created_at),
+            html: '<strong>' + esc(e.actor_name) + '</strong> — ' + esc(RA.eventText(e)) +
+                (e.line_id && byLine[e.line_id] ? ' <span class="req-muted">(' + esc(byLine[e.line_id]) + ')</span>' : ''),
+        })), 6);
     }
 
-    // ── Modals ──────────────────────────────────────────────────────
+    // ── Forms, in the panel ─────────────────────────────────────────
+    // ctx.back(): show the request again; ctx.done(): reload queue + panel;
+    // ctx.stillShowing(): the panel still shows this request.
 
     function findLine(req, id) { return (req.lines || []).find(l => l.id === id); }
     function findPortion(req, id) {
@@ -152,8 +162,9 @@
         return null;
     }
 
-    function qtyModal(req, line, rerender) {
-        RA.modal({
+    function qtyForm(panel, line, ctx) {
+        root.SplitView.form(panel, {
+            kicker: 'Request',
             title: 'Change quantity',
             sub: line.description + ' · now ' + RA.formatQty(line.needed) + ' ' + line.unit,
             body:
@@ -163,19 +174,22 @@
                   '<input class="att-input" id="reqReason" name="reason" maxlength="200" placeholder="e.g. Engineer recounted on site"></div>' +
                 '<div class="att-hint att-span">Lowering below what is already arranged does not erase it: the difference waits as a reduction for you to resolve.</div>',
             submitLabel: 'Change quantity',
+            errorMessage: RA.errorMessage,
             onSubmit: async (form) => {
                 const q = RA.parseQty(form.qty.value);
                 if (q === null) throw new Error('BAD_QUANTITY');
                 if (!form.reason.value.trim()) throw new Error('REASON_REQUIRED');
                 await RA.rpc('pr_office_change_quantity', { p_line: line.id, p_quantity: q, p_reason: form.reason.value.trim() });
             },
-            onDone: rerender,
+            onCancel: ctx.back,
+            onDone: ctx.done,
         });
     }
 
-    function cancelModal(req, line, rerender) {
+    function cancelForm(panel, line, ctx) {
         const arranged = (line.portions || []).some(p => p.arranged);
-        RA.modal({
+        root.SplitView.form(panel, {
+            kicker: 'Request',
             title: 'Cancel this item',
             sub: line.description + ' · ' + RA.formatQty(line.needed) + ' ' + line.unit,
             body:
@@ -185,16 +199,19 @@
                   '<input class="att-input" id="reqReason" name="reason" maxlength="200" placeholder="e.g. Wrong size; replaced by item 3"></div>',
             submitLabel: 'Cancel item',
             warn: true,
+            errorMessage: RA.errorMessage,
             onSubmit: async (form) => {
                 if (!form.reason.value.trim()) throw new Error('REASON_REQUIRED');
                 await RA.rpc('pr_office_cancel_line', { p_line: line.id, p_reason: form.reason.value.trim() });
             },
-            onDone: rerender,
+            onCancel: ctx.back,
+            onDone: ctx.done,
         });
     }
 
-    function reductionModal(line, portion, rerender) {
-        RA.modal({
+    function reductionForm(panel, line, portion, ctx) {
+        root.SplitView.form(panel, {
+            kicker: 'Request',
             title: 'Resolve the reduction',
             sub: line.description + ' · ' + RA.cutoffLabel(portion.cutoff_at),
             body:
@@ -208,18 +225,23 @@
                 '<div class="att-field att-span"><label for="reqNote">Note <span class="att-hint-inline">(optional)</span></label>' +
                   '<input class="att-input" id="reqNote" name="note" maxlength="200"></div>',
             submitLabel: 'Resolve',
+            errorMessage: RA.errorMessage,
             onSubmit: async (form) => {
                 await RA.rpc('pr_office_resolve_reduction', { p_portion: portion.id, p_outcome: form.outcome.value, p_note: form.note.value.trim() || null });
             },
-            onDone: rerender,
+            onCancel: ctx.back,
+            onDone: ctx.done,
         });
     }
 
-    async function moveModal(line, portion, rerender) {
+    async function moveForm(panel, line, portion, ctx) {
         let batches;
         try { batches = await RA.rpc('pr_office_batches'); } catch (e) { alert(RA.errorMessage(e)); return; }
+        // Another request may have been opened while this waited.
+        if (!ctx.stillShowing()) return;
         const targets = (batches || []).filter(b => b.id !== portion.batch_id);
-        RA.modal({
+        root.SplitView.form(panel, {
+            kicker: 'Request',
             title: 'Move to another weekly batch',
             sub: line.description + ' · ' + RA.formatQty(portion.quantity) + ' ' + line.unit,
             body:
@@ -230,17 +252,20 @@
                 '<div class="att-field att-span"><label for="reqNote">Note <span class="att-hint-inline">(optional)</span></label>' +
                   '<input class="att-input" id="reqNote" name="note" maxlength="200" placeholder="e.g. Supplier can deliver earlier"></div>',
             submitLabel: 'Move',
+            errorMessage: RA.errorMessage,
             onSubmit: async (form) => {
                 await RA.rpc('pr_office_move_portion', { p_portion: portion.id, p_batch: form.batch.value, p_note: form.note.value.trim() || null });
             },
-            onDone: rerender,
+            onCancel: ctx.back,
+            onDone: ctx.done,
         });
     }
 
-    function conflictModal(req, line, conflictId, apply, rerender) {
+    function conflictForm(panel, line, conflictId, apply, ctx) {
         const k = (line.open_conflicts || []).find(x => x.id === conflictId);
         if (!k) return;
-        RA.modal({
+        root.SplitView.form(panel, {
+            kicker: 'Request',
             title: apply ? 'Apply the offline edit' : 'Keep the current quantity',
             sub: line.description,
             body:
@@ -251,22 +276,27 @@
                 '<div class="att-field att-span"><label for="reqNote">Note <span class="att-hint-inline">(optional)</span></label>' +
                   '<input class="att-input" id="reqNote" name="note" maxlength="200"></div>',
             submitLabel: apply ? 'Apply' : 'Keep current',
+            errorMessage: RA.errorMessage,
             onSubmit: async (form) => {
                 await RA.rpc('pr_office_resolve_conflict', { p_conflict: conflictId, p_apply: apply, p_note: form.note.value.trim() || null });
             },
-            onDone: rerender,
+            onCancel: ctx.back,
+            onDone: ctx.done,
         });
     }
 
-    async function matchModal(line, rerender) {
+    async function matchForm(panel, line, ctx) {
         let items;
         try { items = await RA.rpc('pr_office_catalog'); } catch (e) { alert(RA.errorMessage(e)); return; }
+        // Another request may have been opened while this waited.
+        if (!ctx.stillShowing()) return;
         items = items || [];
         function options(text) {
             return '<option value="">— No match —</option>' + RA.catalogMatches(items, line.kind, text).map(i =>
                 '<option value="' + esc(i.id) + '"' + (i.id === line.catalog_item_id ? ' selected' : '') + '>' + esc(RA.itemLabel(i)) + '</option>').join('');
         }
-        RA.modal({
+        root.SplitView.form(panel, {
+            kicker: 'Request',
             title: 'Match to the catalogue',
             sub: line.description + (line.spec ? ' · ' + line.spec : '') + ' (' + line.unit + ')',
             body:
@@ -276,6 +306,7 @@
                   '<select class="att-input" id="reqItem" name="item" size="8">' + options('') + '</select></div>' +
                 '<div class="att-hint att-span">Missing? Add it in Requests → Catalogue first. The worker\'s own words stay on the request.</div>',
             submitLabel: 'Save match',
+            errorMessage: RA.errorMessage,
             onOpen: (form) => {
                 form.find.addEventListener('input', () => { form.item.innerHTML = options(form.find.value); });
             },
@@ -285,110 +316,121 @@
                 if (form.item.selectedIndex < 0) throw new Error('BAD_CATALOG_ITEM');
                 await RA.rpc('pr_office_match_item', { p_line: line.id, p_item: form.item.value || null });
             },
-            onDone: rerender,
+            onCancel: ctx.back,
+            onDone: ctx.done,
         });
     }
 
-    // ── The screen ──────────────────────────────────────────────────
+    // ── The panel ───────────────────────────────────────────────────
 
-    async function renderDetail(host) {
-        const id = RA.state.detailId;
-        if (!id) { root.switchView('reqQueue'); return; }
-        host.innerHTML = '<div class="att-stack"><div class="att-empty">Loading the request…</div></div>';
-        let req;
-        try { req = await RA.rpc('pr_office_request', { p_request: id }); } catch (e) { RA.fail(host, e); return; }
-        if (!req) { RA.fail(host, { message: 'NOT_FOUND' }); return; }
+    const STATE_TONE = { conflict: 'red', reduction: 'red', cancelled: 'none', unarranged: 'gold', partly: 'gold', arranged: 'done' };
+
+    function draw(panel, req, hooks) {
         const photos = req.photos || [];
         const requestPhotos = photos.filter(ph => !ph.line_id);
-        const rerender = () => renderDetail(host);
 
         // The year is dropped while it is this year, as in the queue.
-        const manilaNow = new Date(Date.now() + 8 * 60 * 60 * 1000);
-        const year = manilaNow.getUTCFullYear();
-        const today = manilaNow.toISOString().slice(0, 10);
+        const now = Date.now();
+        const year = new Date(now + 8 * 60 * 60 * 1000).getUTCFullYear();
+        const today = RA.manilaDayKey(now);
         const when = iso => RA.formatManila(iso).replace(' ' + year + ',', ' ·');
         const lines = req.lines || [];
         const sum = RA.requestSummary(req);
+        const state = RA.requestState(req);
         const states = lines.map(RA.lineState);
         const count = (...keys) => states.filter(x => keys.includes(x)).length;
         const chip = (n, text, tone) => n
             ? '<span class="req-sum req-sum--' + tone + '"><strong>' + n + '</strong> ' + text + '</span>' : '';
-        const overdue = sum.urgent && sum.neededBy && sum.neededBy < today;
+        const overdue = RA.isOverdue(req, today);
         // "Team Team test" read like a typo: say "Team" only if the name does not.
         const teamLabel = req.team_name
             ? (/^team\b/i.test(req.team_name) ? req.team_name : 'Team ' + req.team_name) : '';
-        const meta = (label, value) => value
-            ? '<div class="req-meta-row"><dt>' + label + '</dt><dd>' + value + '</dd></div>' : '';
 
-        host.innerHTML =
-            '<div class="att-stack req-detail">' +
-              '<div class="att-crumbs"><button class="att-link" type="button" data-act="back">← Request queue</button></div>' +
-              '<div class="att-head"><div>' +
-                '<h2 class="att-title">Request from ' + esc(req.requester_name) + '</h2>' +
-                '<p class="att-sub">Received ' + esc(when(req.received_at)) + ' · ' + esc(req.project_name) + '</p>' +
-              '</div>' +
-              (req.status === 'cancelled' ? '<div class="att-head-actions"><span class="att-pill att-pill--hidden">Cancelled</span></div>' : '') +
-              '</div>' +
-              '<div class="req-layout">' +
-                '<div class="req-main">' +
-                  '<div class="req-summary">' +
-                    '<span class="req-sum req-sum--plain"><strong>' + lines.length + '</strong> item' + (lines.length === 1 ? '' : 's') + '</span>' +
-                    (sum.urgent ? '<span class="req-sum req-sum--red"><strong>' + (overdue ? 'Overdue' : 'Urgent') + '</strong> needed ' +
-                      esc(RA.formatDay(sum.neededBy)) + '</span>' : '') +
-                    chip(count('conflict', 'reduction'), 'to resolve', 'red') +
-                    chip(count('unarranged', 'partly'), 'to arrange', 'gold') +
-                    chip(count('arranged'), 'arranged', 'green') +
-                    chip(count('cancelled'), 'cancelled', 'plain') +
-                  '</div>' +
-                  (req.note ? '<div class="att-info"><i data-lucide="message-square"></i><div>' + esc(req.note) + '</div></div>' : '') +
-                  lines.map(l => lineCard(l, photos)).join('') +
-                '</div>' +
-                '<aside class="req-side">' +
-                  '<div class="att-card"><div class="att-card-head"><div class="att-card-title">Request</div></div>' +
-                    '<dl class="req-meta">' +
-                      meta('Requested by', '<strong>' + esc(req.requester_name) + '</strong>') +
-                      meta('Project', esc(req.project_name)) +
-                      meta('Work', esc(req.work_name)) +
-                      meta('Team', esc(teamLabel)) +
-                      meta('Received', esc(when(req.received_at))) +
-                      meta('Drafted on phone', req.drafted_at ? esc(when(req.drafted_at)) : '') +
-                    '</dl></div>' +
-                  (requestPhotos.length ? '<div class="att-card"><div class="att-card-head"><div class="att-card-title">Photos</div></div>' +
-                    '<div class="att-card-body"><div class="req-photos">' + requestPhotos.map(photoImg).join('') + '</div></div></div>' : '') +
-                  '<details class="att-card req-hist"' + ((req.events || []).length <= 6 ? ' open' : '') + '>' +
-                    '<summary>History <span class="req-muted">' + (req.events || []).length + '</span></summary>' +
-                    '<div class="req-hist-body">' + historyHtml(req) + '</div></details>' +
-                '</aside>' +
-              '</div>' +
-            '</div>';
+        const pills = [];
+        if (req.status === 'cancelled') pills.push({ text: 'Cancelled', tone: 'none' });
+        else pills.push({ text: state === 'cancelled' ? 'Closed' : RA.STATE_LABEL[state], tone: STATE_TONE[state] });
+        if (sum.urgent) {
+            pills.push(overdue
+                ? { text: 'OVERDUE · needed ' + RA.formatDay(sum.neededBy), tone: 'solidRed' }
+                : { text: sum.neededBy ? 'URGENT · by ' + RA.formatDay(sum.neededBy) : 'URGENT', tone: 'red' });
+        }
 
-        host.querySelector('.att-stack').addEventListener('click', async (e) => {
+        const sections = [];
+        if (overdue && state !== 'arranged' && state !== 'cancelled') {
+            const late = Math.round((Date.parse(today + 'T00:00:00Z') - Date.parse(sum.neededBy + 'T00:00:00Z')) / DAY_MS);
+            sections.push(SV.notice('red', 'alarm-clock', 'Overdue ' + late + (late === 1 ? ' day' : ' days'),
+                esc('Needed ' + RA.formatDay(sum.neededBy) + '. Arrange it now or tell the worker when it will arrive.')));
+        }
+        if (req.note) sections.push(SV.section('Note from the worker', '<p class="sv-text">' + esc(req.note) + '</p>'));
+        sections.push(SV.section('Items (' + lines.length + ')',
+            '<div class="req-summary">' +
+              '<span class="req-sum req-sum--plain"><strong>' + lines.length + '</strong> item' + (lines.length === 1 ? '' : 's') + '</span>' +
+              chip(count('conflict', 'reduction'), 'to resolve', 'red') +
+              chip(count('unarranged', 'partly'), 'to arrange', 'gold') +
+              chip(count('arranged'), 'arranged', 'green') +
+              chip(count('cancelled'), 'cancelled', 'plain') +
+            '</div>' +
+            lines.map(l => lineCard(l, photos)).join('')));
+        if (requestPhotos.length) sections.push(SV.section('Photos', '<div class="req-photos">' + requestPhotos.map(photoImg).join('') + '</div>'));
+        sections.push(SV.facts([
+            ['Requested by', '<strong>' + esc(req.requester_name) + '</strong>'],
+            ['Project', esc(req.project_name)],
+            ['Work', esc(req.work_name)],
+            ['Team', esc(teamLabel)],
+            ['Received', esc(when(req.received_at))],
+            ['Drafted on phone', req.drafted_at ? esc(when(req.drafted_at)) : ''],
+        ]));
+        sections.push(historySection(req));
+
+        SV.fill(panel, SV.panelHtml({
+            kicker: 'Request · received ' + when(req.received_at),
+            title: req.project_name,
+            sub: [req.work_name, 'from ' + req.requester_name, teamLabel].filter(Boolean).join(' · '),
+            pills: pills,
+            sections: sections,
+            nextLabel: hooks.nextLabel,
+        }));
+
+        const ctx = { back: () => draw(panel, req, hooks), done: hooks.onChanged, stillShowing: () => panel.dataset.svId === req.id };
+        // One handler per panel (assigned, not added), so redrawing the same
+        // request never stacks a second copy.
+        panel.onclick = async (e) => {
             const b = e.target.closest('[data-act]');
             if (!b || b.disabled) return;
             const act = b.dataset.act;
-            if (act === 'back') { root.switchView('reqQueue'); return; }
             const line = b.dataset.line ? findLine(req, b.dataset.line) : null;
             const found = b.dataset.portion ? findPortion(req, b.dataset.portion) : null;
             if (act === 'arrange' || act === 'unarrange') {
                 b.disabled = true;
                 try {
                     await RA.rpc('pr_office_set_arranged', { p_portion: b.dataset.portion, p_arranged: act === 'arrange' });
-                    rerender();
+                    hooks.onChanged();
                 } catch (err) { alert(RA.errorMessage(err)); b.disabled = false; }
-            } else if (act === 'reduction' && found) reductionModal(found.line, found.portion, rerender);
-            else if (act === 'move' && found) moveModal(found.line, found.portion, rerender);
-            else if (act === 'qty' && line) qtyModal(req, line, rerender);
-            else if (act === 'cancel' && line) cancelModal(req, line, rerender);
-            else if (act === 'match' && line) matchModal(line, rerender);
+            } else if (act === 'reduction' && found) reductionForm(panel, found.line, found.portion, ctx);
+            else if (act === 'move' && found) moveForm(panel, found.line, found.portion, ctx);
+            else if (act === 'qty' && line) qtyForm(panel, line, ctx);
+            else if (act === 'cancel' && line) cancelForm(panel, line, ctx);
+            else if (act === 'match' && line) matchForm(panel, line, ctx);
             else if (act === 'conflict') {
                 const owner = (req.lines || []).find(l => (l.open_conflicts || []).some(k => k.id === b.dataset.conflict));
-                if (owner) conflictModal(req, owner, b.dataset.conflict, b.dataset.apply === '1', rerender);
+                if (owner) conflictForm(panel, owner, b.dataset.conflict, b.dataset.apply === '1', ctx);
             }
-        });
+        };
 
-        RA.icons();
-        loadPhotos(host);
+        loadPhotos(panel);
     }
 
-    RA.views.reqDetail = renderDetail;
+    // hooks: { onChanged(): reload the queue and this panel, nextLabel }.
+    async function renderRequestPanel(panel, id, hooks) {
+        const mine = panelLoads.next();
+        if (!panel.dataset.svRestore) panel.innerHTML = '<div class="sv-panel-empty">Loading the request…</div>';
+        let req;
+        try { req = await RA.rpc('pr_office_request', { p_request: id }); }
+        catch (e) { if (panelLoads.isLatest(mine)) SV.error(panel, RA.errorMessage(e)); return; }
+        if (!panelLoads.isLatest(mine)) return;
+        if (!req) { SV.error(panel, RA.errorMessage({ message: 'NOT_FOUND' })); return; }
+        draw(panel, req, hooks);
+    }
+
+    RA.renderRequestPanel = renderRequestPanel;
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -303,7 +303,7 @@ test('Item history is wired into the Requests section', () => {
   ok(/reqHistory:\s*'Item history'/.test(html), 'title');
   const core = html.indexOf('js/requests-admin-core.js'), hist = html.indexOf('js/requests-admin-history.js');
   ok(core > 0 && hist > core, 'the history script loads after the core');
-  ok(html.includes('css/requests-admin.css?v=20261012a') && html.includes('js/requests-admin-history.js?v=20261012a'), 'cache-busted');
+  ok(html.includes('css/requests-admin.css?v=20261114c') && html.includes('js/requests-admin-history.js?v=20261012a'), 'cache-busted');
   const start = nav.indexOf("id: 'requests'");
   const block = nav.slice(start, nav.indexOf(']', start));
   ok(block.includes("{ view: 'reqHistory'"), 'PRIMARY_NAV Requests lists reqHistory');
@@ -392,6 +392,109 @@ test('the screen matches the server: membership sends, a turned-off team is refu
   const member = m85.slice(m85.indexOf('create or replace function pr_is_current_member'), m85.indexOf('create or replace function pr_is_current_leader'));
   ok(/m\.removed_at is null and t\.active/.test(member), 'a turned-off team has no current members');
   ok(src('js/requests-admin-setup.js').includes("Inactive — this team can\\'t send requests."), 'and the screen says so');
+});
+
+console.log('\nrequests-admin: split-view queue (office redesign, Phase 1)');
+
+test('queue tabs follow the existing "needs action" rule', () => {
+  const todo = req({}), done = req({ lines: [line({ portions: [portion({ arranged: true })] })] });
+  const clash = req({ lines: [line({ open_conflicts: [{ id: 'k' }] })] });
+  const red = req({ lines: [line({ portions: [portion({ arranged: true, pending_reduction: 2 })] })] });
+  const urgentDone = req({ lines: [line({ urgent: true, needed_by: '2026-10-01', portions: [portion({ arranged: true })] })] });
+  eq([todo, done, clash, red].map(r => ra.inQueueTab(r, 'attn')), [true, false, true, true]);
+  eq([clash, red, todo].map(r => ra.inQueueTab(r, 'resolve')), [true, true, false]);
+  eq(ra.inQueueTab(todo, 'arrange'), true); eq(ra.inQueueTab(done, 'arranged'), true);
+  eq(ra.inQueueTab(urgentDone, 'urgent'), false);
+  eq(ra.queueCounts([todo, done, clash, red]), { attn: 3, urgent: 0, resolve: 2, arrange: 1, arranged: 1, all: 4 });
+  eq(ra.QUEUE_TABS.map(t => t[0]), ['attn', 'urgent', 'resolve', 'arrange', 'arranged', 'all']);
+});
+
+test('requestState moved to the core unchanged', () => {
+  eq(ra.requestState(req({})), 'unarranged');
+  eq(ra.requestState(req({ lines: [line({ portions: [portion({ arranged: true })] }), line({ id: 'l2' })] })), 'partly');
+  eq(ra.requestState(req({ lines: [line({ status: 'cancelled' })] })), 'cancelled');
+  ok(!/function requestState\(/.test(src('js/requests-admin-queue.js')), 'no second copy left in the queue');
+});
+
+test('overdue is a Manila calendar comparison', () => {
+  const u = req({ lines: [line({ urgent: true, needed_by: '2026-10-09' })] });
+  eq(ra.isOverdue(u, '2026-10-10'), true); eq(ra.isOverdue(u, '2026-10-09'), false);
+  eq(ra.isOverdue(req({}), '2026-10-10'), false);
+  eq(ra.manilaDayKey(Date.parse('2026-10-09T17:00:00Z')), '2026-10-10');
+  eq(ra.manilaDayKey(Date.parse('2026-10-09T15:59:00Z')), '2026-10-09');
+});
+
+test('a request opens in the Queue panel, never a page of its own', () => {
+  const core = src('js/requests-admin-core.js');
+  ok(/function openRequest\(id\) \{[\s\S]{0,120}root\.switchView\('reqQueue'\)/.test(core), 'openRequest → reqQueue');
+  ok(core.includes("views.reqDetail = () => root.switchView('reqQueue')"), 'old route redirects');
+});
+
+test('Queue keeps everything it had (split view)', () => {
+  const q = src('js/requests-admin-queue.js');
+  for (const s of ['Request queue', 'urgent first, then by weekly batch', 'Change batch dates',
+    'Requests received after the cutoff go to the next week.', 'Showing the newest 300 requests',
+    'All weekly batches', 'Search worker, project, item…', 'Clear filters', 'Closed',
+    'No open requests. New ones appear here as soon as a worker sends them.', 'No closed requests yet.',
+    'Needed soonest first', 'Waiting on the office', 'Nothing left to arrange', 'This week', 'OVERDUE'])
+    ok(q.includes(s), 'missing: ' + s);
+  ok(q.includes('SplitView.render('), 'drawn by the shared frame');
+  ok(q.includes("RA.rpc('pr_office_queue'") && q.includes("RA.rpc('pr_office_batches')"), 'same RPCs');
+  ok(/showQueueForBatch = function[\s\S]{0,300}ui\.tab = 'all'/.test(q), 'View in queue shows every open request of the batch');
+  ok(q.includes("NavCounts.register('requests'"), 'badge loader');
+  ok(!/<table/.test(q), 'the old table is gone');
+});
+
+test('one request keeps every action, now in the panel', () => {
+  const d = src('js/requests-admin-detail.js');
+  for (const r of ['pr_office_request', 'pr_office_set_arranged', 'pr_office_move_portion', 'pr_office_resolve_reduction',
+    'pr_office_change_quantity', 'pr_office_cancel_line', 'pr_office_resolve_conflict', 'pr_office_match_item',
+    'pr_office_batches', 'pr_office_catalog'])
+    ok(d.includes("RA.rpc('" + r + "'"), 'missing RPC ' + r);
+  for (const s of ['Mark arranged', 'Move…', 'Undo arranged', 'Resolve reduction…', 'Change quantity…', 'Cancel item…',
+    'Still needed', 'Why urgent', 'Drafted on phone', 'Offline edit needs a decision.', 'The supplier order was reduced',
+    'Kept the full order — the extra is surplus', 'Missing? Add it in Requests → Catalogue first.', 'No history yet.'])
+    ok(d.includes(s), 'missing: ' + s);
+  ok(!d.includes('RA.modal('), 'no pop-up forms left');
+  ok((d.match(/SplitView\.form\(panel/g) || []).length === 6, 'six forms in the panel');
+  ok(d.includes('RA.renderRequestPanel = '), 'exported for the queue');
+});
+
+console.log('\nrequests-admin: review fixes (Phase 1)');
+
+test('every page wrapper class the screens use still has its CSS', () => {
+  const css = ['css/requests-admin.css', 'css/purchasing-admin.css', 'css/attendance-admin.css', 'css/workplan-admin.css', 'css/split-view.css']
+    .map(src).join('\n');
+  const used = new Set();
+  for (const f of fs.readdirSync(path.join(__dirname, '..', 'js')).filter(n => n.endsWith('.js'))) {
+    for (const m of src('js/' + f).matchAll(/class="att-stack ([a-z0-9 -]+)"/g)) m[1].split(' ').forEach(c => c && used.add(c));
+  }
+  ok(used.has('req-detail'), 'Purchasing / Stock / Tools wrap their pages in req-detail');
+  for (const c of used) ok(new RegExp('\\.' + c + '\\b').test(css), 'no CSS left for .' + c);
+  ok(/\.req-detail \{[^}]*font-family: var\(--att-sans\)/.test(src('css/requests-admin.css')), 'req-detail keeps the sans font (prices must not render in Playfair)');
+});
+
+test('the Queue reloads its panel only after an action, and never sticks an automatic tab', () => {
+  const q = src('js/requests-admin-queue.js');
+  ok(/async function load\([\s\S]*?draw\(\{ refreshPanel: true \}\)/.test(q), 'load() redraws with refreshPanel');
+  ok(/refreshPanel: !!\(opts && opts\.refreshPanel\)/.test(q), 'draw passes it to the frame');
+  ok(/function onTab\(id\) \{[\s\S]{0,300}ui\.tab = id/.test(q), 'a tab the user picks is kept');
+  ok(!/if \(!closed\) ui\.tab = tab/.test(q), 'an automatic pick is not stored as the user\'s');
+  ok(/function renderQueue\(el\) \{[\s\S]{0,200}visitTab = null/.test(q), 'the automatic pick lasts one visit');
+});
+
+test('Move… and Match open their form only if the panel still shows that request', () => {
+  const d = src('js/requests-admin-detail.js');
+  for (const fn of ['moveForm', 'matchForm']) {
+    const body = d.slice(d.indexOf('async function ' + fn), d.indexOf('root.SplitView.form(panel', d.indexOf('async function ' + fn)));
+    ok(/if \(!ctx\.stillShowing\(\)\) return;/.test(body), fn + ' re-checks after its RPC');
+  }
+  ok(/stillShowing: \(\) => panel\.dataset\.svId === req\.id/.test(d), 'stillShowing compares the panel with this request');
+});
+
+test('phones keep the stacked batch row inside the panel', () => {
+  const c = src('css/requests-admin.css');
+  ok(/@media \(min-width: 761px\) \{[^}]*\.sv-panel \.req-portion \{/.test(c), 'the 3-column panel row only above the phone breakpoint');
 });
 
 // ── SUMMARY (keep last) ──

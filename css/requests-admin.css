@@ -40,10 +40,6 @@
     cursor: zoom-in;
 }
 
-.req-history { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
-.req-history-item { display: grid; grid-template-columns: 190px 1fr; gap: 12px; font-size: 13px; }
-.req-history-when { color: var(--att-muted); font-size: 12.5px; }
-
 .req-toggle { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; }
 .req-toggle input { width: 16px; height: 16px; accent-color: var(--att-green); }
 /* .att-toolbar label (attendance-admin.css) styles field captions in
@@ -80,35 +76,12 @@
 .hist-checks { border: 1px solid var(--att-line); border-radius: 10px; padding: 10px 12px; display: grid; gap: 8px; margin: 0; }
 .hist-checks legend { font-size: 12.5px; font-weight: 600; color: var(--att-ink-2); padding: 0 4px; }
 
-@media (max-width: 640px) {
-    .req-history-item { grid-template-columns: 1fr; gap: 2px; }
-}
-
 /* ════════════════════════════════════════════════════════════════════
-   Request queue — layout (js/requests-admin-queue.js)
-   Same type rules as the Attendance pages: Barlow with lining numerals
-   for data and controls, the serif for the page title only.
+   Shared request bits: batch steps, summary chips, tables used by the
+   setup screens. The Queue itself is drawn by js/split-view.js
+   (css/split-view.css) since the office split-view redesign.
    ════════════════════════════════════════════════════════════════════ */
 
-.req-queue {
-    font-family: var(--att-sans);
-    font-variant-numeric: lining-nums tabular-nums;
-    font-feature-settings: "lnum" 1, "tnum" 1;
-}
-.req-queue .att-title { font-family: var(--att-serif); font-feature-settings: "lnum" 1; }
-.req-queue .att-sub,
-.req-queue .req-muted,
-.req-queue .req-count { color: #55555A; }
-.req-queue .att-filter,
-.req-queue .att-search,
-.req-queue .att-seg-btn,
-.req-queue .att-info,
-.req-queue .req-toggle { font-family: var(--att-sans); }
-
-/* This week: cutoff → buy → deliver, each on its own label. */
-.req-week { align-items: center; }
-.req-week-main { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; width: 100%; }
-.req-week-title { font-weight: 700; color: var(--att-ink); }
 .req-steps { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
 .req-step {
     display: inline-flex;
@@ -129,8 +102,6 @@
 }
 .req-step strong { font-weight: 600; color: var(--att-ink); }
 .req-arrow { color: var(--att-faint); }
-.req-week-note { color: #55555A; }
-.req-week-edit { margin-left: auto; }
 
 /* The one-line picture above the table. */
 .req-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
@@ -161,12 +132,6 @@
 .req-table td { vertical-align: middle; }
 .req-received { white-space: nowrap; color: var(--att-ink-2); }
 .req-status { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
-.req-urgent--late { background: var(--att-red); color: #fff; }
-
-.req-row.is-urgent td:first-child { box-shadow: inset 4px 0 0 var(--att-red); }
-.req-row.is-overdue td { background: #FDF6F5; }
-.req-row.is-overdue:hover td { background: var(--att-red-tint); }
-.req-row.is-done td:not(.req-status-cell):not(.req-go) { opacity: .72; }
 
 .req-go { width: 40px; text-align: right; color: var(--att-faint); }
 .req-go svg { width: 18px; height: 18px; vertical-align: middle; }
@@ -184,12 +149,9 @@
 .req-group-title { font-weight: 700; color: var(--att-ink); margin-right: 10px; }
 .req-group-meta { color: #55555A; margin-right: 12px; }
 .req-group-count { float: right; color: #55555A; }
-.req-group--urgent td { background: var(--att-red-tint); }
-.req-group--urgent .req-group-title { color: var(--att-red); }
 .req-group .att-pill { margin-right: 10px; padding: 2px 9px; font-size: 11.5px; }
 
 @media (max-width: 640px) {
-    .req-week-edit { margin-left: 0; }
     .req-count { margin-left: 0; }
 }
 /* ════════════════════════════════════════════════════════════════════
@@ -306,6 +268,9 @@
    and the history on the right. Same type rules as the queue.
    ════════════════════════════════════════════════════════════════════ */
 
+/* Page wrapper still used by Purchasing, Stock and Tools (att-stack … req-detail):
+   Barlow with lining, tabular numerals — prices and quantities must never
+   fall back to the body serif (Playfair's old-style "0"/"1"). */
 .req-detail {
     font-family: var(--att-sans);
     font-variant-numeric: lining-nums tabular-nums;
@@ -317,9 +282,6 @@
 .req-detail .att-info,
 .req-detail .att-card-title { font-family: var(--att-sans); }
 
-.req-layout { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 20px; align-items: start; }
-.req-main, .req-side { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
-.req-side > .att-card + .att-card { margin-top: 0; }
 .req-sum--plain.req-sum { background: var(--att-line-soft); }
 
 /* An item: header, facts, one row per weekly batch, a footer of actions. */
@@ -388,6 +350,17 @@
 .req-portion .req-actions { justify-content: flex-end; }
 .req-red { margin-top: 4px; font-size: 13px; font-weight: 700; color: var(--att-red); }
 
+/* Inside the Queue's split-view panel the portion row is narrower: the
+   buttons go on their own line under the batch, quantity and status. */
+@media (min-width: 761px) {
+    .sv-panel .req-portion { grid-template-columns: minmax(0, 1.6fr) 90px minmax(0, 1.2fr); }
+}
+.sv-panel .req-pcell--act { grid-column: 1 / -1; }
+.sv-panel .req-portion .req-actions { justify-content: flex-start; }
+.sv-panel .req-summary { margin-bottom: 4px; gap: 6px 8px; }
+.sv-panel .req-sum { font-size: 13px; padding: 6px 11px; }
+.sv-panel .req-item + .req-item { margin-top: 12px; }
+
 .req-item-photos { padding: 14px 20px; border-top: 1px solid var(--att-line-soft); }
 .req-item-foot {
     display: flex;
@@ -406,37 +379,6 @@
 .req-meta dt { color: #55555A; }
 .req-meta dd { margin: 0; color: var(--att-ink); }
 
-.req-hist > summary {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 14px 20px;
-    font-weight: 700;
-    color: var(--att-ink);
-    cursor: pointer;
-    list-style: none;
-}
-.req-hist > summary::-webkit-details-marker { display: none; }
-.req-hist > summary::after { content: '▾'; margin-left: auto; color: var(--att-muted); }
-.req-hist:not([open]) > summary::after { content: '▸'; }
-.req-hist-body { padding: 0 20px 18px; }
-.req-detail .req-history { gap: 14px; margin-left: 5px; padding-left: 18px; border-left: 2px solid var(--att-line); }
-.req-detail .req-history-item { position: relative; grid-template-columns: 1fr; gap: 2px; }
-.req-detail .req-history-item::before {
-    content: '';
-    position: absolute;
-    left: -24px;
-    top: 5px;
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-    background: var(--att-card);
-    border: 2px solid var(--att-green);
-}
-
-@media (max-width: 1000px) {
-    .req-layout { grid-template-columns: 1fr; }
-}
 @media (max-width: 760px) {
     .req-item-head { flex-wrap: wrap; }
     .req-item-tags { justify-content: flex-start; width: 100%; }
