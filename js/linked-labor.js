@@ -333,7 +333,7 @@
             const o = pick.selectedOptions[0];
             if (!o || !o.value) { confirmBox.style.display = 'none'; return; }
             confirmBox.innerHTML = '<b>' + esc(o.dataset.name) + ' · ' + esc(workerNo(o.dataset.no)) + '</b> will see this agreement’s '
-                + 'scope, agreed amount, payments and balance in WorkMate. Nothing else changes: not the recorded name, '
+                + 'scope, agreed amount, paid so far and balance in WorkMate, not the list of payments. Nothing else changes: not the recorded name, '
                 + 'the payments, or any other contract.';
             confirmBox.style.display = '';
         });
@@ -450,7 +450,7 @@
         const t = document.getElementById('lcTrade');
         if (t && !t.value.trim() && o.dataset.trade) t.value = o.dataset.trade;
         if (note) {
-            note.innerHTML = '<b>' + esc(o.dataset.name) + ' · ' + esc(workerNo(o.dataset.no)) + '</b> will see this agreement’s amounts and payments in WorkMate.';
+            note.innerHTML = '<b>' + esc(o.dataset.name) + ' · ' + esc(workerNo(o.dataset.no)) + '</b> will see this agreement’s agreed amount, paid so far and balance in WorkMate, not the list of payments.';
             note.style.display = '';
         }
     }

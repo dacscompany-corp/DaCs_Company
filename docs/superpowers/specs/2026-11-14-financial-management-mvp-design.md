@@ -238,7 +238,7 @@ The company target margin is a percentage from 0 to 100, set by the main owner. 
 
 The server checks Spent independently: total Spent at the cutoff is the plain sum of the rows (no bucket rule needed), compared against the client's figure at submission and approval. Bucket splits come from the shared calculation layer.
 
-### 4.4 Storage (one migration, next free number, today `0115`)
+### 4.4 Storage (one migration, next free number, today `0116` — 0115 went to WorkMate Agreements on 17 Nov 2026)
 
 New tables:
 - forecast revisions (folder, revision no., status, cutoff, author, approver, timestamps, fingerprint, snapshot, prior revision, return reason, operation ids);

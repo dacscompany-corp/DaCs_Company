@@ -234,8 +234,9 @@ Profit   = Earned − Spent
   `labor_contracts.worker_id` is set, changed or cleared **only by the main owner** (`lc_link`, or the account picker
   on New Labor Contract) — never by name, never in bulk, never by payroll names or a contract's leader. The linked
   worker sees only their own agreements on the phone (`ll_my_agreements`): progress from that project's own BOQ
-  (Additional Works never borrows the main project's figure), agreed / paid / balance under `lcPaid`'s rule, and
-  payments as date · amount · method. **Online only: nothing about money is saved on the phone.** Every Project Control
+  (Additional Works never borrows the main project's figure) and agreed / paid / balance under `lcPaid`'s rule —
+  **never the list of payments** (`0115`, owner decision 2026-11-17: no date, amount or method of any payment reaches the
+  phone). **Online only: nothing about money is saved on the phone.** Every Project Control
   labor contract keeps an append-only history (`lc_events`, owner accounts only): once **signed or paid**, its terms
   change only with a reason, daily↔fixed is locked, and `capHistory` only grows. A linked contract is never deleted;
   **ending one marks nothing paid and moves no payment** (it can still be paid to settle it). Worker cards, statements,

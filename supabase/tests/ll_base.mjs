@@ -17,6 +17,8 @@ const mig = (f) => read(path.join(ROOT, 'supabase/migrations', f));
 
 export const M98 = mig('0098_pm_profit_sharing.sql');
 export const M113 = mig('0113_linked_labor.sql');
+// 0115 (17 Nov 2026): the phone gets no payment list. Applied only with --with-0115.
+export const M115 = mig('0115_agreements_no_payment_list.sql');
 
 const M02 = mig('0002_rls.sql');
 const M51 = mig('0051_attendance_worker_owner.sql');
