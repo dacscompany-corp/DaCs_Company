@@ -272,10 +272,7 @@ function _pmShareTexts(m, share) {
 function _pmOvHtml(p, ms, bills, reqs) {
     // ── metrics ──
     const progress    = _pmOvProgress(ms);
-    const outstanding = _pmOvOutstanding(reqs);
     const paid        = _pmOvPaid(reqs);
-    const payTotal    = paid + outstanding;
-    const paidPct     = payTotal > 0 ? Math.round(paid / payTotal * 100) : 0;
 
     // Payment-status donut uses the contract basis: Outstanding = Project Budget
     // (contract value) − Total cash receipt. Clamp at 0 so an over-collection
@@ -284,14 +281,6 @@ function _pmOvHtml(p, ms, bills, reqs) {
     const donutOutstanding = Math.max(0, donutContract - paid);
     const donutTotal       = donutContract > 0 ? donutContract : paid;
     const donutPaidPct     = donutTotal > 0 ? Math.round(paid / donutTotal * 100) : 0;
-
-    const open = reqs.filter(r => r.status === 'unpaid' || r.status === 'partial');
-    const next = open.slice().sort((a, b) => (a.weekEndingDate || '').localeCompare(b.weekEndingDate || ''))[0];
-    const today = _pmToday();   // local PH date — toISOString is UTC and lags a day before 8AM
-    let cadence = 'ontrack';
-    if (reqs.some(r => r.status === 'partial')) cadence = 'partial';
-    else if (open.some(r => r.status === 'unpaid' && r.weekEndingDate && r.weekEndingDate < today)) cadence = 'overdue';
-    const cadenceLabel = { ontrack: 'On track', partial: 'Partial last week', overdue: 'Overdue' }[cadence];
 
     // Direct cost = cumulative labor + materials across all weekly bills
     // (the grand total before the management fee). Falls back to
@@ -316,64 +305,6 @@ function _pmOvHtml(p, ms, bills, reqs) {
 
     const initial = (p.clientName || p.projectName || '?').trim().charAt(0).toUpperCase() || '?';
     const subBits = [p.projectName, (p.budget ? _pmOvShort(p.budget) + ' contract' : '')].filter(Boolean);
-
-    // ── hero ──
-    const hero = `
-    <div style="position:relative;border-radius:18px;background:linear-gradient(120deg,#0f5d3d 0%,#157a52 48%,#1f9d63 100%);padding:22px 26px;margin-bottom:16px;overflow:hidden;box-shadow:0 12px 30px rgba(21,122,82,0.24);">
-      <div style="position:absolute;top:-40px;right:-30px;width:200px;height:200px;border-radius:50%;background:rgba(255,255,255,0.07);"></div>
-      <div style="position:absolute;bottom:-60px;right:90px;width:150px;height:150px;border-radius:50%;background:rgba(255,255,255,0.05);"></div>
-      <div style="position:relative;display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:wrap;">
-        <div style="display:flex;align-items:center;gap:16px;">
-          <div style="width:54px;height:54px;border-radius:15px;flex:none;background:rgba(255,255,255,0.16);box-shadow:inset 0 0 0 1.5px rgba(255,255,255,0.3);display:flex;align-items:center;justify-content:center;font:700 22px 'IBM Plex Sans';color:#fff;">${_esc(initial)}</div>
-          <div>
-            <div style="font:700 21px 'IBM Plex Sans';color:#fff;line-height:1.1;">${_esc(p.clientName || p.projectName || 'Project')}</div>
-            <div style="font:400 12.5px 'IBM Plex Sans';color:rgba(255,255,255,0.85);margin-top:3px;">${_esc(subBits.join(' · ') || '—')}</div>
-            <div style="display:inline-flex;align-items:center;gap:6px;margin-top:9px;font:700 10.5px 'IBM Plex Sans';padding:4px 11px;border-radius:99px;background:rgba(255,255,255,0.18);color:#fff;"><span style="width:6px;height:6px;border-radius:50%;background:#aef0cd;"></span>${cadenceLabel}</div>
-          </div>
-        </div>
-        <div style="display:flex;align-items:center;gap:24px;">
-          <div style="text-align:right;">
-            <div style="font:600 10px 'IBM Plex Sans';color:rgba(255,255,255,0.75);text-transform:uppercase;letter-spacing:.06em;">Total cash receipt</div>
-            <div class="num" style="font:700 19px 'IBM Plex Sans';color:#fff;margin-top:3px;">${_fmt(paid)}</div>
-          </div>
-          <div style="width:1px;height:46px;background:rgba(255,255,255,0.22);"></div>
-          <div style="position:relative;width:84px;height:84px;flex:none;">
-            <div style="position:absolute;inset:0;border-radius:50%;background:conic-gradient(#fff 0% ${progress}%, rgba(255,255,255,0.22) ${progress}% 100%);"></div>
-            <div style="position:absolute;inset:9px;border-radius:50%;background:#157a52;display:flex;flex-direction:column;align-items:center;justify-content:center;">
-              <span class="num" style="font:700 20px 'IBM Plex Sans';color:#fff;line-height:1;">${progress}%</span>
-              <span style="font:500 8px 'IBM Plex Sans';color:rgba(255,255,255,0.8);text-transform:uppercase;letter-spacing:.06em;margin-top:2px;">complete</span>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>`;
-
-    // ── KPI tiles ──
-    const tile = (border, bg, label, valColor, val, sub, bar) => `
-      <div style="border:1px solid ${border};border-radius:14px;padding:16px 18px;background:${bg};min-width:0;">
-        <div style="font:600 10.5px 'IBM Plex Sans';color:#7c7b75;text-transform:uppercase;letter-spacing:.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${label}</div>
-        <div class="num" style="font:700 20px 'IBM Plex Sans';margin-top:8px;color:${valColor};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${val}</div>
-        ${bar != null
-            ? `<div style="height:6px;background:#d8ebe0;border-radius:99px;overflow:hidden;margin-top:10px;"><div style="height:100%;border-radius:99px;width:${bar}%;background:#1f8a5b;"></div></div>`
-            : `<div style="font:400 11px 'IBM Plex Sans';color:#8a8983;margin-top:3px;">${sub}</div>`}
-      </div>`;
-    const nextDueDate = next?.weekEndingDate
-        ? new Date(next.weekEndingDate + 'T00:00:00').toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
-        : 'None scheduled';
-    const nextDueSub = next ? _pmOvShort(next.totalAmount || next.amount || 0) + ' due' : 'all settled';
-    const tiles = `
-    <div class="pm-ov-kpis" style="display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-bottom:16px;">
-      ${tile('#c6e6d5', '#eaf4ef', 'Progress', '#0f6342', progress + '%', '', progress)}
-      ${tile('#d6dde4', '#eef0f3', 'Direct cost', '#44525f', _fmt(directCost), (feeTotal > 0 ? _pmOvShort(feeTotal) + ' fee on top' : 'labor + materials'), null)}
-      ${tile('#f0cdc8', '#f8ecea', 'Outstanding balance', '#8f352c', _fmt(outstanding), 'client still owes', null)}
-      ${tile('#c6e6d5', '#eaf4ef', 'Total cash receipt', '#0f6342', _fmt(paid), 'collected to date', null)}
-      ${tile('#f0e2c5', '#fbf3e2', 'Remaining cash receipt', netColor, _fmt(netCash), netSub, null)}
-      <div style="border:1px solid #d6e0f4;border-radius:14px;padding:16px 18px;background:#eef2fb;min-width:0;">
-        <div style="font:600 10.5px 'IBM Plex Sans';color:#7c7b75;text-transform:uppercase;letter-spacing:.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Next payment due</div>
-        <div style="font:700 16px 'IBM Plex Sans';margin-top:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${_esc(nextDueDate)}</div>
-        <div style="font:400 11px 'IBM Plex Sans';color:#8a8983;margin-top:3px;">${nextDueSub}</div>
-      </div>
-    </div>`;
 
     // ── charts: weekly billing trend (bars) + payment-status donut ──
     const weeks = bills.filter(b => b.weekEndingDate)
@@ -531,7 +462,8 @@ function _pmOvHtml(p, ms, bills, reqs) {
 
     // ════════════════════════════════════════════════════════════
     // Redesigned Overview layout (desktop design · brand green)
-    // 5 KPI tiles → breakdown bars + payment donut → billing trend + next-due card.
+    // 5 KPI tiles → breakdown bars + payment donut → billing trend. (The Friday
+    // next-payment-due card went with the Friday payment request, 18 Nov 2026.)
     // Reuses the existing data + the #pm-ov-* IDs so pmOvApplyRange keeps working.
     // ════════════════════════════════════════════════════════════
     // Custom date-range dropdown (native <select> can't style its option list).
@@ -735,25 +667,9 @@ function _pmOvHtml(p, ms, bills, reqs) {
       <div style="display:flex;align-items:flex-end;gap:10px;height:130px;">${bars}</div>
     </div>`;
 
-    const nextAmt  = next ? (next.totalAmount || next.amount || 0) : 0;
-    const isStrict = !!(next && (next.strict || next.isStrict || next.mode === 'strict'));
-    const ovNextDue = `
-    <div style="flex:1;min-width:240px;border-radius:16px;background:#1c1c1a;color:#fff;padding:20px 22px;display:flex;flex-direction:column;">
-      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;">
-        <span style="font:700 10px 'IBM Plex Sans';letter-spacing:.12em;text-transform:uppercase;color:rgba(255,255,255,.55);">Next payment due</span>
-        ${isStrict ? '<span style="font:700 9.5px \'IBM Plex Sans\';background:#b4892a;color:#fff;padding:3px 9px;border-radius:6px;letter-spacing:.04em;">STRICT</span>' : ''}
-      </div>
-      <div class="num" style="font:800 30px 'IBM Plex Sans';margin-top:10px;letter-spacing:-.01em;">${next ? _fmt(nextAmt) : '—'}</div>
-      <div style="font:400 12px 'IBM Plex Sans';color:rgba(255,255,255,.6);margin-top:5px;">${next ? _esc(nextDueDate) + ' · ' + _esc(nextDueSub) : 'No payment scheduled'}</div>
-      <div style="display:flex;gap:9px;margin-top:auto;padding-top:18px;">
-        <button onclick="pmWsTab('money')" style="flex:1;background:#157a52;border:none;border-radius:11px;padding:11px;font:700 12.5px 'IBM Plex Sans';color:#fff;cursor:pointer;">Send request</button>
-        <button onclick="pmWsTab('money')" style="background:rgba(255,255,255,.12);border:none;border-radius:11px;padding:11px 16px;font:700 12.5px 'IBM Plex Sans';color:#fff;cursor:pointer;">Edit</button>
-      </div>
-    </div>`;
-
     return ovHeader + ovTiles
         + `<div style="display:flex;gap:14px;flex-wrap:wrap;align-items:stretch;margin-bottom:14px;">${ovBreakdown}${ovDonut}</div>`
-        + `<div style="display:flex;gap:14px;flex-wrap:wrap;align-items:stretch;margin-bottom:16px;">${ovTrend}${ovNextDue}</div>`
+        + `<div style="display:flex;gap:14px;flex-wrap:wrap;align-items:stretch;margin-bottom:16px;">${ovTrend}</div>`
         + lists;
 }
 
@@ -1615,16 +1531,16 @@ function _pmFinishMark(kind, p) {
     </div>`;
 }
 
-// Compute card metrics (progress %, balance due, this Friday, cadence) from the
-// project's milestones + payment requests. Mutates the project object with `_m`.
+// Compute card metrics (progress %) from the project's milestones. Mutates the
+// project object with `_m`. (Balance due, This Friday and the On track / Overdue
+// badge measured the weekly Friday request, removed on 18 Nov 2026.)
 // Any failure falls back to safe zeros so one bad project never blanks the grid.
 async function _pmComputeProjectMetrics(p) {
-    const m = { progressPct: 0, balanceDue: 0, thisFriday: 0, cadence: 'ontrack' };
+    const m = { progressPct: 0 };
     p._m = m;
     try {
-        const [msSnap, paySnap, paSnap, ppSnap] = await Promise.all([
+        const [msSnap, paSnap, ppSnap] = await Promise.all([
             db.collection('constructionProjects').doc(p.id).collection('milestones').get(),
-            db.collection('paymentRequests').where('constructionProjectId', '==', p.id).get(),
             db.collection('constructionProjects').doc(p.id).collection('partnerAgreements').get()
                 .catch(() => ({ docs: [] })),   // never break the card if this read fails
             (async () => {
@@ -1662,18 +1578,6 @@ async function _pmComputeProjectMetrics(p) {
             }
             m.progressPct = Math.max(0, Math.min(100, Math.round(m.progressPct)));
         }
-
-        // Balance + this Friday + cadence from payment requests (mirrors _pmPayUpdateKPIs).
-        const reqs = paySnap.docs.map(d => d.data());
-        const open = reqs.filter(r => r.status === 'unpaid' || r.status === 'partial');
-        m.balanceDue = open.reduce((s, r) => s + ((r.totalAmount || r.amount || 0) - (r.amountPaid || 0)), 0);
-        const next = open.slice().sort((a, b) => (a.weekEndingDate || '').localeCompare(b.weekEndingDate || ''))[0];
-        m.thisFriday = next ? (next.totalAmount || next.amount || 0) : 0;
-
-        const today = _pmToday();   // local PH date, not UTC
-        if (reqs.some(r => r.status === 'partial')) m.cadence = 'partial';
-        else if (open.some(r => r.status === 'unpaid' && r.weekEndingDate && r.weekEndingDate < today)) m.cadence = 'overdue';
-        else m.cadence = 'ontrack';
     } catch(e) {
         console.warn('PM: metrics failed for', p.id, e.message);
     }
@@ -1759,23 +1663,15 @@ function _pmRenderProjectCards(projects) {
     // "O'Brien" or a malicious "'); alert(1); //" would break out. Now the
     // full project object is fetched from _pmProjects at click-time via the
     // delegated handler below (attached once via _handlerAttached flag).
-    const cadenceBadge = {
-        ontrack:  '<span class="pm-badge pm-badge-paid">On track</span>',
-        partial:  '<span class="pm-badge pm-badge-partial">Partial last week</span>',
-        overdue:  '<span class="pm-badge pm-badge-strict">Overdue</span>',
-    };
-    // A project that has been closed out is not "On track" — it isn't running
-    // at all. The closeout badge REPLACES the cadence chip so the card can't
-    // claim both, and the card is dimmed so a finished job reads as finished
-    // at a glance in the grid.
+    // A closed-out project gets its closeout badge, and the card is dimmed so a
+    // finished job reads as finished at a glance in the grid.
     const closeoutBadge = {
         completed:  '<span class="pm-badge pm-badge-paid">✓ Completed</span>',
         terminated: '<span class="pm-badge pm-badge-terminated">Terminated</span>',
     };
 
     grid.innerHTML = projects.map(p => {
-        const m       = p._m || { progressPct: 0, balanceDue: 0, thisFriday: 0, cadence: 'ontrack' };
-        const balCls  = m.balanceDue > 0 ? 'color:var(--pm-danger);' : '';
+        const m       = p._m || { progressPct: 0 };
         const contractVal = Number(p.budget) || 0;
         const closed  = closeoutBadge[p.status] ? p.status : null;
         return `<div class="pm-project-card${closed ? ' pm-card-closed pm-card-' + closed : ''}" data-pm-id="${_esc(p.id)}">
@@ -1796,19 +1692,9 @@ function _pmRenderProjectCards(projects) {
             <span class="pm-card-contract-label">Project Budget</span>
             <span class="pm-card-contract-value num">${contractVal > 0 ? _fmt(contractVal) : '—'}</span>
           </div>
-          <div class="pm-card-stats">
-            <div class="pm-card-stat">
-              <div class="pm-card-stat-label">Balance due</div>
-              <div class="pm-card-stat-value num" style="${balCls}">${_fmt(m.balanceDue)}</div>
-            </div>
-            <div class="pm-card-stat">
-              <div class="pm-card-stat-label">This Friday</div>
-              <div class="pm-card-stat-value num">${_fmt(m.thisFriday)}</div>
-            </div>
-          </div>
           <div class="pm-card-chips">
             ${_pmInboxBadgeHtml(p._inboxPending)}
-            ${closed ? closeoutBadge[closed] : (cadenceBadge[m.cadence] || cadenceBadge.ontrack)}
+            ${closed ? closeoutBadge[closed] : ''}
             ${(p._partner || p._partnerProfile)
                 ? (() => {
                     const at  = p._partner ? p._partner.acceptedAt : p._partnerProfile.partnerAgreementAcceptedAt;
@@ -5877,12 +5763,15 @@ window.pmDeleteFundRequest = async function(id) {
 async function _pmLoadPayments() {
     const tbody = document.getElementById('pm-pay-tbody');
     if (!tbody) return;
+    // Billing Request (0116): owner accounts only. js/pm-billing-docs.js checks the role again.
+    const brBtn = document.getElementById('pm-pay-billing-request');
+    if (brBtn) brBtn.style.display = window.currentUserRole === 'owner' ? '' : 'none';
     if (!_pmActiveProject) {
-        tbody.innerHTML = '<tr><td colspan="7" class="pm-empty-row">Select a client project above.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="4" class="pm-empty-row">Select a client project above.</td></tr>';
         _pmPayUpdateKPIs([]);
         return;
     }
-    tbody.innerHTML = '<tr><td colspan="7" class="pm-empty-row" style="color:#9ca3af;">Loading…</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="4" class="pm-empty-row" style="color:#9ca3af;">Loading…</td></tr>';
     try {
         const snap = await db.collection('paymentRequests')
             .where('constructionProjectId', '==', _pmActiveProject.id)
@@ -5892,55 +5781,22 @@ async function _pmLoadPayments() {
         _pmPayRenderTable(_pmPayRequests);
         _pmPayUpdateKPIs(_pmPayRequests);
     } catch(e) {
-        tbody.innerHTML = `<tr><td colspan="7" class="pm-empty-row">Error: ${_esc(e.message)}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="4" class="pm-empty-row">Error: ${_esc(e.message)}</td></tr>`;
     }
 }
 
+// Total cash receipt: the shared paid rule (PMShare.paid), the figure the Overview shows.
+// The Friday payment request and its Outstanding / Next due / Strict figures were
+// removed on 18 Nov 2026 (owner): payments are recorded, never requested weekly.
 function _pmPayUpdateKPIs(reqs) {
-    const outstanding = reqs.filter(r => r.status === 'unpaid' || r.status === 'partial')
-        .reduce((s,r) => s + ((r.totalAmount || 0) - (r.amountPaid || 0)), 0);
-    // Approved client self-payments ('verified') count toward Total Paid even if
-    // amount_paid wasn't backfilled, using the client-entered paidAmount/totalAmount.
-    const paid = reqs.reduce((s,r) => {
-        if (r.status === 'verified') return s + (r.amountPaid || r.paidAmount || r.totalAmount || 0);
-        return s + (r.amountPaid || 0);
-    }, 0);
-    const strictCount = reqs.filter(r => r.strict).length;
-    const nextUnpaid = reqs.find(r => r.status === 'unpaid' || r.status === 'partial');
-    _pmSet('pm-pay-outstanding', _fmt(outstanding));
-    _pmSet('pm-pay-total-paid',  _fmt(paid));
-    _pmSet('pm-pay-strict-count', strictCount);
-    _pmSet('pm-pay-next-due', nextUnpaid?.weekEndingDate
-        ? new Date(nextUnpaid.weekEndingDate+'T00:00:00').toLocaleDateString('en-PH',{month:'short',day:'numeric',year:'numeric'})
-        : '—');
-
-    // Dark "next payment due" banner (design)
-    const banner = document.getElementById('pm-pay-banner');
-    if (banner) {
-        if (nextUnpaid) {
-            const due = nextUnpaid.weekEndingDate
-                ? new Date(nextUnpaid.weekEndingDate+'T00:00:00').toLocaleDateString('en-PH',{month:'short',day:'numeric',year:'numeric'})
-                : '—';
-            const bal = (nextUnpaid.totalAmount || 0) - (nextUnpaid.amountPaid || 0);
-            _pmSet('pm-pay-banner-when', 'Friday request · due ' + due);
-            _pmSet('pm-pay-banner-amt', _fmt(bal));
-            _pmSet('pm-pay-banner-sub', nextUnpaid.strict
-                ? 'Exact amount · partial blocked (strict)'
-                : 'Partial allowed up to ₱5,000 short');
-            const strictEl = document.getElementById('pm-pay-banner-strict');
-            if (strictEl) strictEl.style.display = nextUnpaid.strict ? '' : 'none';
-            banner.style.display = '';
-        } else {
-            banner.style.display = 'none';
-        }
-    }
+    _pmSet('pm-pay-total-paid', _fmt(_pmOvPaid(reqs)));
 }
 
 function _pmPayRenderTable(reqs) {
     const tbody = document.getElementById('pm-pay-tbody');
     if (!tbody) return;
     if (!reqs.length) {
-        tbody.innerHTML = '<tr><td colspan="7" class="pm-empty-row">No payment requests yet.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="4" class="pm-empty-row">No payments yet.</td></tr>';
         return;
     }
     const statusBadge = {
@@ -5951,42 +5807,26 @@ function _pmPayRenderTable(reqs) {
         submitted:'<span class="pm-badge pm-badge-partial">Pending review</span>',
         rejected: '<span class="pm-badge pm-badge-unpaid">Rejected</span>',
     };
+    // Acknowledgement Receipt (0116): owner accounts only, on payments the client has paid.
+    const docs = window.currentUserRole === 'owner' ? window.PMBillingDocs : null;
     tbody.innerHTML = reqs.map(r => {
-        // A row is "client paid" if the client settled it directly — either via the
-        // website (self_payment) or paid offline and an admin recorded it here
-        // (manual_payment). Both stand outside the admin-issued-bill "Strict" flow.
-        const isSelfPay   = r.source === 'self_payment';
-        const isManualPay = r.source === 'manual_payment';
-        const isClientPaid = isSelfPay || isManualPay;
+        // Paid through the website (self_payment) or paid offline and recorded
+        // here by the office (manual_payment).
+        const paidNote = r.source === 'self_payment' ? 'Self payment' : (r.source === 'manual_payment' ? 'Recorded by admin' : '');
         const dateStr = r.weekEndingDate ? new Date(r.weekEndingDate+'T00:00:00').toLocaleDateString('en-PH',{month:'short',day:'numeric',year:'numeric'}) : '—';
-        const carry   = r.carryover ? _fmt(r.carryover) : '₱0';
         const total   = _fmt(r.totalAmount || ((r.amount||0)+(r.carryover||0)));
         const badge   = statusBadge[r.status] || `<span class="pm-badge pm-badge-unpaid">${_esc(r.status||'—')}</span>`;
-        // Client-paid rows are stand-alone — the "Strict" concept (admin-issued
-        // weekly bills) doesn't apply, so flag them as paid instead.
-        const strictBadge = isClientPaid
-            ? '<span class="pm-badge pm-badge-partial">Client paid</span>'
-            : (r.strict
-                ? '<span class="pm-badge pm-badge-strict">Strict</span>'
-                : '<span style="color:#9ca3af;font-size:12px;">—</span>');
-        // Client-paid rows get a read-only View (self-pay: Review the receipt when
-        // still pending); admin-issued bills keep Edit + Strict.
-        const actions = isClientPaid
-            ? `<button class="pm-tbl-btn pm-tbl-btn-edit" data-pm-action="review"><i data-lucide="receipt" style="width:12px;height:12px;"></i> ${r.status === 'submitted' ? 'Review' : 'View'}</button>`
-            : `<button class="pm-tbl-btn pm-tbl-btn-edit" data-pm-action="edit"><i data-lucide="pencil" style="width:12px;height:12px;"></i> Edit</button>
-               <button class="pm-tbl-btn ${r.strict ? 'pm-tbl-btn-delete' : 'pm-tbl-btn-strict'}" data-pm-action="toggle-strict">
-                 <i data-lucide="${r.strict ? 'unlock' : 'lock'}" style="width:12px;height:12px;"></i> ${r.strict ? 'Unstrict' : 'Strict'}
-               </button>`;
-        const paidNote = isSelfPay ? 'Self payment' : (isManualPay ? 'Recorded by admin' : '');
-
+        const receipt = docs && docs.isPaidRow(r)
+            ? `<button class="pm-tbl-btn pm-tbl-btn-edit" data-pm-action="ack-receipt"><i data-lucide="file-check-2" style="width:12px;height:12px;"></i> Acknowledgement Receipt</button>`
+            : '';
         return `<tr data-pm-id="${_esc(r.id)}">
             <td><strong>${_esc(dateStr)}</strong>${paidNote ? '<div style="font-size:11px;color:#6b7280;">' + paidNote + '</div>' : ''}</td>
-            <td>${_fmt(r.amount)}</td>
-            <td>${carry}</td>
             <td><strong>${total}</strong></td>
-            <td>${strictBadge}</td>
             <td>${badge}</td>
-            <td>${actions}</td>
+            <td><div style="display:flex;gap:6px;flex-wrap:wrap;">
+              <button class="pm-tbl-btn pm-tbl-btn-edit" data-pm-action="review"><i data-lucide="receipt" style="width:12px;height:12px;"></i> ${r.status === 'submitted' ? 'Review' : 'View'}</button>
+              ${receipt}
+            </div></td>
         </tr>`;
     }).join('');
     if (!tbody._handlerAttached) {
@@ -5997,103 +5837,76 @@ function _pmPayRenderTable(reqs) {
             const tr  = btn.closest('[data-pm-id]');
             if (!tr) return;
             const r   = _pmPayRequests.find(x => x.id === tr.getAttribute('data-pm-id'));
-            if (!r) return;
-            if (btn.getAttribute('data-pm-action') === 'edit')          pmEditPayReq(r);
-            if (btn.getAttribute('data-pm-action') === 'toggle-strict') pmToggleStrict(r.id, !r.strict);
-            if (btn.getAttribute('data-pm-action') === 'review')        pmReviewSelfPay(r);
+            if (r) _pmPayAction(btn.getAttribute('data-pm-action'), r);
         });
     }
     if (window.lucide) lucide.createIcons();
 }
 
-window.pmOpenPaymentRequestModal = function() {
-    if (!_pmActiveProject) { alert('Select a project first.'); return; }
-    document.getElementById('pmPayReqId').value        = '';
-    document.getElementById('pmPayReqDate').value      = _nextFriday();
-    document.getElementById('pmPayReqAmount').value    = '';
-    document.getElementById('pmPayReqCarryover').value = '0';
-    document.getElementById('pmPayReqStrict').checked  = false;
-    document.getElementById('pmPayReqNotes').value     = '';
-    ['err-pmPayReqDate','err-pmPayReqAmount'].forEach(_pmClearErr);
-    document.getElementById('pmPaymentRequestModal').style.display = 'flex';
-    if (window.lucide) lucide.createIcons();
-};
-
-window.pmEditPayReq = function(req) {
-    document.getElementById('pmPayReqId').value        = req.id;
-    document.getElementById('pmPayReqDate').value      = req.weekEndingDate || '';
-    document.getElementById('pmPayReqAmount').value    = req.amount   || '';
-    document.getElementById('pmPayReqCarryover').value = req.carryover || '0';
-    document.getElementById('pmPayReqStrict').checked  = !!req.strict;
-    document.getElementById('pmPayReqNotes').value     = req.notes   || '';
-    ['err-pmPayReqDate','err-pmPayReqAmount'].forEach(_pmClearErr);
-    document.getElementById('pmPaymentRequestModal').style.display = 'flex';
-    if (window.lucide) lucide.createIcons();
-};
-
-window.pmSavePaymentRequest = async function() {
-    const reqId    = document.getElementById('pmPayReqId').value;
-    const weekEndingDate = document.getElementById('pmPayReqDate').value;
-    const amount   = parseFloat(document.getElementById('pmPayReqAmount').value)    || 0;
-    const carryover= parseFloat(document.getElementById('pmPayReqCarryover').value) || 0;
-    const strict   = document.getElementById('pmPayReqStrict').checked;
-    const notes    = document.getElementById('pmPayReqNotes').value.trim();
-    let valid = true;
-    if (!weekEndingDate) { _pmShowErr('err-pmPayReqDate','Select the week date.'); valid = false; }
-    if (amount<=0) { _pmShowErr('err-pmPayReqAmount','Enter the amount due.'); valid = false; }
-    if (!valid) return;
-    const totalAmount = amount + carryover;
-    const data = { weekEndingDate, amount, carryover, totalAmount, strict, notes,
-                   billingPeriod: 'Week of ' + weekEndingDate,
-                   updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
-    const btn = document.querySelector('#pmPaymentRequestModal .pm-btn-primary');
-    btn.disabled = true; btn.textContent = 'Saving…';
-    try {
-        const col = db.collection('paymentRequests');
-        if (reqId) {
-            await col.doc(reqId).update(data);
-        } else {
-            data.createdAt           = firebase.firestore.FieldValue.serverTimestamp();
-            data.kind                = 'construction';
-            data.status              = 'unpaid';
-            data.amountPaid          = 0;
-            data.source              = 'pm-admin';
-            data.clientEmail         = _pmActiveProject.clientEmail || '';
-            data.clientName          = _pmActiveProject.clientName  || '';
-            data.projectName         = _pmActiveProject.projectName || '';
-            data.constructionProjectId = _pmActiveProject.id;
-            await col.add(data);
-        }
-        pmCloseModal('pmPaymentRequestModal');
-        _pmLoadPayments();
-    } catch(e) {
-        alert('Save failed: ' + e.message);
-    } finally {
-        btn.disabled = false;
-        btn.innerHTML = '<i data-lucide="send" style="width:14px;height:14px;"></i> Send Request';
-        if (window.lucide) lucide.createIcons();
+// What a Payment row's buttons do.
+function _pmPayAction(action, r) {
+    if (action === 'review') pmReviewSelfPay(r);
+    if (action === 'ack-receipt' && _pmActiveProject && window.PMBillingDocs) {
+        window.PMBillingDocs.openReceipt(_pmActiveProject.id, r.id);
     }
+}
+
+// Billing Request (0116): a percentage of the Project Budget, every payment
+// received and Total Received. Owner accounts only; a printout, never saved.
+window.pmOpenBillingRequest = function() {
+    if (window.currentUserRole !== 'owner' || !_pmActiveProject || !window.PMBillingDocs) return;
+    window.PMBillingDocs.openBillingRequest(_pmActiveProject.id);
 };
 
-window.pmToggleStrict = async function(id, makeStrict) {
-    try {
-        await db.collection('paymentRequests').doc(id)
-          .update({ strict: makeStrict, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
-        _pmLoadPayments();
-    } catch(e) { alert('Error: ' + e.message); }
+// ── Payment photos (0116) ──────────────────────────────────────────────────
+// A photo of the client's payment (deposit slip, transfer screenshot), filed in
+// the private bucket under paymentReceipts/<account>/<yyyy-mm>/<uuid>.jpg, which
+// every office account (owner / staff) can open, as it can the payment rows. The row keeps the public-format
+// URL in proofUrl; supabase-config.js §11b signs it when the page shows it.
+let _pmAddPayPhotoFile = null;
+
+async function _pmUploadPaymentPhoto(file) {
+    const R = window.DacsReceipts;
+    const blob = await R.compressToBlob(file);
+    const path = R.receiptPath('payment', window.currentDataUserId);
+    const store = window.sbClient.storage.from('uploads');
+    const { error } = await store.upload(path, blob, { upsert: false, contentType: 'image/jpeg' });
+    if (error) throw new Error('Couldn\'t upload the photo: ' + (error.message || error));
+    return store.getPublicUrl(path).data.publicUrl;
+}
+
+window.pmAddPayPhotoChanged = function(input) {
+    const file = (input && input.files && input.files[0]) || null;
+    _pmAddPayPhotoFile = file;
+    _pmClearErr('err-pmAddPayPhoto');
+    const prev = document.getElementById('pmAddPayPhotoPreview');
+    if (prev) {
+        if (prev._url && window.URL && URL.revokeObjectURL) URL.revokeObjectURL(prev._url);
+        prev._url = file && window.URL && URL.createObjectURL ? URL.createObjectURL(file) : '';
+        prev.src = prev._url || '';
+        prev.style.display = file ? '' : 'none';
+    }
+    const clear = document.getElementById('pmAddPayPhotoClear');
+    if (clear) clear.style.display = file ? '' : 'none';
 };
 
-// ── Manually record an offline client payment ──────────────────────────────
-// For payments made outside the website (cash, bank transfer, GCash handed over
-// directly): the admin records a completed payment here. It lands as a verified,
-// client-paid row (source 'manual_payment') — no bill is issued and nothing waits.
+window.pmAddPayPhotoClear = function() {
+    const input = document.getElementById('pmAddPayPhoto');
+    if (input) input.value = '';
+    pmAddPayPhotoChanged(null);
+};
+
+// ── Record a client payment made directly (cash, bank transfer, GCash) ─────
+// It lands as a verified, client-paid row (source 'manual_payment'), with an
+// optional photo. Nothing is issued to the client and nothing waits.
 window.pmOpenAddPaymentModal = function() {
     if (!_pmActiveProject) { alert('Select a project first.'); return; }
-    document.getElementById('pmAddPayDate').value   = _nextFriday();
+    document.getElementById('pmAddPayDate').value   = _pmToday();   // local date, not UTC
     document.getElementById('pmAddPayAmount').value = '';
     document.getElementById('pmAddPayRef').value    = '';
     document.getElementById('pmAddPayNotes').value  = '';
-    ['err-pmAddPayDate','err-pmAddPayAmount'].forEach(_pmClearErr);
+    pmAddPayPhotoClear();
+    ['err-pmAddPayDate','err-pmAddPayAmount','err-pmAddPayPhoto'].forEach(_pmClearErr);
     document.getElementById('pmAddPaymentModal').style.display = 'flex';
     if (window.lucide) lucide.createIcons();
 };
@@ -6104,14 +5917,20 @@ window.pmSaveManualPayment = async function() {
     const ref    = document.getElementById('pmAddPayRef').value.trim();
     const notes  = document.getElementById('pmAddPayNotes').value.trim();
     let valid = true;
-    if (!weekEndingDate) { _pmShowErr('err-pmAddPayDate','Select the week / payment date.'); valid = false; }
-    if (amount <= 0)     { _pmShowErr('err-pmAddPayAmount','Enter the amount received.');     valid = false; }
+    if (!weekEndingDate) { _pmShowErr('err-pmAddPayDate','Select the payment date.'); valid = false; }
+    if (amount <= 0)     { _pmShowErr('err-pmAddPayAmount','Enter the amount received.'); valid = false; }
     if (!valid) return;
 
     const btn = document.querySelector('#pmAddPaymentModal .pm-btn-primary');
     btn.disabled = true; btn.textContent = 'Saving…';
     try {
-        await db.collection('paymentRequests').add({
+        // The photo first: if it cannot be stored, nothing is saved.
+        let proofUrl = null;
+        if (_pmAddPayPhotoFile) {
+            try { proofUrl = await _pmUploadPaymentPhoto(_pmAddPayPhotoFile); }
+            catch (e) { _pmShowErr('err-pmAddPayPhoto', e.message); return; }
+        }
+        const data = {
             kind:        'construction',
             source:      'manual_payment',
             status:      'verified',            // already paid — no review needed
@@ -6129,7 +5948,10 @@ window.pmSaveManualPayment = async function() {
             verifiedAt: firebase.firestore.FieldValue.serverTimestamp(),
             createdAt:  firebase.firestore.FieldValue.serverTimestamp(),
             updatedAt:  firebase.firestore.FieldValue.serverTimestamp(),
-        });
+        };
+        if (proofUrl) data.proofUrl = proofUrl;
+        await db.collection('paymentRequests').add(data);
+        pmAddPayPhotoClear();
         pmCloseModal('pmAddPaymentModal');
         _pmLoadPayments();
     } catch(e) {
@@ -6154,10 +5976,9 @@ window.pmReviewSelfPay = function(r) {
     const dt = r.submittedAt?.toDate?.() || (r.weekEndingDate ? new Date(r.weekEndingDate + 'T00:00:00') : null);
     setTxt('pmSelfPayDate', dt ? dt.toLocaleDateString('en-PH', { month:'short', day:'numeric', year:'numeric' }) : '—');
 
-    const img = document.getElementById('pmSelfPayImg');
-    if (img) { img.src = r.proofBase64 || ''; img.style.display = r.proofBase64 ? 'block' : 'none'; }
-    const noImg = document.getElementById('pmSelfPayNoImg');
-    if (noImg) noImg.style.display = r.proofBase64 ? 'none' : 'block';
+    // The office's photo (0116, proofUrl) first, else the one the client sent with a website payment.
+    _pmPayShowPhoto(r.proofUrl || r.proofBase64 || '');
+    _pmPaySetPhotoRow(r);
 
     const pending = r.status === 'submitted';
     const actions = document.getElementById('pmSelfPayActions');
@@ -6180,6 +6001,52 @@ window.pmReviewSelfPay = function(r) {
 
     document.getElementById('pmSelfPayReviewModal').style.display = 'flex';
     if (window.lucide) lucide.createIcons();
+};
+
+function _pmPayShowPhoto(src) {
+    const img = document.getElementById('pmSelfPayImg');
+    if (img) { img.src = src || ''; img.style.display = src ? 'block' : 'none'; }
+    const noImg = document.getElementById('pmSelfPayNoImg');
+    if (noImg) noImg.style.display = src ? 'none' : 'block';
+}
+
+// Add / Replace photo (0116): payments recorded by hand only. A website payment
+// keeps the photo the client sent. A photo can be replaced, never removed.
+function _pmPaySetPhotoRow(r) {
+    const manual = !!r && r.source === 'manual_payment';
+    const row = document.getElementById('pmPayPhotoRow');
+    if (row) row.style.display = manual ? '' : 'none';
+    const btn = document.getElementById('pmPayPhotoBtn');
+    if (btn) { btn.disabled = false; btn.textContent = r && r.proofUrl ? 'Replace photo' : 'Add photo'; }
+    _pmClearErr('pmPayPhotoErr');
+}
+
+window.pmPickPaymentPhoto = function() {
+    const input = document.getElementById('pmPayPhotoInput');
+    if (input) input.click();
+};
+
+// Changes only the photo (proofUrl) and updatedAt of that payment.
+window.pmSavePaymentPhoto = async function(input) {
+    const r = _pmReviewReq;
+    const file = (input && input.files && input.files[0]) || null;
+    if (input) input.value = '';
+    if (!r || r.source !== 'manual_payment' || !file) return;
+    const btn = document.getElementById('pmPayPhotoBtn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+    _pmClearErr('pmPayPhotoErr');
+    try {
+        const proofUrl = await _pmUploadPaymentPhoto(file);
+        await db.collection('paymentRequests').doc(r.id).update({
+            proofUrl, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+        r.proofUrl = proofUrl;
+        _pmPayShowPhoto(proofUrl);
+        _pmLoadPayments();
+    } catch (e) {
+        _pmShowErr('pmPayPhotoErr', e.message);
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = r.proofUrl ? 'Replace photo' : 'Add photo'; }
+    }
 };
 
 window.pmApproveSelfPay = async function() {
@@ -9303,19 +9170,16 @@ function _pmRptRenderKPIs(groups) {
         +   '<div class="rpt-kpi-val">&#8369;' + formatNum(cr.paid) + '</div>'
         +   '<div class="rpt-kpi-sub">collected to date</div>'
         + '</div>'
-        + '<div class="rpt-kpi-card' + (cr.outstanding > 0 ? '' : ' rpt-kpi-card--muted') + '">'
-        +   '<div class="rpt-kpi-dotrow"><span class="rpt-kpi-label">Outstanding</span></div>'
-        +   '<div class="rpt-kpi-val">&#8369;' + formatNum(cr.outstanding) + '</div>'
-        +   '<div class="rpt-kpi-sub">client still owes</div>'
-        + '</div>'
-        + '</div>';
-    const sc = _pmRptShareCards(cr);
-    html += '<div class="rpt-grid rpt-grid-3" style="margin-top:12px;">'
+        // No "Outstanding" card: it measured only the weekly Friday request,
+        // removed on 18 Nov 2026 (owner), so it could only ever read ₱0.
         + '<div class="rpt-kpi-card' + (crOver ? ' rpt-kpi-card--over' : '') + '">'
         +   '<div class="rpt-kpi-dotrow"><span class="rpt-kpi-label">Remaining Cash Receipt</span></div>'
         +   '<div class="rpt-kpi-val">' + (crOver ? '&minus;' : '+') + '&#8369;' + formatNum(Math.abs(cr.netCash)) + '</div>'
         +   '<div class="rpt-kpi-sub">Paid &minus; Direct Cost</div>'
         + '</div>'
+        + '</div>';
+    const sc = _pmRptShareCards(cr);
+    html += '<div class="rpt-grid rpt-grid-2" style="margin-top:12px;">'
         + (sc.error
             ? '<div class="rpt-kpi-card rpt-kpi-card--over" style="grid-column:span 2;">'
               + '<div class="rpt-kpi-dotrow"><span class="rpt-kpi-label">Sharing unavailable</span></div>'
@@ -9346,9 +9210,8 @@ function _pmRptCashReceipt() {
     const reqs = _pmRptState.payReqs || [];
     const bills = _pmRptState.bills || [];
     const paid = P.paid(reqs);
-    const outstanding = P.outstanding(reqs);
     const directCost = P.directCost(bills);
-    const out = { paid, outstanding, directCost, netCash: paid - directCost, share: null, shareError: null };
+    const out = { paid, directCost, netCash: paid - directCost, share: null, shareError: null };
     if (!_pmCanSeeShare()) return out;
     const sh = _pmRptState.share;
     if (_pmRptState.fetchError) { out.shareError = 'Report data failed to load'; return out; }
@@ -9715,7 +9578,6 @@ window.printPMReportsDashboard = function () {
   <div class="section-title">Cash Receipt (All-Time)</div>
   <div class="kpis">
     ${kpi('Total Paid', peso(cr.paid), 'collected to date')}
-    ${kpi('Outstanding', peso(cr.outstanding), 'client still owes')}
     <div class="kpi ${cr.netCash < 0 ? 'over' : 'hi'}">
       <div class="kpi-l">Remaining Cash Receipt</div>
       <div class="kpi-v">${cr.netCash < 0 ? '−' : '+'}${peso(Math.abs(cr.netCash))}</div>

@@ -35,8 +35,7 @@ which has since been replaced by the itemized **Daily Expenses** builder.
 
 ## Projects home (card grid)
 The Project Management landing lists every construction project as a card. Each card shows the
-**client / project**, **% complete**, **Balance due**, **This Friday**'s amount, an
-on-track / overdue status, and an **Open Project** button into the workspace. Header + card actions:
+**client / project**, **% complete**, a Completed / Terminated badge once closed, and an **Open Project** button into the workspace. Header + card actions:
 - **Add Project** — create a project (client & project name, location, **management-fee %**, …).
 - Per card: **Edit** and **Delete**.
 - **QR Settings** — upload the **payment QR codes** (e.g. GCash / bank) shown to clients in the
@@ -49,8 +48,8 @@ on-track / overdue status, and an **Open Project** button into the workspace. He
 ### 1. Dashboard Overview
 Per-project read-only summary.
 - Hero: client/project, % complete, total paid.
-- KPI tiles: **Progress**, **Direct cost** (cumulative labor + materials), **Outstanding
-  balance**, **Total paid**, **Net cash** (paid − direct cost), **Next payment due**.
+- KPI tiles: **Progress**, **Direct cost** (cumulative labor + materials), **Total cash receipt**,
+  **Remaining cash receipt** (paid − direct cost).
 - **Direct-cost breakdown** split into **Labor / Materials / Materials + Labor**, with a
   date-range filter.
 - Charts: billing trend (bars) + payment-status donut.
@@ -257,26 +256,26 @@ Houses the **Revolving Fund** and the **Payment System**.
 - Fund is replenished alongside the weekly payment.
 - Tracks: `Initial Fund` | `Total Spent` | `Remaining Balance` | `Replenishment Amount`.
 
-#### Payment Requests — Triggers (3 ways)
-1. **Admin manual** — admin sends a payment request anytime.
-2. **Client self-pay** — client initiates payment without waiting for a request.
-3. **Auto-generated** — system creates a payment request every Friday from the billed totals.
+#### Payment (since 18 Nov 2026, migration 0116)
+The weekly **Friday payment request is gone** (owner, 18 Nov 2026): there is no Send Payment Request,
+no strict weeks, no carryover and no Next payment due. The Payment section lists the **payments**:
+- **Add Payment** — a payment the client made directly (cash, bank transfer, GCash), with its
+  **Payment date** (defaults to today), amount, reference no., notes and an optional **receipt photo**.
+  Saved as a completed, client-paid row.
+- **Client self-pay** — a payment the client sends through the website, reviewed here (Approve / Reject).
+- **View** shows the payment and its photo. On a payment recorded by hand, **Add photo / Replace photo**
+  attaches a slip later (a photo can be replaced, never removed). Photos are office-only.
+- **Total cash receipt** — everything the client has paid.
 
-#### Payment Rules
-- Partial payment allowed, maximum shortage is **₱5,000**.
-- Unpaid balance carries over and is added to the next Friday's payment.
-- If client made a partial payment → next Friday is **automatically strict**.
-- Admin can manually mark any specific week as **strict**.
-- **Strict mode** = exact amount only, no partial, no exceptions.
-- No cover expenses ever — admin never advances any cost.
+**Owner accounts only:**
+- **Billing Request** — asks the client to release the next funds: you type a **percentage of the Project
+  Budget**; the page prints that amount, **every payment received** and **Total Received**. A printout,
+  never saved.
+- **Acknowledgement Receipt** — on each paid row. A saved receipt with a permanent **AR-YYYYMM-NNN**
+  number (the same series as Project Control's receipts); the amount is what was paid on that row, read
+  by the server. If the amount changes, the old receipt is voided with a reason and a new one is issued.
 
-#### Amount
-- Auto-computed from the billed totals.
-- Editable by **admin only** before the client sees it.
-
-#### Payment Reminders
-- **Wednesday** — reminder notification sent to client (payment is coming Friday).
-- **Friday** — automatic payment request generated.
+Both documents are outside the money model: they record no payment and change no figure.
 
 ---
 
@@ -361,10 +360,9 @@ An **internal allocation** of each project's remaining cash between the owner an
 | Upload proof of receipt (procurement) | Yes | Yes |
 | View all receipts & transactions | Yes | Yes |
 | Edit management-fee % (per project) | Yes | No |
-| Edit payment request amount | Yes | No |
-| Manually send payment request | Yes | No |
+| Record a payment (Add Payment, photo) | Yes | No |
 | Self-pay | No | Yes |
-| Mark week as strict | Yes | No |
+| Billing Request / Acknowledgement Receipt | Owner accounts only | No |
 | View payment history | Yes | Yes |
 | Add / edit / delete a project | Yes | No |
 | Manage payment QR settings | Yes | No |
@@ -379,14 +377,11 @@ An **internal allocation** of each project's remaining cash between the owner an
 ```
 Each day            → Admin logs that day's labor / materials / mat+labor lines
                       (with receipts) and saves & sends the daily bill to the client
-Wednesday           → System sends payment reminder to client
-Friday              → System auto-generates a payment request from billed totals
-                    → Admin can edit amount if needed
-                    → Client pays (full or partial up to ₱5,000 short)
-                    → Revolving fund replenished
-
-If partial paid     → Next Friday is auto-strict (full amount required)
-If admin marks strict → That Friday is strict regardless of history
+Funds needed        → Owner prints a Billing Request (a % of the Project Budget)
+Client pays         → Office records it (Add Payment, with a photo) or the client
+                      self-pays through the website and the office approves it
+                    → Owner issues the Acknowledgement Receipt for that payment
+(The weekly Friday payment request was removed on 18 Nov 2026.)
 ```
 
 ---

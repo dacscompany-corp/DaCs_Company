@@ -562,6 +562,29 @@ Same shape as `invoices`; `items` are labor lines auto-built from `weeklyBills` 
 | `createdBy`, `createdAt` | string/ts | |
 **Rules (B):** clients may only perform **specific status transitions** (e.g. `rejected → submitted`), never arbitrary edits.
 
+**Since 18 Nov 2026 (0116) the office no longer creates Friday requests (flow A).** Project Management's
+Money → Payment holds payments only: `source: 'manual_payment'` (Add Payment, status `verified`) and
+`source: 'self_payment'` (sent through the client portal). Old `pm-admin` rows, if any, are kept, never deleted.
+
+| Field | Type | Notes |
+|---|---|---|
+| `proofUrl` → `proof_url` | text \| null | **0116.** Photo of the client's payment, added by the office on Add Payment or View (payments recorded by hand only). A public-format URL into the private `uploads` bucket, `paymentReceipts/<account>/<yyyy-mm>/<uuid>.jpg`; readable and writable by office accounts (owner / staff) under 0110's general office rule, the same access as the payment rows themselves, so clients and workers never see it. 0116 adds no storage rule. Replaced, never removed. Website payments keep `proofBase64`. |
+
+### PM Acknowledgement Receipts — migration `0116`, **owner-only, outside the money model**
+
+`pm_billing_receipts`: one live receipt per paid PM payment (`payment_id` → `payment_requests.id`,
+`project_id` → `construction_projects.id`; no foreign keys, so a receipt outlives both). Same columns as 0114's
+`billing_receipts` otherwise (`receipt_no`, `issued_on`, `billing_label`, `amount`, `received_from`,
+`received_by`, `business`, `payment_details`, `voided_*`). The amount is the payment's **paid amount**, read by
+the server (`pmar_paid_amount`: verified → amount_paid, else paid_amount, else total_amount; paid / partial →
+amount_paid). Numbers use 0114's `billing_receipt_counters`: **one AR-YYYYMM-NNN series** across Project Control
+and Project Management, never reused. A row can only be voided once (0114's `billing_receipts_guard`); owner
+accounts of the company read it, and only `pmar_issue` / `pmar_reissue` write it.
+`pm_billing_receipt_parties`: Received from / Received by per PM project (no direct access).
+`pmar_state(project)` returns the project, its paid payments oldest first, `total_received`, its receipts and the
+names, for the receipt dialog and the PM **Billing Request** (a printout, never saved). Nothing here feeds Spent /
+Earned / Profit, PM profit sharing, the warranty reserve or cash advances. Only `js/pm-billing-docs.js` calls `pmar_*`.
+
 ---
 
 ## 7. Construction Project Management

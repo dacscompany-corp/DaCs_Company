@@ -6,8 +6,8 @@
 one-offs — that habit is why `0020_schema_drift_catchup.sql`, `0025` and the drift they
 capture exist. Write the migration, apply the migration, commit the migration.
 
-- **Next number = highest existing + 1** (**0116** — highest on disk is
-  `0115_agreements_no_payment_list.sql`). Sort the folder before you pick; don't
+- **Next number = highest existing + 1** (**0117** — highest on disk is
+  `0116_pm_billing_documents.sql`). Sort the folder before you pick; don't
   trust this line if it looks stale. Duplicate numbers are how we got into trouble. **0109** (WorkMate Stage 4) was reserved before 0110 and is applied live after it.
 - **`0075` and `0076` are TAKEN but not on `main`.** They belong to the abandoned
   project cost-plan branch (`project_cost_plans`, then its `%` columns) and **both
@@ -215,6 +215,8 @@ file creates the policy only when it is missing, so applying it live changes not
 **0114 (Billing Periods: saved Acknowledgement Receipts)** adds `billing_receipts` (owner accounts read it; only the `bar_*` functions write it, and a row can only be voided), `billing_receipt_counters` and `billing_receipt_parties` (no direct access), and the functions `bar_state`, `bar_issue`, `bar_reissue` and `bar_set_parties`. It changes no existing table, and nothing it does touches an expense, payroll row, invoice, payment, budget or billing period. Run after 0113.
 
 **0115 (WorkMate Agreements: no payroll breakdown on the phone)** redefines `ll_my_agreements()` without the `payments` list (owner decision 17 Nov 2026): the worker still gets agreed / paid / balance, computed exactly as 0113 does, but never a payment's date, amount or method. No table, column or other function changes; the office side is untouched. Run after 0113. Live check: `supabase/tests/0115_verify.sql` (read-only), before and after.
+
+**0116 (Project Management: Billing Request, saved Acknowledgement Receipts, payment photo)** adds `pm_billing_receipts` (owner accounts read it; only the `pmar_*` functions write it, and a row can only be voided, through 0114's guard) and `pm_billing_receipt_parties` (no direct access), the column `payment_requests.proof_url`, and the functions `pmar_state`, `pmar_issue` and `pmar_reissue`. Receipt numbers come from 0114's `billing_receipt_counters`, so Project Control and Project Management share one AR series. It adds no storage rule: payment photos go to `paymentReceipts/`, which 0110's general office rule (owner / staff) already covers, the same access as the payment rows. 0114's tables and functions are not redefined; nothing it does touches an expense, payroll row, invoice, bill or budget. Run after 0114. **Apply it before the web code that uses it goes live.**
 
 Get the truth before relying on this line:
 

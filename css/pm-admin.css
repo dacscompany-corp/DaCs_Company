@@ -1693,22 +1693,6 @@ body.dark-mode .pm-modal-header h3 { color: #e8f0ec; }
 }
 .pm-ws-section .pm-stat { background: #fafaf8; }
 
-/* Dark "Next payment due" banner (Money) */
-.pm-pay-banner {
-  background: #1c1c1a; border-radius: 16px; padding: 22px 24px; color: #fff;
-  display: flex; align-items: center; justify-content: space-between; gap: 16px;
-  flex-wrap: wrap; margin-bottom: 16px;
-}
-.pm-pay-banner-top { display: flex; align-items: center; gap: 10px; }
-.pm-pay-banner-label { font: 700 10.5px 'IBM Plex Sans', sans-serif; letter-spacing: .1em; text-transform: uppercase; color: rgba(255,255,255,.6); }
-.pm-pay-banner-strict { background: #b4892a; color: #fff; font: 700 10px 'IBM Plex Sans', sans-serif; padding: 3px 9px; border-radius: 6px; letter-spacing: .04em; }
-.pm-pay-banner-amt { font: 700 34px 'IBM Plex Sans', sans-serif; letter-spacing: -.02em; margin-top: 8px; line-height: 1; }
-.pm-pay-banner-sub { font: 400 12px 'IBM Plex Sans', sans-serif; color: rgba(255,255,255,.6); margin-top: 9px; }
-.pm-pay-banner-actions { display: flex; gap: 10px; }
-.pm-pay-banner-send { background: var(--pm-green, #157a52); color: #fff; border: none; border-radius: 11px; padding: 13px 22px; font: 700 13px 'IBM Plex Sans', sans-serif; cursor: pointer; }
-.pm-pay-banner-send:hover { background: var(--pm-green-hover, #11653f); }
-.pm-pay-banner-edit { background: rgba(255,255,255,.12); color: #fff; border: none; border-radius: 11px; padding: 13px 20px; font: 700 13px 'IBM Plex Sans', sans-serif; cursor: pointer; }
-.pm-pay-banner-edit:hover { background: rgba(255,255,255,.2); }
 
 /* ════════════════════════════════════════════════════════════
    MOBILE — Project Management workspace (responsive, brand-green)
@@ -1801,8 +1785,6 @@ body.dark-mode .pm-modal-header h3 { color: #e8f0ec; }
   /* Give modals more of the screen on tiny devices */
   .pm-modal-overlay { padding: 10px; }
   /* Shrink the largest display numbers so they don't clip / force width */
-  .pm-pay-banner-amt { font-size: 27px; }
-  .pm-pay-banner { padding: 18px; }
   .pmw-grand .num { font-size: 22px; }
   .pm-admin-title { font-size: 19px; }
 }

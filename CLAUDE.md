@@ -258,6 +258,15 @@ Profit   = Earned − Spent
   none of the three. Only `js/billing-receipts.js` calls the `bar_*` functions. Spec:
   `docs/superpowers/specs/2026-11-09-billing-acknowledgement-receipts-mvp-terms.md`.
 
+- **PM Acknowledgement Receipts (0116) are a record of a document, outside the money model.** Each paid Project
+  Management payment (Money → Payment) can have one live receipt, whose amount is **the payment's paid amount, read by
+  the server** (the Total cash receipt rule): no `pmar_*` function accepts an amount. Numbers share 0114's
+  `AR-YYYYMM-NNN` series and are never reused; a change is void-with-reason and re-issue. The PM **Billing Request** is a
+  printout (a percentage of the Project Budget, every payment received, Total Received) and records nothing. The
+  Friday payment request no longer exists in the office screens (owner, 18 Nov 2026). A payment's photo
+  (`payment_requests.proof_url`, `paymentReceipts/`) is office-only. Owner accounts only for both documents. Only
+  `js/pm-billing-docs.js` calls the `pmar_*` functions. Spec: `docs/superpowers/specs/2026-11-18-pm-billing-documents-design.md`.
+
 Full reasoning: [docs/OVERHEAD_MODULE.md](docs/OVERHEAD_MODULE.md).
 
 ---
