@@ -100,104 +100,118 @@
         return !!(root.StockCostAdmin && root.currentStockOn && PA.ui.isOwner);
     }
 
-    // Needed · Bought · Still to buy, as three blocks the eye can compare.
+    // Needed · Bought · Still to buy — the pop-up's "Figures" (v5 facts).
     function figures(l) {
-        const stat = (label, value, cls) => '<div class="pur-stat' + (cls ? ' ' + cls : '') + '"><span class="pur-stat-label">' + label +
-            '</span><strong>' + esc(PA.qty(value)) + '</strong></div>';
-        return '<div class="pur-stats">' +
-            stat('Needed', l.needed) +
-            (Number(l.from_stock) > 0 ? stat('From stock', l.from_stock) : '') +
-            (l._tools && Number(l._tools.filled) > 0 ? stat('Tools issued', l._tools.filled) : '') +
-            stat('Bought', l.bought) +
-            stat('Still to buy', l.still_to_buy, 'is-key') +
-            (Number(l.extra) > 0 ? stat('Extra', l.extra) : '') +
-            '<span class="pur-stat-unit">' + esc(l.unit) + '</span></div>';
+        const stat = (label, value) => [label, esc(PA.qty(value)) + ' ' + esc(l.unit)];
+        return SV.facts([
+            stat('Needed', l.needed),
+            (Number(l.from_stock) > 0 ? stat('From stock', l.from_stock) : null),
+            (l._tools && Number(l._tools.filled) > 0 ? stat('Tools issued', l._tools.filled) : null),
+            stat('Bought', l.bought),
+            stat('Still to buy', l.still_to_buy),
+            (Number(l.extra) > 0 ? stat('Extra', l.extra) : null),
+        ]);
     }
 
-    function portionRow(p, me) {
+    // One weekly portion of the line (v5 "line"): which batch, what is still
+    // to buy, who buys it, and its buttons.
+    function portionLine(p, me) {
         const a = PA.portionActions(p, me);
         const who = PA.buyerLabel(p, me);
-        const btn = (act, label, extra) => '<button type="button" class="att-btn att-btn--sm' + (extra || '') + '" data-act="' + act +
-            '" data-portion="' + esc(p.id) + '">' + label + '</button>';
-        return '<div class="pur-portion' + (p.changed ? ' is-changed' : '') + '">' +
-            '<div class="pur-pcell"><span class="pur-plabel">Weekly batch</span>' +
-              '<span class="pur-portion-batch">' + esc('Cutoff ' + RA.cutoffLabel(p.cutoff_at)) + '</span></div>' +
-            '<div class="pur-pcell"><span class="pur-plabel">To buy</span>' +
-              '<span class="pur-portion-qty">' + esc(PA.qty(p.quantity - p.pending_reduction)) + ' needed · ' +
-              (Number(p.from_stock) > 0 ? esc(PA.qty(p.from_stock)) + ' from stock · ' : '') +
-              (Number(p._tools) > 0 ? esc(PA.qty(p._tools)) + ' tools issued · ' : '') +
-              esc(PA.qty(p.bought)) + ' bought · <strong>' + esc(PA.qty(p.still_to_buy)) + ' still to buy</strong></span></div>' +
-            '<div class="pur-pcell"><span class="pur-plabel">Buyer</span>' +
-              '<span class="pur-portion-who' + (p.buyer_id ? '' : ' is-open') + '">' + esc(who) + '</span></div>' +
-            '<div class="pur-ptags">' +
-              (p.arranged ? PA.pill('Arranged', 'done') : '') +
-              (p.changed ? PA.pill('Quantity changed', 'abandoned') : '') + '</div>' +
-            '<span class="pur-portion-acts">' +
-              (a.claim ? btn('claim', 'I\'ll buy this', ' att-btn--primary') : '') +
-              (a.assign ? btn('assign', p.buyer_id ? 'Reassign…' : 'Assign…') : '') +
-              (a.release ? btn('release', 'Release') : '') +
-              btn(p.arranged ? 'unarrange' : 'arrange', p.arranged ? 'Undo arranged' : 'Mark arranged') +
-            '</span></div>';
+        const btn = (act, label, kind) => SV.lbtn(label, 'data-act="' + act + '" data-portion="' + esc(p.id) + '"', kind);
+        return {
+            t: 'Cutoff ' + RA.cutoffLabel(p.cutoff_at),
+            s: 'To buy: ' + PA.qty(p.quantity - p.pending_reduction) + ' needed · ' +
+               (Number(p.from_stock) > 0 ? esc(PA.qty(p.from_stock)) + ' from stock · ' : '') +
+               (Number(p._tools) > 0 ? esc(PA.qty(p._tools)) + ' tools issued · ' : '') +
+               PA.qty(p.bought) + ' bought · ' + PA.qty(p.still_to_buy) + ' still to buy',
+            pills: [{ text: p.buyer_id ? 'Buyer: ' + who : who, tone: p.buyer_id ? 'none' : 'red' }]
+                .concat(p.arranged ? [{ text: 'Arranged', tone: 'done' }] : [])
+                .concat(p.changed ? [{ text: 'Quantity changed', tone: 'gold' }] : []),
+            acts: (a.claim ? btn('claim', 'I\'ll buy this', 'primary') : '') +
+                  (a.assign ? btn('assign', p.buyer_id ? 'Reassign…' : 'Assign…') : '') +
+                  (a.release ? btn('release', 'Release') : '') +
+                  btn(p.arranged ? 'unarrange' : 'arrange', p.arranged ? 'Undo arranged' : 'Mark arranged'),
+        };
     }
 
-    // A Shopping list card: the line, what is still to buy, who buys it.
+    // The line's chips, on its card and on top of its pop-up.
+    function chipsOf(l) {
+        const portions = l.portions || [];
+        const chips = [];
+        if (l.urgent) chips.push({ text: 'URGENT' + (l.needed_by ? ' · by ' + RA.formatDay(l.needed_by) : ''), tone: 'red' });
+        if (Number(l.unit_checks) > 0) chips.push({ text: 'Office check waiting', tone: 'check' });
+        if (portions.some(p => p.changed)) chips.push({ text: 'Quantity changed', tone: 'gold' });
+        if (Number(l.still_to_buy) > 0 && Number(l.in_warehouse) > 0) chips.push({ text: 'In warehouse', tone: 'check' });
+        return chips;
+    }
+
+    // A Shopping list card (v5): To buy / Arranged, the line, still to buy, who buys it.
     function cardOf(l, me) {
         const canBuy = Number(l.still_to_buy) > 0;
         const portions = l.portions || [];
         const buyers = portions.map(p => PA.buyerLabel(p, me)).filter((v, i, a) => a.indexOf(v) === i);
-        const chips = [];
-        if (l.urgent) chips.push({ text: 'URGENT' + (l.needed_by ? ' · by ' + RA.formatDay(l.needed_by) : ''), tone: 'red' });
-        if (Number(l.unit_checks) > 0) chips.push({ text: 'Office check waiting', tone: 'red' });
-        if (portions.some(p => p.changed)) chips.push({ text: 'Quantity changed', tone: 'red' });
-        if (portions.length && portions.every(p => p.arranged)) chips.push({ text: 'Arranged', tone: 'done' });
-        if (canBuy && Number(l.in_warehouse) > 0) chips.push({ text: 'In warehouse', tone: 'check' });
+        const arranged = portions.length && portions.every(p => p.arranged);
         return {
             id: l.line_id,
             title: l.description + (l.spec ? ' · ' + l.spec : ''),
             sub: l.project_name + ' · ' + l.work_name + ' · requested by ' + l.requester_name,
-            meta: 'Needed ' + PA.qty(l.needed) + ' · Bought ' + PA.qty(l.bought) + ' · Buyer: ' + buyers.join(', '),
+            meta: 'Buyer: ' + buyers.join(', '),
             right: PA.qty(l.still_to_buy) + ' ' + l.unit,
-            pill: canBuy ? { text: 'Still to buy', tone: 'gold' } : { text: 'Bought', tone: 'done' },
-            chips: chips,
+            pill: !canBuy ? { text: 'Bought', tone: 'done' } : arranged ? { text: 'Arranged', tone: 'done' } : { text: 'To buy', tone: 'gold' },
+            chips: chipsOf(l),
             stripe: l.urgent ? 'red' : '',
+            nextLabel: canBuy && Number(l.in_warehouse) > 0 && root.StockAdmin && root.currentStockOn ? 'Issue from stock…' : '',
             tick: canBuy ? { on: !!ui.picked[l.line_id], label: 'Add to the purchase' } : null,
         };
     }
 
-    function lineCard(l, me, inPopup) {
-        const urgent = l.urgent ? '<span class="req-urgent">URGENT' + (l.needed_by ? ' · by ' + esc(RA.formatDay(l.needed_by)) : '') + '</span>' : '';
+    // Cards sit under their weekly batch (the earliest one still to buy).
+    function groupsOf(shown, batches, me) {
+        const out = [], byKey = {};
+        shown.forEach(l => {
+            const open = (l.portions || []).filter(p => Number(p.still_to_buy) > 0);
+            const first = (open.length ? open : (l.portions || [])).map(p => p.cutoff_at).filter(Boolean).sort()[0] || '';
+            if (!byKey[first]) {
+                const b = batches.find(x => first && Date.parse(x.cutoff_at) === Date.parse(first));
+                byKey[first] = { title: first ? 'Cutoff ' + RA.cutoffLabel(first) + (b ? ' · Buy ' + RA.formatDay(b.purchase_on) : '') : 'No weekly batch',
+                                 tone: 'ink', time: first ? Date.parse(first) : Infinity, rows: [] };
+                out.push(byKey[first]);
+            }
+            byKey[first].rows.push(cardOf(l, me));
+        });
+        return out.sort((x, y) => x.time - y.time);
+    }
+
+    // One request line in the pop-up (v5): what to do now, Figures, the
+    // tools issued for it, and its Weekly portions.
+    function linePanel(l, me) {
         const canBuy = Number(l.still_to_buy) > 0;
-        return '<div class="att-card pur-line' + (l.urgent ? ' is-urgent' : '') + '" data-line="' + esc(l.line_id) + '">' +
-            '<div class="att-card-body">' +
-              '<div class="pur-line-head">' +
-                (inPopup ? '' : '<label class="pur-pick">' + (canBuy
-                  ? '<input type="checkbox" data-pick="' + esc(l.line_id) + '"' + (ui.picked[l.line_id] ? ' checked' : '') + ' aria-label="Add to the purchase">'
-                  : '') + '</label>') +
-                '<div class="pur-line-main">' +
-                  '<div class="pur-line-title"><strong>' + esc(l.description) + '</strong>' + (l.spec ? ' <span class="req-muted">' + esc(l.spec) + '</span>' : '') +
-                    (l.catalog_name ? ' <span class="req-muted">· ' + esc(l.catalog_name) + '</span>' : '') + ' ' + urgent +
-                    (Number(l.unit_checks) > 0 ? ' ' + PA.pill('Office check waiting', 'abandoned') : '') + '</div>' +
-                  '<div class="req-muted">' + esc(l.project_name) + ' · ' + esc(l.work_name) + ' · requested by ' + esc(l.requester_name) + '</div>' +
-                  // 0104: warehouse stock of this catalogue item — a hint to check
-                  // before buying (no reservation, Q9); issuing is what counts.
-                  (canBuy && Number(l.in_warehouse) > 0
-                    ? '<div class="pur-instock"><i data-lucide="warehouse"></i> In warehouse: <strong>' + esc(PA.qty(l.in_warehouse)) + ' ' +
-                      esc(l.in_warehouse_unit || l.unit) + '</strong> — check before buying' +
-                      (root.StockAdmin && root.currentStockOn
-                        ? ' <button type="button" class="att-btn att-btn--sm" data-issue="' + esc(l.line_id) + '">Issue from stock…</button>' : '') +
-                      '</div>'
-                    : '') +
-                  // 0107 (Q14): each tool issued for this line — one bought for it
-                  // counts through its purchase, once.
-                  (l._tools && l._tools.tools.length
-                    ? '<div class="pur-instock"><i data-lucide="wrench"></i> Issued: ' + l._tools.tools.map(t => '<strong>' + esc(t.label) + '</strong> with ' +
-                      esc(t.holder_name) + (t.counted ? '' : ', bought for this')).join('; ') + '</div>'
-                    : '') +
-                '</div>' +
-                figures(l) +
-              '</div>' +
-              '<div class="pur-portions">' + (l.portions || []).map(p => portionRow(p, me)).join('') + '</div>' +
-            '</div></div>';
+        const stockBtn = root.StockAdmin && root.currentStockOn
+            ? '<button type="button" class="att-btn att-btn--primary" data-issue="' + esc(l.line_id) + '">Issue from stock…</button>' : '';
+        // 0104: warehouse stock of this catalogue item — a hint to check
+        // before buying (no reservation, Q9); issuing is what counts.
+        const step = canBuy && Number(l.in_warehouse) > 0
+            ? SV.nextStep('In warehouse: ' + PA.qty(l.in_warehouse) + ' ' + (l.in_warehouse_unit || l.unit) + ' — check before buying', stockBtn)
+            : canBuy ? SV.nextStep('Bought it? Tick it on its card, then press Record purchase.', '') : '';
+        return SV.panelHtml({
+            kicker: 'Shopping list · one request line',
+            title: l.description + (l.spec ? ' · ' + l.spec : ''),
+            pills: chipsOf(l),
+            sub: l.project_name + ' · ' + l.work_name + ' · requested by ' + l.requester_name + (l.catalog_name ? ' · ' + l.catalog_name : ''),
+            step: step,
+            sections: [
+                SV.section('Figures', figures(l)),
+                // 0107 (Q14): each tool issued for this line — one bought for it
+                // counts through its purchase, once.
+                (l._tools && l._tools.tools.length
+                    ? SV.section('Tools', SV.note('Issued: ' + l._tools.tools.map(t => '<strong>' + esc(t.label) + '</strong> with ' +
+                      esc(t.holder_name) + (t.counted ? '' : ', bought for this')).join('; ')))
+                    : ''),
+                SV.section('Weekly portions', SV.lines((l.portions || []).map(p => portionLine(p, me)), 'No weekly portion.')),
+            ],
+            nextLabel: 'Next item',
+        });
     }
 
     // The list's status sentence (it was a row of chips).
@@ -279,8 +293,8 @@
                 if (clr) clr.addEventListener('click', () => { ui.picked = {}; drawList(host, me); });
                 el.querySelector('[data-unplanned]').addEventListener('click', () => PA.openRecord({ requestLines: [] }));
             },
-            showing: shown.length !== lines.length ? 'Showing ' + shown.length + ' of ' + lines.length : '',
-            groups: [{ title: '', rows: shown.map(l => cardOf(l, me)) }],
+            showing: shown.length ? 'Showing ' + shown.length + ' of ' + lines.length : '',
+            groups: groupsOf(shown, batches, me),
             empty: lines.length ? 'Nothing matches these filters.' : 'Nothing left to buy in this batch.',
             onTick: (id, on) => { ui.picked[id] = on; drawList(host, me); },
             tickBar: { label: 'Record purchase', onClick: () => {
@@ -289,17 +303,11 @@
             } },
             selectedId: ui.lineSel,
             refreshPanel: !!(opts && opts.refreshPanel),
-            onSelect: (id, panel) => {
+            onSelect: (id, panel, o) => {
                 ui.lineSel = id;
                 const l = lines.find(x => x.line_id === id);
                 if (!l) { SV.error(panel, 'This item is no longer on the list. It may be bought already.'); return; }
-                const body = SV.page(panel, {
-                    kicker: 'Shopping list · one request line',
-                    title: l.description + (l.spec ? ' · ' + l.spec : ''),
-                    sub: l.project_name + ' · ' + l.work_name + ' · requested by ' + l.requester_name,
-                    nextLabel: 'Next item',
-                });
-                body.innerHTML = '<div class="att-stack pur-tab req-detail">' + lineCard(l, me, true) + '</div>';
+                SV.fill(panel, linePanel(l, me));
                 // One handler per panel (assigned, never added): a fresh
                 // panel per item, so nothing stacks.
                 panel.onclick = e => {
@@ -309,7 +317,8 @@
                     const line = l;
                     if (issue && root.StockAdmin) root.StockAdmin.openIssue(line, reload);
                 };
-                RA.icons();
+                // The card's "Issue from stock…" button: start that step.
+                if (o && o.start) { const go = panel.querySelector('[data-issue]'); if (go) go.click(); }
             },
             onClose: () => { ui.lineSel = null; },
         }));
@@ -370,20 +379,14 @@
         if ((ui.tab === 'company' && !companyStockTab()) || (ui.tab === 'reconcile' && !reconcileTab())) ui.tab = 'list';
         if (ui.tab === 'purchases') return PA.renderPurchases(host, me);
         if (ui.tab === 'list') return renderList(host, me, { refreshPanel: true });
-        // Owner approvals, Cash, Company stock and Reconciliation keep their
-        // own content (sections, tables, their buttons) inside the frame.
-        root.SplitView.render(host, frame(host, me, {
-            custom: true,
-            search: false,
-            refreshPanel: true,
-            onCustom: el => {
-                el.classList.add('pur-tab', 'req-detail');
-                if (ui.tab === 'approvals') return PA.renderApprovals(el, me);
-                if (ui.tab === 'cash' && PA.renderCash) return PA.renderCash(el, me);
-                if (ui.tab === 'company' && companyStockTab()) return root.StockCostAdmin.renderCompanyStock(el);
-                if (ui.tab === 'reconcile' && reconcileTab()) return root.ReconciliationAdmin.render(el);
-            },
-        }));
+        // Office v5: every tab is cards with a pop-up, drawn by its own file
+        // inside this frame (PA.frame).
+        if (ui.tab === 'approvals') return PA.renderApprovals(host, me);
+        if (ui.tab === 'cash' && PA.renderCash) return PA.renderCash(host, me);
+        if (ui.tab === 'company' && companyStockTab()) return root.StockCostAdmin.renderCompanyStock(host, me);
+        if (ui.tab === 'reconcile' && reconcileTab()) return root.ReconciliationAdmin.render(host, me);
+        ui.tab = 'list';
+        return renderList(host, me, { refreshPanel: true });
     }
 
     PA.renderPurchasing = renderPurchasing;

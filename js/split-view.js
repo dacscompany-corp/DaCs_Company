@@ -221,8 +221,10 @@
               (g.badge ? pills([g.badge]) : '') +
               (g.meta ? '<div class="sv-group-meta">' + g.meta + '</div>' : '') +
             '</div>' : '';
+        // g.empty: a group with no cards still shows, with its own sentence.
         return '<section class="sv-group">' + head +
-            '<div class="sv-cards">' + rows.map(r => cardHtml(r, openId)).join('') + '</div>' +
+            (rows.length ? '<div class="sv-cards">' + rows.map(r => cardHtml(r, openId)).join('') + '</div>'
+                         : '<div class="sv-group-empty">' + esc(g.empty || '') + '</div>') +
             '</section>';
     }
 
@@ -514,7 +516,8 @@
               // its own buttons) inside the frame; cfg.onCustom(el) fills it.
               (cfg.custom ? '<div class="sv-custom" data-sv-custom></div>' :
               '<div class="sv-body">' +
-                (ids.length ? (cfg.groups || []).filter(g => (g.rows || []).length).map(g => groupHtml(g, selected)).join('')
+                (ids.length || (cfg.groups || []).some(g => g.empty)
+                            ? (cfg.groups || []).filter(g => (g.rows || []).length || g.empty).map(g => groupHtml(g, selected)).join('')
                             : '<div class="sv-empty"><i data-lucide="circle-check"></i><div>' + (cfg.empty || '') + '</div></div>') +
               '</div>') +
               (cfg.tickBar && ticked > 0 ? '<div class="sv-tickbar"><button type="button" class="sv-tickbar-btn" data-sv-tickbar>' +
@@ -699,6 +702,47 @@
             '<div class="sv-fact"><dt>' + esc(r[0]) + '</dt><dd' + (r[2] ? ' class="sv-mono"' : '') + '>' + r[1] + '</dd></div>').join('') + '</dl>';
     }
 
+    // v5 "lines" (design block 'l'): small cards inside a pop-up section.
+    // items: [{ t, s, pills: [{ text, tone }], note, facts: [[label, valueHtml]],
+    //           acts, attrs, dim }]. t and s are text (escaped here); note,
+    // fact values, acts (buttons, see lbtn) and attrs arrive escaped.
+    function lines(items, empty) {
+        const list = (items || []).filter(Boolean);
+        if (!list.length) return empty ? '<div class="sv-empty-inline">' + esc(empty) + '</div>' : '';
+        return '<div class="sv-lines">' + list.map(it =>
+            '<div class="sv-line' + (it.dim ? ' is-dim' : '') + '"' + (it.attrs ? ' ' + it.attrs : '') + '>' +
+              '<div class="sv-line-head"><div class="sv-line-title"><div class="sv-line-t">' + esc(it.t) + '</div>' +
+                (it.s ? '<div class="sv-line-s">' + esc(it.s) + '</div>' : '') + '</div>' +
+                ((it.pills || []).length ? '<div class="sv-line-tags">' + pills(it.pills) + '</div>' : '') + '</div>' +
+              (it.note ? '<div class="sv-line-note">' + it.note + '</div>' : '') +
+              ((it.facts || []).filter(f => f && f[1] !== '' && f[1] != null).length ? '<dl class="sv-line-facts">' + it.facts.filter(f => f && f[1] !== '' && f[1] != null)
+                  .map(f => '<div><dt>' + esc(f[0]) + '</dt><dd>' + f[1] + '</dd></div>').join('') + '</dl>' : '') +
+              (it.acts ? '<div class="sv-line-acts">' + it.acts + '</div>' : '') +
+            '</div>').join('') + '</div>';
+    }
+
+    // A small line button. attrs: the data-* attributes (escaped); kind:
+    // 'primary' | 'warn' | 'danger' | ''.
+    function lbtn(label, attrs, kind) {
+        return '<button type="button" class="sv-lbtn' + (kind ? ' sv-lbtn--' + kind : '') + '" ' + (attrs || '') + '>' + esc(label) + '</button>';
+    }
+
+    // A table (design block 'tb'): cols are text; rows are arrays of cell
+    // html (escaped). opts.num: column indexes aligned right; opts.rowAttrs(i).
+    function table(cols, rows, opts) {
+        const o = opts || {};
+        const num = new Set(o.num || []);
+        const cls = i => num.has(i) ? ' class="sv-num"' : '';
+        return '<div class="sv-table-wrap"><table class="sv-table"><thead><tr>' + cols.map((c, i) => '<th' + cls(i) + '>' + esc(c) + '</th>').join('') +
+            '</tr></thead><tbody>' + (rows || []).map((r, ri) => '<tr' + (o.rowAttrs ? ' ' + o.rowAttrs(ri) : '') + '>' +
+                r.map((c, i) => '<td' + cls(i) + '>' + (c == null ? '' : c) + '</td>').join('') + '</tr>').join('') + '</tbody></table></div>';
+    }
+
+    // A one-line info note (design block 'n').
+    function note(html) {
+        return '<div class="sv-note"><i data-lucide="info"></i><span>' + html + '</span></div>';
+    }
+
     // items: [{ when, html }], newest first. Above collapsedAbove items the
     // list starts folded, as the old request page did.
     function history(items, collapsedAbove) {
@@ -836,5 +880,6 @@
 
     root.SplitView = Object.assign({}, pure, {
         render, panelHtml, page, section, notice, facts, history, pills, form, nextStep, toast, closePop, open: openItem, error, fill, esc, isPhone,
+        lines, lbtn, table, note,
     });
 })(typeof window !== 'undefined' ? window : globalThis);

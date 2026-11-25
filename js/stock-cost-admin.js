@@ -215,28 +215,59 @@
 
     // ── Purchasing → Company stock (owner accounts) ─────────────────
 
-    async function renderCompanyStock(body) {
-        body.innerHTML = '<div class="att-empty">Loading…</div>';
+    // Purchasing → Company stock (office v5): one card per item, its value
+    // in the warehouse, issued (assignment pending), awaiting delivery and
+    // lost; the card opens the same figures, with quantities, in the pop-up.
+    const csUi = { sel: null };
+    async function renderCompanyStock(host, me, opts) {
+        const PA = root.PurchasingAdmin, SV = root.SplitView;
         let items;
         try { items = await RA.rpc('stk_company_stock'); } catch (e) {
-            body.innerHTML = '<div class="att-empty">' + esc(errorMessage(e)) + '</div>';
+            host.innerHTML = '<div class="sv"><div class="sv-empty">' + esc(errorMessage(e)) + '</div></div>';
             return;
         }
+        if (PA.ui.tab !== 'company') return;   // another tab was chosen while this loaded
         items = items || [];
-        const cell = (x) => '<td style="text-align:right">' + esc(qty(x.quantity)) + '<div class="req-muted">' + esc(peso(x.value)) + '</div></td>';
         const total = items.reduce((s, i) => s + (Number(i.total_value) || 0), 0);
-        body.innerHTML =
-            '<p class="req-muted">Goods bought for the warehouse that no project carries yet. Never in a project\'s Spent, and not company overhead. ' +
-              'Issued goods stay here until the main owner approves their cost assignment.</p>' +
-            (items.length
-                ? '<div class="att-card"><div class="att-card-body" style="padding:0"><div class="req-table-wrap"><table class="att-table req-table"><thead><tr><th>Item</th><th style="text-align:right">In the warehouse</th>' +
-                  '<th style="text-align:right">Issued, assignment pending</th><th style="text-align:right">Awaiting delivery</th><th style="text-align:right">Company stock loss</th></tr></thead><tbody>' +
-                  items.map(i => '<tr><td><strong>' + esc(i.name) + '</strong>' + (i.spec ? ' <span class="req-muted">' + esc(i.spec) + '</span>' : '') +
-                      '<div class="req-muted">' + esc(i.unit) + '</div></td>' + cell(i.in_warehouse) + cell(i.issued_pending) + cell(i.awaiting) + cell(i.loss) + '</tr>').join('') +
-                  '</tbody></table></div></div></div>' +
-                  '<p><strong>Company stock: ' + esc(peso(total)) + '</strong> <span class="req-muted">(warehouse + pending assignments + awaiting delivery; losses not included)</span></p>'
-                : '<div class="att-empty">No company stock.</div>');
-        RA.icons();
+        const cell = (x, unit) => esc(peso(x.value)) + ' <span class="req-muted">· ' + esc(qty(x.quantity)) + ' ' + esc(unit || '') + '</span>';
+        const keyOf = i => i.item_id || i.id || i.name;
+        root.SplitView.render(host, PA.frame(host, me, {
+            lede: 'Goods bought for the warehouse that no project carries yet. Never in a project\'s Spent, and not company overhead. ' +
+                  'Issued goods stay here until the main owner approves their cost assignment.',
+            aside: items.length ? '<div class="sv-tab-help"><strong>Company stock: ' + esc(peso(total)) + '</strong> ' +
+                '<span class="req-muted">(warehouse + pending assignments + awaiting delivery; losses not included)</span></div>' : '',
+            search: false,
+            groups: [{ title: '', rows: items.map(i => ({
+                id: String(keyOf(i)),
+                title: i.name + (i.spec ? ' · ' + i.spec : ''),
+                sub: 'In the warehouse ' + peso(i.in_warehouse && i.in_warehouse.value),
+                meta: 'Issued, assignment pending ' + peso(i.issued_pending && i.issued_pending.value) +
+                      ' · Awaiting delivery ' + peso(i.awaiting && i.awaiting.value) + ' · Company stock loss ' + peso(i.loss && i.loss.value),
+                right: peso(i.total_value),
+            })) }],
+            empty: 'No company stock.',
+            selectedId: csUi.sel,
+            refreshPanel: !!(opts && opts.refreshPanel),
+            onSelect: (id, panel) => {
+                csUi.sel = id;
+                const i = items.find(x => String(keyOf(x)) === id);
+                if (!i) { SV.error(panel, 'This item is no longer in company stock. Reload the page.'); return; }
+                SV.fill(panel, SV.panelHtml({
+                    kicker: 'Company stock',
+                    title: i.name + (i.spec ? ' · ' + i.spec : ''),
+                    sub: i.unit,
+                    sections: [SV.section('Value', SV.facts([
+                        ['In the warehouse', cell(i.in_warehouse || {}, i.unit)],
+                        ['Issued, assignment pending', cell(i.issued_pending || {}, i.unit)],
+                        ['Awaiting delivery', cell(i.awaiting || {}, i.unit)],
+                        ['Company stock loss', cell(i.loss || {}, i.unit)],
+                        ['Total', '<strong>' + esc(peso(i.total_value)) + '</strong>'],
+                    ])), SV.note(esc('Never in a project\'s Spent, and not company overhead.'))],
+                    nextLabel: 'Next',
+                }));
+            },
+            onClose: () => { csUi.sel = null; },
+        }));
     }
 
     root.StockCostAdmin = Object.assign({}, pure, { openDecide, openResubmit, openReverse, renderApprovals, renderCompanyStock });

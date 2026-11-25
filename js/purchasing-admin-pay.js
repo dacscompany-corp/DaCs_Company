@@ -53,53 +53,62 @@
         const live = (data.payments || []).filter(p => !p.voided_at);
         const voided = (data.payments || []).filter(p => p.voided_at);
         const owner = !!(data.me && data.me.main_owner);
+        const SV = root.SplitView;
+        const peso = v => esc(PA.peso(v));
+        // Office v5: the pop-up's design blocks — a note, the Payments facts,
+        // Payments made, Refunds and supplier credit, Voided payments. The
+        // buttons go to the pop-up's footer when there is one.
         host.innerHTML =
-            '<div class="att-card"><div class="att-card-body">' +
-              '<div class="pur-pay-head"><h3 class="pur-h3">Payments</h3>' + payPill(pay) + '</div>' +
-              '<p class="req-muted">How this receipt was paid. Payments never change Spent — the purchase counted once, when it was recorded.</p>' +
-              (pay.state === 'not_tracked' ? '<p class="req-muted">Recorded before payments were tracked. Record a payment to start tracking it.</p>' : '') +
-              '<div class="pur-pay-figs">' +
-                '<span>Receipt <strong>' + esc(PA.peso(pay.due)) + '</strong></span>' +
-                '<span>Paid <strong>' + esc(PA.peso(pay.paid)) + '</strong></span>' +
-                (Number(pay.balance) > 0 ? '<span>Left to pay <strong>' + esc(PA.peso(pay.balance)) + '</strong></span>' : '') +
-                (Number(pay.excess) > 0 ? '<span>Over <strong>' + esc(PA.peso(pay.excess)) + '</strong>' +
-                   (Number(pay.resolved) > 0 ? ' · resolved ' + esc(PA.peso(pay.resolved)) : '') + '</span>' : '') +
-              '</div>' +
-              (Number(pay.over_resolved) > 0 ? '<div class="att-info att-info--warn"><i data-lucide="alert-triangle"></i><div>More was refunded or credited (' +
-                  esc(PA.peso(pay.over_resolved)) + ') than is now over — the purchase total went up after it was resolved. Check the refunds and credit below.</div></div>' : '') +
-              (live.length ? '<div class="req-table-wrap"><table class="att-table req-table"><thead><tr><th>Paid on</th><th>Amount</th><th>How</th><th>From</th><th>Note</th><th></th></tr></thead><tbody>' +
-                live.map(p => '<tr><td>' + esc(p.paid_on) + '</td><td><strong>' + esc(PA.peso(p.amount)) + '</strong></td><td>' +
-                  esc(p.source === 'credit' ? 'Credit' : (PA.PAY_METHOD[p.method] || p.method)) + '</td><td>' + esc(sourceText(p)) + '</td><td>' +
-                  esc(p.note || '') + (p.proof_url ? ' <a class="att-link" href="#" data-proof="' + esc(p.proof_url) + '">proof</a>' : '') +
-                  '<div class="req-muted">recorded by ' + esc(p.created_by_name) +
-                    (p.moved ? ' · carried over from the earlier version of this purchase' : '') + '</div></td><td>' +
-                  (p.can_void ? '<button type="button" class="att-btn att-btn--sm" data-void-pay="' + esc(p.id) + '">Void…</button>' : '') +
-                  '</td></tr>').join('') + '</tbody></table></div>' : '<p class="req-muted">No payment recorded.</p>') +
-              ((data.refunds || []).length || (data.credits || []).length ? '<h4 class="pur-h4">Refunds and supplier credit</h4><ul class="pur-history">' +
-                (data.refunds || []).map(r => '<li' + (r.voided_at ? ' class="is-void"' : '') + '>' + esc(r.received_on) + ' — refund <strong>' +
-                  esc(PA.peso(r.amount)) + '</strong>: ' + esc(PA.routeLabel(r.funded_by, r.received_by, r.person_name)) +
-                  (r.voided_at ? ' — voided: ' + esc(r.void_reason) : '') +
-                  (owner && !r.voided_at ? ' <button type="button" class="att-btn att-btn--sm" data-void-refund="' + esc(r.id) + '">Void…</button>' : '') + '</li>').join('') +
-                (data.credits || []).map(c => '<li' + (c.voided_at ? ' class="is-void"' : '') + '>Supplier credit <strong>' + esc(PA.peso(c.amount)) +
-                  '</strong> with ' + esc(c.supplier || 'the supplier') + ' — ' + esc(PA.peso(c.left)) + ' left' +
-                  (c.voided_at ? ' — voided: ' + esc(c.void_reason) : '') +
-                  (owner && !c.voided_at ? ' <button type="button" class="att-btn att-btn--sm" data-void-credit="' + esc(c.id) + '">Void…</button>' : '') + '</li>').join('') +
-                '</ul>' : '') +
-              (voided.length ? '<details class="pur-voided"><summary>Voided payments (' + voided.length + ')</summary><ul class="pur-history">' +
-                voided.map(p => '<li class="is-void">' + esc(p.paid_on) + ' — ' + esc(PA.peso(p.amount)) + ' ' + esc(sourceText(p)) +
-                  ' — voided: ' + esc(p.void_reason) + '</li>').join('') + '</ul></details>' : '') +
-              '<div class="pur-pay-actions">' +
-                (open ? '<button type="button" class="att-btn" data-record-pay>Record payment…</button>' : '') +
-                (owner && Number(pay.unresolved) > 0 ? '<button type="button" class="att-btn att-btn--primary" data-resolve>Resolve overpaid…</button>' : '') +
-              '</div>' +
-            '</div></div>';
+            '<div class="sv-page-secs">' +
+              SV.note('How this receipt was paid. Payments never change Spent — the purchase counted once, when it was recorded.' +
+                (pay.state === 'not_tracked' ? ' Recorded before payments were tracked. Record a payment to start tracking it.' : '')) +
+              SV.section('Payments', SV.facts([
+                  ['Receipt', peso(pay.due)],
+                  ['Paid', peso(pay.paid)],
+                  ['Left to pay', Number(pay.balance) > 0 ? peso(pay.balance) : ''],
+                  ['Over', Number(pay.excess) > 0 ? peso(pay.excess) + (Number(pay.resolved) > 0 ? ' · resolved ' + peso(pay.resolved) : '') : ''],
+                  ['Payment status', payPill(pay)],
+              ])) +
+              (Number(pay.over_resolved) > 0 ? SV.notice('gold', 'alert-triangle', 'Check the refunds and credit', esc('More was refunded or credited (' + PA.peso(pay.over_resolved) +
+                  ') than is now over — the purchase total went up after it was resolved. Check the refunds and credit below.')) : '') +
+              SV.section('Payments made', SV.lines(live.map(p => ({
+                  t: PA.peso(p.amount) + ' · ' + (p.source === 'credit' ? 'Credit' : (PA.PAY_METHOD[p.method] || p.method)) + ' · ' + sourceText(p),
+                  s: 'Paid on ' + p.paid_on + ' · recorded by ' + p.created_by_name + (p.note ? ' · ' + p.note : '') +
+                     (p.moved ? ' · carried over from the earlier version of this purchase' : ''),
+                  acts: (p.proof_url ? SV.lbtn('proof', 'data-proof="' + esc(p.proof_url) + '"') : '') +
+                        (p.can_void ? SV.lbtn('Void…', 'data-void-pay="' + esc(p.id) + '"') : ''),
+              })), 'No payment recorded.')) +
+              ((data.refunds || []).length || (data.credits || []).length ? SV.section('Refunds and supplier credit', SV.lines(
+                (data.refunds || []).map(r => ({
+                  t: 'Refund ' + PA.peso(r.amount), s: r.received_on + ' — refund ' + PA.peso(r.amount) + ': ' + PA.routeLabel(r.funded_by, r.received_by, r.person_name) +
+                     (r.voided_at ? ' — voided: ' + r.void_reason : ''),
+                  dim: !!r.voided_at, pills: r.voided_at ? [{ text: 'Voided', tone: 'red' }] : [],
+                  acts: owner && !r.voided_at ? SV.lbtn('Void…', 'data-void-refund="' + esc(r.id) + '"') : '',
+                })).concat((data.credits || []).map(c => ({
+                  t: 'Supplier credit ' + PA.peso(c.amount), s: 'with ' + (c.supplier || 'the supplier') + ' — ' + PA.peso(c.left) + ' left' +
+                     (c.voided_at ? ' — voided: ' + c.void_reason : ''),
+                  dim: !!c.voided_at, pills: c.voided_at ? [{ text: 'Voided', tone: 'red' }] : [],
+                  acts: owner && !c.voided_at ? SV.lbtn('Void…', 'data-void-credit="' + esc(c.id) + '"') : '',
+                }))))) : '') +
+              (voided.length ? '<details class="sv-sec sv-hist"><summary class="sv-sec-title">Voided payments (' + voided.length + ')</summary>' +
+                SV.lines(voided.map(p => ({ t: p.paid_on + ' — ' + PA.peso(p.amount) + ' ' + sourceText(p), s: 'voided: ' + p.void_reason, dim: true }))) +
+                '</details>' : '') +
+            '</div>';
+        const buttons =
+            (open ? SV.lbtn('Record payment…', 'data-record-pay', 'primary') : '') +
+            (owner && Number(pay.unresolved) > 0 ? SV.lbtn('Resolve overpaid…', 'data-resolve', 'primary') : '');
+        const slot = host.closest('.sv-panel') ? host.closest('.sv-panel').querySelector('[data-pay-acts]') : null;
+        if (slot) slot.innerHTML = buttons;
+        else host.insertAdjacentHTML('beforeend', '<div class="pur-pay-actions">' + buttons + '</div>');
+        const scope = slot ? [host, slot] : [host];
+        const q = sel => scope.map(el => el.querySelector(sel)).find(Boolean) || null;
 
         // Project Control's Unpaid / Partially paid / Paid tags follow at once (F4).
         const reload = () => { if (root.expPurReloadFlags) root.expPurReloadFlags(); renderPayments(host, purchase, onChange); if (onChange) onChange(); };
         host.querySelectorAll('[data-proof]').forEach(a => a.addEventListener('click', (e) => { e.preventDefault(); root.open(a.dataset.proof, '_blank'); }));
-        const rec = host.querySelector('[data-record-pay]');
+        const rec = q('[data-record-pay]');
         if (rec) rec.addEventListener('click', () => openRecordPayment(purchase, data, reload));
-        const res = host.querySelector('[data-resolve]');
+        const res = q('[data-resolve]');
         if (res) res.addEventListener('click', async () => {
             try {
                 const list = await RA.rpc('pur_overpaid');
