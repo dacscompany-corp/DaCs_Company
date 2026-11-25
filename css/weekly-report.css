@@ -1,0 +1,140 @@
+/* ════════════════════════════════════════════════════════════════════
+   WEEKLY REPORTS — styles for js/weekly-report-admin.js (Attendance →
+   Weekly reports, 0120). The rest of the screen is the office frame
+   (css/split-view.css) and the Attendance classes
+   (css/attendance-admin.css): this file only adds the week controls, the
+   7-day table, the photo grid and the duty list. Works down to 400px.
+   ════════════════════════════════════════════════════════════════════ */
+
+/* ── Week controls (toolbar) ─────────────────────────────────────── */
+.wr-week { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.wr-week-label { font-size: 14.5px; font-weight: 600; color: #1C1C1E; padding: 0 4px; white-space: nowrap; }
+.wr-week-btn { width: 38px; justify-content: center; padding: 0; font-size: 20px; line-height: 1; }
+.wr-week .sv-chip:disabled { opacity: .45; cursor: default; border-color: #DCDCDA; }
+
+/* ── States and small text ───────────────────────────────────────── */
+.wr-state { padding: 32px 20px; }
+.wr-retry { margin-top: 10px; }
+.wr-muted { color: #6C6C70; font-size: 13.5px; line-height: 1.45; margin: 0; }
+.wr-print-msg { font-size: 14px; font-weight: 600; color: #C0392B; }
+.wr-print-msg:empty { display: none; }
+
+/* ── Employee header ─────────────────────────────────────────────── */
+.wr-emp-head { display: flex; align-items: center; gap: 14px; }
+.wr-avatar {
+    flex: none; width: 64px; height: 64px; border-radius: 50%; overflow: hidden;
+    background: #EAF2EC; color: #1A5C3A; display: grid; place-items: center; font-weight: 700; font-size: 20px;
+}
+.wr-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.wr-emp-id { min-width: 0; }
+.wr-emp-no { font-size: 15px; color: #3A3A3C; overflow-wrap: anywhere; }
+
+/* ── The 7-day table ─────────────────────────────────────────────── */
+.wr-days-wrap { border: 1px solid #E5E5E5; border-radius: 10px; overflow: hidden; }
+.wr-days { width: 100%; border-collapse: collapse; font-size: 14px; }
+.wr-days th {
+    text-align: left; font-size: 12.5px; font-weight: 600; color: #6C6C70; background: #FAFAF8;
+    padding: 8px 10px; border-bottom: 1px solid #E5E5E5;
+}
+.wr-days td { padding: 9px 10px; border-top: 1px solid #F0F0EE; vertical-align: top; color: #1C1C1E; }
+.wr-days tbody tr:first-child td { border-top: 0; }
+.wr-days .att-pill { white-space: normal; padding: 2px 9px; font-size: 11.5px; }
+.wr-site { font-size: 12.5px; color: #6C6C70; margin-top: 2px; overflow-wrap: anywhere; }
+.wr-tin { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.wr-tin .att-work-thumb { width: 56px; height: 56px; }
+.wr-tin .att-photo--missing { font-size: 11px; }
+
+/* Narrow (phone, 400px): each day becomes a small block with labels. */
+@media (max-width: 640px) {
+    .wr-days thead { display: none; }
+    .wr-days, .wr-days tbody, .wr-days tr, .wr-days td { display: block; width: 100%; box-sizing: border-box; }
+    .wr-days tr { padding: 8px 12px; border-top: 1px solid #E5E5E5; }
+    .wr-days tbody tr:first-child { border-top: 0; }
+    .wr-days td { display: flex; align-items: baseline; gap: 10px; padding: 3px 0; border: 0; }
+    .wr-days td::before { content: attr(data-label); flex: 0 0 100px; font-size: 12.5px; font-weight: 600; color: #6C6C70; }
+    .wr-days td:first-child { font-weight: 700; padding-bottom: 4px; }
+    .wr-days td:first-child::before { display: none; }
+    .wr-days .wr-cell { flex: 1; min-width: 0; }
+}
+
+/* ── Work reported: entries and the photo grid ───────────────────── */
+.wr-entry {
+    border: 1px solid #E5E5E5; border-radius: 12px; padding: 12px 14px; background: #fff;
+    display: flex; flex-direction: column; gap: 8px;
+}
+.wr-entry-head { font-size: 14.5px; color: #1C1C1E; overflow-wrap: anywhere; }
+.wr-note { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 15px; line-height: 1.55; color: #1C1C1E; }
+.wr-photos { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; }
+.wr-ph { margin: 0; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.wr-ph-box {
+    aspect-ratio: 4 / 3; border-radius: 8px; overflow: hidden; background: var(--att-hatch, #EFEFEC);
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; text-align: center;
+}
+.wr-ph-box > a { display: block; width: 100%; height: 100%; }
+.wr-ph-img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.wr-ph-box .att-photo--missing { font-size: 11px; padding: 0 8px; }
+.wr-ph-wait { font-size: 12px; color: #6C6C70; }
+.wr-ph figcaption { font-size: 12px; color: #55555A; line-height: 1.35; overflow-wrap: anywhere; }
+.wr-source { font-family: var(--att-mono, monospace); font-size: 11.5px; color: #8A8A86; overflow-wrap: anywhere; }
+@media (max-width: 480px) {
+    .wr-photos { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+}
+
+/* ── General duties ──────────────────────────────────────────────── */
+.wr-duties { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
+.wr-duty {
+    text-align: left; font: inherit; color: inherit; background: #fff; border: 1.5px solid #E5E5E5; border-radius: 18px;
+    padding: 16px; display: flex; flex-direction: column; gap: 6px; cursor: pointer; min-width: 0;
+    transition: border-color .15s;
+}
+.wr-duty:hover, .wr-duty:focus-visible { border-color: #1A5C3A; outline: none; }
+.wr-duty:focus-visible { box-shadow: 0 0 0 3px #EAF2EC; }
+.wr-duty-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.wr-duty-pos { font-weight: 600; font-size: 17px; overflow-wrap: anywhere; }
+.wr-duty-text {
+    font-size: 14.5px; line-height: 1.5; color: #3A3A3C; white-space: pre-wrap; overflow-wrap: anywhere;
+    display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden;
+}
+.wr-duty-meta { font-size: 13px; color: #6C6C70; }
+.wr-duty-open { margin-top: auto; padding-top: 4px; font-size: 14.5px; font-weight: 600; color: #1A5C3A; }
+.sv-form-body textarea.wr-duty-input { height: auto; min-height: 180px; padding: 12px 14px; line-height: 1.5; resize: vertical; }
+.wr-check { display: inline-flex; align-items: center; gap: 10px; min-height: 44px; font-size: 15px; font-weight: 600; cursor: pointer; }
+.wr-check input { width: 20px; height: 20px; margin: 0; accent-color: #1A5C3A; }
+
+@media (max-width: 720px) {
+    .wr-week-btn { width: 44px; }
+    .wr-duties { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* ── Project pop-up: the print's look on screen (Work done + photo grid) ── */
+.wr-empty-note { font-size: 16px; font-weight: 600; color: #3A3A3C; }
+.wr-tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.wr-tile { border: 1px solid #DDE1EA; border-radius: 10px; padding: 10px 12px; background: #fff; min-width: 0; }
+.wr-tile-n { font-size: 22px; font-weight: 700; color: #1C1C1E; }
+.wr-tile-l { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: #6C6C70; overflow-wrap: anywhere; }
+.wr-tile--dark { background: #1F2A44; border-color: #1F2A44; }
+.wr-tile--dark .wr-tile-n { color: #fff; }
+.wr-tile--dark .wr-tile-l { color: #CFD6E6; }
+.wr-pday { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: #6C6C70; margin: 12px 0 6px; }
+.wr-pday:first-child { margin-top: 0; }
+.wr-pcard {
+    border: 1px solid #DDE1EA; border-top: 2px solid #15803D; border-radius: 10px; padding: 10px 12px; margin: 6px 0;
+    display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; background: #fff;
+}
+.wr-pcard-main { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.wr-pcard-who { font-size: 11.5px; letter-spacing: .06em; text-transform: uppercase; color: #6C6C70; overflow-wrap: anywhere; }
+.wr-pcard-range { flex: none; font-size: 13px; color: #6C6C70; white-space: nowrap; }
+.wr-pgrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.wr-pg { position: relative; margin: 0; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.wr-pg .wr-ph-box { aspect-ratio: 4 / 3; }
+.wr-pg figcaption { font-size: 12px; color: #55555A; line-height: 1.35; overflow-wrap: anywhere; }
+.wr-badge {
+    position: absolute; top: 6px; left: 6px; z-index: 1; background: #1F2A44; color: #fff;
+    font-size: 11px; font-weight: 700; border-radius: 4px; padding: 2px 6px;
+}
+@media (max-width: 480px) {
+    .wr-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .wr-pgrid { gap: 6px; }
+    .wr-pcard { flex-direction: column; gap: 6px; }
+    .wr-pg figcaption { font-size: 11px; }
+}

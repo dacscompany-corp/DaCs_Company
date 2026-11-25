@@ -488,6 +488,22 @@
     color: #8A8A86;
 }
 
+/* 0119: a WorkMate Time Out's other work photos, under the first one. */
+.att-work-photos { padding: 14px 20px 0; display: flex; flex-direction: column; gap: 8px; }
+.att-work-strip { display: flex; flex-wrap: wrap; gap: 8px; }
+.att-work-strip a { display: block; }
+.att-work-thumb {
+    width: 72px;
+    height: 72px;
+    object-fit: cover;
+    display: grid;
+    place-items: center;
+    border-radius: 8px;
+    background: var(--att-hatch);
+    font-size: 9px;
+    text-align: center;
+}
+
 .att-half-body { padding: 16px 20px; display: flex; flex-direction: column; gap: 14px; }
 .att-fact-label {
     font-size: 11px;

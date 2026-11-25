@@ -145,6 +145,7 @@
     function refusalText(error) {
         const text = String((error && error.message) || error || '');
         if (/\bNOT_PAID\b/.test(text)) return NOT_PAID;
+        if (/_described\b/.test(text)) return BR().refusalText(error);   // 0118 not applied: said by the shared text
         if ((error && error.code === 'PGRST202') || /\bpmar_[a-z_]+|pm_billing_rec|proof_url/.test(text)) return NEEDS_0116;
         return BR().refusalText(error);
     }
@@ -173,16 +174,24 @@
 
     const actions = {
         state: (projectId) => rpc('pmar_state', { p_project: projectId }),
-        issue(popup, paymentId, receivedFrom, receivedBy) {
+        // description (0118): the item line the owner typed. The 5th argument is Project
+        // Control's payment date, which Project Management never asks for.
+        issue(popup, paymentId, receivedFrom, receivedBy, _payment, description) {
             return guarded(popup, async () => {
-                const receipt = await rpc('pmar_issue', { p_payment: paymentId, p_received_from: receivedFrom, p_received_by: receivedBy });
+                const args = { p_payment: paymentId, p_received_from: receivedFrom, p_received_by: receivedBy };
+                const receipt = description !== undefined
+                    ? await rpc('pmar_issue_described', { ...args, p_description: description })
+                    : await rpc('pmar_issue', args);
                 writeDoc(popup, BR().receiptHTML(receipt));
                 return receipt;
             });
         },
-        reissue(popup, receiptId, reason, receivedFrom, receivedBy) {
+        reissue(popup, receiptId, reason, receivedFrom, receivedBy, _payment, description) {
             return guarded(popup, async () => {
-                const receipt = await rpc('pmar_reissue', { p_receipt: receiptId, p_reason: reason, p_received_from: receivedFrom, p_received_by: receivedBy });
+                const args = { p_receipt: receiptId, p_reason: reason, p_received_from: receivedFrom, p_received_by: receivedBy };
+                const receipt = description !== undefined
+                    ? await rpc('pmar_reissue_described', { ...args, p_description: description })
+                    : await rpc('pmar_reissue', args);
                 writeDoc(popup, BR().receiptHTML(receipt));
                 return receipt;
             });
@@ -194,6 +203,8 @@
         reissue: (...args) => actions.reissue(...args),
         amountLabel: 'Amount paid',
         noAmountText: 'This payment is no longer marked paid, so no new receipt can be issued.',
+        // 0118: the Description box starts with the payment's own line, which the owner may change.
+        autoLine: (plan) => plan.period ? plan.period.label : '',
     };
 
     function notify(message) {

@@ -13,6 +13,12 @@ import path from 'node:path';
 import { BR_SETUP, M114, IDS, seed, seedReceipts, F } from './br_base.mjs';
 
 const ROUNDS = 5;
+// --with-0117: the same races through 0117's bar_issue_with_payment / bar_reissue_with_payment.
+// --with-0118: the same races through 0118's bar_issue_described / bar_reissue_described.
+const WITH118 = process.argv.includes('--with-0118');
+const WITH117 = WITH118 || process.argv.includes('--with-0117');
+const M118 = WITH118 ? fs.readFileSync(new URL('../migrations/0118_receipt_description.sql', import.meta.url), 'utf8') : '';
+const M117 = WITH117 ? fs.readFileSync(new URL('../migrations/0117_pc_receipt_payment_line.sql', import.meta.url), 'utf8') : '';
 let passed = 0, failed = 0;
 const failures = [];
 function check(name, cond, detail) {
@@ -26,14 +32,18 @@ const server = new EmbeddedPostgres({ databaseDir: dir, user: 'postgres', passwo
   initdbFlags: ['--encoding=UTF8', '--locale=C'], onLog: () => {} });
 const cfg = { host: 'localhost', port, user: 'postgres', password: 'pw', database: 'postgres' };
 
-console.log('\nBilling Acknowledgement Receipts — races (0114 on PostgreSQL)');
+console.log('\nBilling Acknowledgement Receipts — races (0114' + (WITH117 ? ' + 0117' : '') + (WITH118 ? ' + 0118' : '') + ' on PostgreSQL)');
 await server.initialise();
 await server.start();
 const admin = new pg.Client(cfg);
 await admin.connect();
 try {
-  for (const part of BR_SETUP) await admin.query(part);
+  // 0118 also defines the Project Management functions, so that mode needs 0116's tables too.
+  const setup = WITH118 ? (await import('./pmar_base.mjs')).PMAR_SETUP : BR_SETUP;
+  for (const part of setup) await admin.query(part);
   await admin.query(M114);
+  if (WITH117) await admin.query(M117);
+  if (WITH118) { await admin.query((await import('./pmar_base.mjs')).M116); await admin.query(M118); }
   await seed((sql) => admin.query(sql));
   await seedReceipts((sql) => admin.query(sql));
 
@@ -52,8 +62,9 @@ try {
     try { return { ok: true, r: (await promise).rows[0].r }; }
     catch (e) { return { ok: false, code: e.code, msg: e.message }; }
   };
-  const ISSUE = `select bar_issue($1, 'MH', 'Ana') r`;
-  const REISSUE = `select bar_reissue($1, 'changed', 'MH', 'Ana') r`;
+  const PAID = `(now() at time zone 'Asia/Manila')::date - 1, 'REF-1'`;
+  const ISSUE = WITH118 ? `select bar_issue_described($1, 'MH', 'Ana', ${PAID}, 'Typed line') r` : WITH117 ? `select bar_issue_with_payment($1, 'MH', 'Ana', ${PAID}) r` : `select bar_issue($1, 'MH', 'Ana') r`;
+  const REISSUE = WITH118 ? `select bar_reissue_described($1, 'changed', 'MH', 'Ana', ${PAID}, 'Typed line') r` : WITH117 ? `select bar_reissue_with_payment($1, 'changed', 'MH', 'Ana', ${PAID}) r` : `select bar_reissue($1, 'changed', 'MH', 'Ana') r`;
   // a runs first and stays open; b must wait on a lock until a commits.
   const pair = async (a, b) => {
     let s1, s2;

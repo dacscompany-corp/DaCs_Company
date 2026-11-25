@@ -26,7 +26,11 @@ const server = new EmbeddedPostgres({ databaseDir: dir, user: 'postgres', passwo
   initdbFlags: ['--encoding=UTF8', '--locale=C'], onLog: () => {} });
 const cfg = { host: 'localhost', port, user: 'postgres', password: 'pw', database: 'postgres' };
 
-console.log('\nPM Billing Documents — races (0116 on PostgreSQL)');
+// --with-0118: the same races through 0118's pmar_issue_described / pmar_reissue_described.
+const WITH118 = process.argv.includes('--with-0118');
+const M117 = WITH118 ? fs.readFileSync(new URL('../migrations/0117_pc_receipt_payment_line.sql', import.meta.url), 'utf8') : '';
+const M118 = WITH118 ? fs.readFileSync(new URL('../migrations/0118_receipt_description.sql', import.meta.url), 'utf8') : '';
+console.log('\nPM Billing Documents — races (0116' + (WITH118 ? ' + 0118' : '') + ' on PostgreSQL)');
 await server.initialise();
 await server.start();
 const admin = new pg.Client(cfg);
@@ -35,6 +39,7 @@ try {
   for (const part of PMAR_SETUP) await admin.query(part);
   await admin.query(M114);
   await admin.query(M116);
+  if (WITH118) { await admin.query(M117); await admin.query(M118); }
   await seed((sql) => admin.query(sql));
   await seedReceipts((sql) => admin.query(sql));
   await seedPm((sql) => admin.query(sql));
@@ -57,8 +62,8 @@ try {
     try { return { ok: true, r: (await promise).rows[0].r }; }
     catch (e) { return { ok: false, code: e.code, msg: e.message }; }
   };
-  const ISSUE = `select pmar_issue($1, 'Sample Client', 'Ana') r`;
-  const REISSUE = `select pmar_reissue($1, 'changed', 'Sample Client', 'Ana') r`;
+  const ISSUE = WITH118 ? `select pmar_issue_described($1, 'Sample Client', 'Ana', 'Typed line') r` : `select pmar_issue($1, 'Sample Client', 'Ana') r`;
+  const REISSUE = WITH118 ? `select pmar_reissue_described($1, 'changed', 'Sample Client', 'Ana', 'Typed line') r` : `select pmar_reissue($1, 'changed', 'Sample Client', 'Ana') r`;
   const BAR_ISSUE = `select bar_issue($1, 'MH', 'Ana') r`;
   // a runs first and stays open; b must wait on a lock until a commits.
   const pair = async (a, b) => {

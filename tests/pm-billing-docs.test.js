@@ -110,15 +110,28 @@ test('pressing the receipt button opens the shared dialog with Project Managemen
   assert.strictEqual(seen[0].plan.kind, 'new');
   assert.strictEqual(seen[0].ops.amountLabel, 'Amount paid');
   assert.strictEqual(seen[0].ops.noAmountText, 'This payment is no longer marked paid, so no new receipt can be issued.');
+  assert.strictEqual(seen[0].ops.autoLine(seen[0].plan), 'Payment received (Nov 13, 2026) · Ref. GC-123', 'the Description box starts with the payment line');
+});
+test('issue and reissue with a typed description use 0118, still never an amount', async () => {
+  const h = harness('owner', () => ({ data: RECEIPT, error: null }));
+  await h.api.actions.issue(popup(), 'v1', 'Julienne Camba', 'Ana', undefined, 'Full Payment of the Down Payment (Nov 20, 2026)');
+  await h.api.actions.reissue(popup(), 'r1', 'Wording', 'Julienne Camba', 'Ana', undefined, 'Down payment');
+  same(h.calls, [
+    ['pmar_issue_described', { p_payment: 'v1', p_received_from: 'Julienne Camba', p_received_by: 'Ana', p_description: 'Full Payment of the Down Payment (Nov 20, 2026)' }],
+    ['pmar_reissue_described', { p_receipt: 'r1', p_reason: 'Wording', p_received_from: 'Julienne Camba', p_received_by: 'Ana', p_description: 'Down payment' }]]);
+});
+test('a database without 0118 says so', () => {
+  assert(/0118/.test(api.refusalText({ code: 'PGRST202', message: 'Could not find the function public.pmar_issue_described' })));
 });
 
 console.log('\nThe receipt page');
-test("the receipt page is 0114's page with the payment line", () => {
+test("the receipt page is 0114's page, the payment line's date and reference as Payment Details rows", () => {
   const html = harness().win.BillingReceipts.receiptHTML(RECEIPT);
-  for (const text of ['ACKNOWLEDGEMENT RECEIPT', 'AR-202611-004', 'Payment received (Nov 13, 2026) · Ref. GC-123', 'Received From', 'Sample Client']) {
+  for (const text of ['ACKNOWLEDGEMENT RECEIPT', 'AR-202611-004', '<td>1</td><td>Payment received</td>',
+    '<td>Payment Date</td><td>Nov 13, 2026</td>', '<td>Reference No.</td><td>GC-123</td>', 'Sample Client']) {
     assert(html.includes(text), 'missing: ' + text);
   }
-  assert.strictEqual(html.split('₱389,000.00').length - 1, 3, 'unit price, amount and the total box');
+  assert.strictEqual(html.split('₱389,000.00').length - 1, 1, 'the total');
 });
 
 console.log('\nThe Billing Request page');

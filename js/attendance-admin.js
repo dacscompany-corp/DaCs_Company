@@ -796,6 +796,9 @@
                       'timein_project_system,' +
                       'timein_photo_path,timeout_photo_path,' +
                       'timein_was_offline,timeout_was_offline,timein_received_at,timeout_received_at,' +
+                      // Since 0119 a WorkMate Time Out's clock is judged on the
+                      // trusted time (both columns live since 0078).
+                      'timeout_trusted_at,timeout_app_version,' +
                       // The location verdict (0068/0069). Without these the
                       // row cannot say a Time In was never checked, and an
                       // unchecked stamp looks exactly like a verified one.
@@ -917,7 +920,7 @@
         if (offline) return 'Saved without signal, arrived later';
         const worst = Math.max(
             attSkewMinutes(record.timein_at, record.timein_received_at) || 0,
-            attSkewMinutes(record.timeout_at, record.timeout_received_at) || 0);
+            attOutSkewMinutes(record) || 0);
         if (worst >= SKEW_WARN_MINUTES) {
             return 'Phone clock was ' + worst + ' min behind';
         }
@@ -990,6 +993,24 @@
     }
 
     /**
+     * The Time Out's clock gap, in minutes (0119).
+     *
+     * WorkMate 1030+ takes 3-6 work photos, then a REQUIRED note typed after
+     * the last shutter, then uploads them all: the gap to arrival is typing
+     * and uploading on site signal, not a clock. Only the trusted clock at
+     * the shutter (0078) says how far the phone's clock was off; with none
+     * there is nothing to claim. Older Time Outs keep the arrival measure.
+     */
+    function attOutSkewMinutes(record) {
+        if (!record) return null;
+        if ((Number(record.timeout_app_version) || 0) >= 1030) {
+            return record.timeout_trusted_at
+                ? attSkewMinutes(record.timeout_at, record.timeout_trusted_at) : null;
+        }
+        return attSkewMinutes(record.timeout_at, record.timeout_received_at);
+    }
+
+    /**
      * The badges an admin needs and a worker never sees.
      *
      * `offline` is a fact, not an accusation — it is why the gap exists.
@@ -1009,7 +1030,7 @@
         const inSkew = record.timein_was_offline
             ? null : attSkewMinutes(record.timein_at, record.timein_received_at);
         const outSkew = record.timeout_was_offline
-            ? null : attSkewMinutes(record.timeout_at, record.timeout_received_at);
+            ? null : attOutSkewMinutes(record);
         const worst = Math.max(inSkew || 0, outSkew || 0);
 
         if (worst >= SKEW_WARN_MINUTES) {
@@ -1462,7 +1483,7 @@
             if (!record) return [];
             const skew = Math.max(
                 record.timein_was_offline ? 0 : (attSkewMinutes(record.timein_at, record.timein_received_at) || 0),
-                record.timeout_was_offline ? 0 : (attSkewMinutes(record.timeout_at, record.timeout_received_at) || 0));
+                record.timeout_was_offline ? 0 : (attOutSkewMinutes(record) || 0));
             const loc = [
                 ['in', record.timein_location_status, record.timein_distance_m, record.timein_geofence_radius_m],
                 ['out', record.timeout_location_status, record.timeout_distance_m, record.timeout_geofence_radius_m]
@@ -1830,10 +1851,14 @@
         }
         const workerNo = attWorkerNo(((profiles || [])[0] || {}).worker_no);
 
-        const [inUrl, outUrl] = await Promise.all([
+        // 0119: a WorkMate Time Out's other work photos, signed in the same round.
+        const extraPaths = Array.isArray(r.timeout_extra_photo_paths) ? r.timeout_extra_photo_paths : [];
+        const [inUrl, outUrl, ...extraUrls] = await Promise.all([
             attSignedPhoto(r.timein_photo_path),
-            attSignedPhoto(r.timeout_photo_path)
+            attSignedPhoto(r.timeout_photo_path),
+            ...extraPaths.map(p => attSignedPhoto(p))
         ]);
+        const outExtras = extraPaths.map((path, i) => ({ url: extraUrls[i], path }));
 
         const name = r.worker_name || '—';
         container.querySelector('#attCrumbName').textContent = name;
@@ -1933,7 +1958,7 @@
                           r.timein_description, inUrl, r.timein_photo_path)}
                 ${attHalf('When they left', 'time out', 'out', 'log-out',
                           r.timeout_at, r.timeout_project_name,
-                          r.timeout_description, outUrl, r.timeout_photo_path)}
+                          r.timeout_description, outUrl, r.timeout_photo_path, outExtras)}
               </div>
 
               <div class="att-detail-foot">
@@ -2017,7 +2042,21 @@
      * card's own body ("Site picked at time in"), where the heading's
      * phrasing would not fit the sentence.
      */
-    function attHalf(label, short, tone, icon, at, project, description, photoUrl, photoPath) {
+    function attHalf(label, short, tone, icon, at, project, description, photoUrl, photoPath, extras = []) {
+        // 0119: a WorkMate Time Out's other work photos ({url, path}; url null
+        // when it could not be signed). None = the half looks exactly as before.
+        const more = Array.isArray(extras) ? extras : [];
+        const workPhotos = more.length === 0 ? '' : `
+              <div class="att-work-photos">
+                <div class="att-fact-label">Work photos (${more.length + 1})</div>
+                <div class="att-work-strip">
+                  ${more.map((x, i) => x.url
+                    ? `<a href="${attEsc(x.url)}" target="_blank" rel="noopener">
+                         <img class="att-work-thumb" src="${attEsc(x.url)}" alt="Work photo ${i + 2}">
+                       </a>`
+                    : `<div class="att-work-thumb att-photo--missing">Photo unavailable</div>`).join('')}
+                </div>
+              </div>`;
         return `
             <div class="att-half">
               <div class="att-half-head">
@@ -2035,7 +2074,7 @@
                   : `<div class="att-photo--missing">${photoPath
                        ? 'Photo unavailable'
                        : 'No photo taken at ' + attEsc(short)}</div>`}
-              </div>
+              </div>${workPhotos}
               <div class="att-half-body">
                 <div>
                   <div class="att-fact-label">Site picked at ${attEsc(short)}</div>

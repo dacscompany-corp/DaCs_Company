@@ -778,10 +778,94 @@ begin;
   end $$;
 rollback;
 
+-- ── BLOCK 16 (0119) — Time Out work photos ─────────────────────────
+-- Read-only. One attendance_time_out, with the 14th argument
+-- p_extra_photo_paths; the column that holds the extra work photos.
+-- Behaviour (counts, paths, note) is covered on PGlite:
+-- supabase/tests/attendance_work_photos.pglite.mjs.
+begin;
+  do $$
+  declare
+    v_n int; v_args int; v_type text;
+  begin
+    select count(*)::int, max(pronargs)::int into v_n, v_args
+      from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+     where n.nspname = 'public' and p.proname = 'attendance_time_out';
+    assert v_n = 1, format('expected ONE attendance_time_out, found %s (an old overload makes calls ambiguous)', v_n);
+    assert v_args = 14, format('expected 14 arguments (0119), found %s', v_args);
+
+    select data_type into v_type from information_schema.columns
+     where table_schema = 'public' and table_name = 'attendance_records'
+       and column_name = 'timeout_extra_photo_paths';
+    assert v_type = 'ARRAY', format('timeout_extra_photo_paths missing or wrong type: %s', v_type);
+
+    raise notice 'BLOCK 16 OK — one Time Out with p_extra_photo_paths; timeout_extra_photo_paths is text[]';
+  end $$;
+rollback;
+
+-- ── BLOCK 17 (0120) — Weekly reports ───────────────────────────────
+-- Read-only. Both tables locked (RLS on, no policies), the roster trigger on
+-- profiles, the three office RPCs callable (the gate is not), and every
+-- profile that counts as a report worker has an eligible latest history row.
+-- Behaviour is covered on PGlite: supabase/tests/weekly_reports.pglite.mjs.
+begin;
+  do $$
+  declare
+    v_t text; v_rls boolean; v_pol int; v_bad int;
+  begin
+    foreach v_t in array array['att_report_eligibility', 'att_position_duties'] loop
+      select c.relrowsecurity into v_rls from pg_class c join pg_namespace n on n.oid = c.relnamespace
+       where n.nspname = 'public' and c.relname = v_t;
+      assert v_rls is true, format('%s missing or RLS off', v_t);
+      select count(*)::int into v_pol from pg_policies where schemaname = 'public' and tablename = v_t;
+      assert v_pol = 0, format('%s has %s policies, expected 0', v_t, v_pol);
+    end loop;
+
+    assert exists (select 1 from pg_trigger t where t.tgrelid = 'public.profiles'::regclass
+                      and t.tgname = 'att_report_eligibility_trg' and not t.tgisinternal),
+           'trigger att_report_eligibility_trg missing on profiles';
+
+    assert has_function_privilege('authenticated', 'public.att_week_report(date)', 'execute'), 'att_week_report not callable';
+    assert has_function_privilege('authenticated', 'public.att_duty_list()', 'execute'), 'att_duty_list not callable';
+    assert has_function_privilege('authenticated', 'public.att_duty_save(text,text,boolean)', 'execute'), 'att_duty_save not callable';
+    assert not has_function_privilege('authenticated', 'public.att_report_owner()', 'execute'), 'att_report_owner must not be callable';
+
+    select count(*)::int into v_bad
+      from profiles p
+     where att_report_eligible(p.role, p.status, p.owner_id)
+       and coalesce((select e.eligible from att_report_eligibility e
+                      where e.worker_id = p.id order by e.effective_on desc, e.id desc limit 1), false) is not true;
+    assert v_bad = 0, format('%s eligible profiles have no eligible latest history row', v_bad);
+
+    raise notice 'BLOCK 17 OK — weekly reports: roster history, duties, three office reads';
+  end $$;
+rollback;
+
+-- ── BLOCK 18 (0121) — Weekly reports list every site ────────────────
+-- Read-only. Exactly one att_week_report, still granted to authenticated, and
+-- its body reads attendance_projects_for_admin and builds the 'projects' key.
+-- Behaviour is covered on PGlite: supabase/tests/weekly_reports.pglite.mjs.
+begin;
+  do $$
+  declare
+    v_n int; v_src text;
+  begin
+    select count(*)::int, max(p.prosrc) into v_n, v_src
+      from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+     where n.nspname = 'public' and p.proname = 'att_week_report';
+    assert v_n = 1, format('expected one att_week_report, found %s', v_n);
+    assert v_src like '%attendance_projects_for_admin%', 'att_week_report does not read attendance_projects_for_admin';
+    assert v_src like '%''projects''%', 'att_week_report has no projects key';
+    assert has_function_privilege('authenticated', 'public.att_week_report(date)', 'execute'), 'att_week_report not callable';
+
+    raise notice 'BLOCK 18 OK — weekly reports list every site';
+  end $$;
+rollback;
+
 
 -- ════════════════════════════════════════════════════════════════════
--- Expected output: sixteen notices —
---   BLOCK 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 10b, 11, 12, 13, 14, 15 ... OK
+-- Expected output: nineteen notices —
+--   BLOCK 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 10b, 11, 12, 13, 14, 15, 16, 17, 18 ... OK
 --
 -- Then confirm nothing was left behind (every block rolls back):
 --   select count(*) from construction_projects where project_name like 'ZZ %';

@@ -2292,6 +2292,7 @@ const PRIMARY_NAV = [
         { view: 'attWorkers',  label: 'Workers',          icon: 'user-round' },
         { view: 'attProjects', label: 'Sites & schedule', icon: 'hard-hat' },
         { view: 'attReports',  label: 'Hours report',     icon: 'file-bar-chart' },
+        { view: 'attWeekly', label: 'Weekly reports', icon: 'clipboard-list' },
         { view: 'attRewards',  label: 'Weekly bonus',     icon: 'award' },
         // Owner-only (0079): publishing locks every older phone out of
         // attendance until it updates. Hidden from staff below.

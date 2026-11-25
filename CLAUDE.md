@@ -258,7 +258,13 @@ Profit   = Earned − Spent
   records no money), then each client billing's amount and the total allocated, for client billing periods only. It shows
   no spending, and leaving Cover off that page changes nothing about Spent elsewhere. Owner accounts only; Cover periods get
   none of the three. Only `js/billing-receipts.js` calls the `bar_*` functions. Spec:
-  `docs/superpowers/specs/2026-11-09-billing-acknowledgement-receipts-mvp-terms.md`.
+  `docs/superpowers/specs/2026-11-09-billing-acknowledgement-receipts-mvp-terms.md`. Since 0117 (owner, 20 Nov 2026)
+  the receipt also records the **payment date and reference** the owner types when issuing it, printed after the billing
+  name (`bar_issue_with_payment` / `bar_reissue_with_payment`); still never an amount, and billing periods are unchanged.
+  Since 0118 the owner may **type the receipt's line** (Description box, pre-filled with the automatic line, up to 200
+  characters) on Project Control and Project Management receipts (`bar_*_described` / `pmar_*_described`). The printed
+  page has on-screen switches to hide the company details and the signature (never printed, remembered per browser), and
+  a bank prints as "Payment Via: <bank> · Bank Transfer No. · Account Name" (owner's sample, 20 Nov 2026).
 
 - **PM Acknowledgement Receipts (0116) are a record of a document, outside the money model.** Each paid Project
   Management payment (Money → Payment) can have one live receipt, whose amount is **the payment's paid amount, read by
@@ -268,6 +274,12 @@ Profit   = Earned − Spent
   Friday payment request no longer exists in the office screens (owner, 18 Nov 2026). A payment's photo
   (`payment_requests.proof_url`, `paymentReceipts/`) is office-only. Owner accounts only for both documents. Only
   `js/pm-billing-docs.js` calls the `pmar_*` functions. Spec: `docs/superpowers/specs/2026-11-18-pm-billing-documents-design.md`.
+
+- **Weekly employee reports (0120) read attendance — they move no money and write no attendance.** Hours are saved
+  `total_minutes` only; work entries group by the Time Out project's system + id; photos are paths signed on open. Roster
+  history (`att_report_eligibility`) is written only by the `profiles` trigger; duties only through `att_duty_save`. Owner
+  and active staff with Attendance access; workers never. Only `js/weekly-report-*.js` call the `att_week_report` /
+  `att_duty_*` functions. Spec: `docs/superpowers/specs/2026-11-22-weekly-employee-report-mvp-terms.md`.
 
 Full reasoning: [docs/OVERHEAD_MODULE.md](docs/OVERHEAD_MODULE.md).
 

@@ -890,6 +890,7 @@ check constraint on the column so later codes can arrive.
 | `timeinWasOffline` | boolean | captured with no signal |
 | `timeinReceivedAt` | ts | server clock. Skew vs `timeinAt` is only meaningful when `wasOffline` is false |
 | `timeout*` | — | same shape, all nullable (including the three project columns). **Stored independently** — the worker may change site mid-day |
+| `timeoutExtraPhotoPaths` | string[] | **(0119)** WorkMate Time Out takes **3–6 work photos and no face photo**: the first is `timeoutPhotoPath` (so every older reader still works), the rest are here, in order. **Null = none**: every older row and every old-app Time Out. With work photos the server requires a note of **15+ characters** (`WORK_NOTE_REQUIRED`), paths in the worker's own folder (`WORK_PHOTO_PATH_INVALID`) and 2–5 entries (`WORK_PHOTOS_REQUIRED` / `WORK_PHOTOS_TOO_MANY`); without them it records exactly as before |
 | `totalMinutes` | number | computed **server-side** on Time Out, so worker and admin cannot disagree |
 | `abandonedBy` | uuid | **(0061)** the admin who closed a forgotten Time Out. `on delete set null` — removing an admin account must not erase the record they closed. A **lookup**, not a snapshot like `workerName`: the closer's *current* name is the useful one, and A2 resolves it against `profiles` at render time |
 | `abandonedAt` | ts | **(0061)** server `now()`, never a browser clock |
@@ -933,6 +934,15 @@ closing it would break their Time Out, which only closes rows on `working`).
 
 The fast "has accepted?" flag only. The **evidence** belongs in `agreement_events` (0021) with
 `audience='worker'`, `doc_type='attendance_terms'` — same split that table's header prescribes.
+
+### Weekly reports (`0120`) — roster history and general duties
+Outside the money model; reads `attendance_records` only. Both tables have RLS on and **no policies**, with every privilege revoked: only the security-definer functions below touch them, and they are for owner and staff accounts only (staff with an `allowed_modules` list need `attendance`).
+
+- **`att_report_eligibility`** — append-only history: `owner_id`, `worker_id`, `eligible`, `effective_on` (Manila day), `role`, `status`, `source` (`launch` / `profile`). A trigger on `profiles` writes a row each time a person starts or stops being a worker / teamLeader with an active status and a company, or moves company. Decides who was on a given week's roster.
+- **`att_position_duties`** — `owner_id`, `position` (the trade, e.g. `Helper`), `duties` (1-2000 chars), `active`, `updated_by`, `updated_at`. Unique on `(owner_id, lower(position))`.
+- **`att_week_report(p_week_start date)`** — one company's roster, attendance records (no latitude / longitude) and active duties for the Monday-to-Sunday week; `WEEK_START_NOT_MONDAY` otherwise. Since 0121 the payload also carries `projects`: every site of the company as `{ project_system, project_id, project_name, hidden, completed }`, ordered by name (`completed` = `folders.completed_at`, always false for Project Management sites).
+- **`att_duty_list()`** — the trades to write duties for (active workers' trades plus every saved one, deduplicated ignoring case) and all duty rows.
+- **`att_duty_save(p_position, p_duties, p_active)`** — upserts one trade's duties; `DUTY_POSITION_INVALID` / `DUTY_TEXT_INVALID` on bad input.
 
 ### Storage
 Private bucket `attendance`, path `{worker_id}/{work_date}/{in|out}-{event_id}.jpg`. Worker policies
@@ -1338,7 +1348,8 @@ Owner-only and **outside the money model**: nothing feeds these tables into Spen
 | `folder_id`, `period_id` | the project (`folders.id`) and the billing period (`projects.id`) |
 | `receipt_no` | `AR-YYYYMM-NNN`, unique per company, never reused |
 | `issued_on` | Philippine date of issue |
-| `billing_label` | frozen, e.g. `Progress Billing 3 (November 2026)` |
+| `billing_label` | frozen, e.g. `Progress Billing 3 (November 2026)`; since 0117 `Progress Billing 3 (November 2026) · Payment received (Nov 20, 2026) · Ref. PC-…`; since 0118 whatever the owner typed in the Description box (pre-filled with that line, up to 200 characters). PM receipts (`pm_billing_receipts.billing_label`) work the same way |
+| `paid_on`, `payment_reference` | **0117.** The date the client paid (never after the day of issue) and its reference (1–100 characters), typed by the owner when issuing. Null on receipts issued before 0117 |
 | `amount` | the period's Fund Allocated when issued. Greater than zero |
 | `received_from`, `received_by` | frozen names |
 | `business`, `payment_details` | jsonb copied from `settings.invoiceDefaults` when issued |

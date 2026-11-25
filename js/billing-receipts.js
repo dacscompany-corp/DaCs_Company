@@ -54,8 +54,9 @@
             return [['Payment Via', 'GCash'], ['GCash No.', p.gcashNumber || '—'], ['Account Name', p.gcashName || '—']];
         }
         if (!p.bank && !p.accountNo && !p.accountName) return [];
-        return [['Payment Via', 'Bank Transfer'], ['Bank', p.bank || '—'], ['Account No.', p.accountNo || '—'],
-                ['Account Name', p.accountName || '—'], ['Branch', p.branch || '—']];
+        // A bank prints the owner's way (sample of 20 Nov 2026): the bank's name, the transfer
+        // account number and the account name. No Branch line.
+        return [['Payment Via', p.bank || 'Bank Transfer'], ['Bank Transfer No.', p.accountNo || '—'], ['Account Name', p.accountName || '—']];
     }
     function paymentSummary(pd) {
         const p = pd || {};
@@ -64,78 +65,170 @@
         return p.method === 'gcash' ? 'GCash ' + (p.gcashNumber || '') : 'Bank Transfer, ' + (p.bank || '') + ' ' + (p.accountNo || '');
     }
 
+    // An amount in words, as a receipt states it: "One Hundred Sixty-Nine Thousand Pesos Only",
+    // centavos as "and 50/100".
+    const ONES = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten', 'Eleven', 'Twelve',
+        'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
+    const TENS = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+    function underThousand(n) {
+        const parts = [];
+        if (n >= 100) { parts.push(ONES[Math.floor(n / 100)] + ' Hundred'); n %= 100; }
+        if (n >= 20) { parts.push(TENS[Math.floor(n / 10)] + (n % 10 ? '-' + ONES[n % 10] : '')); }
+        else if (n > 0) parts.push(ONES[n]);
+        return parts.join(' ');
+    }
+    function pesoWords(amount) {
+        const total = Math.abs(cents(amount));
+        let pesos = Math.floor(total / 100);
+        const centavos = total % 100;
+        const groups = [];
+        ['', ' Thousand', ' Million', ' Billion'].forEach((scale) => {
+            const chunk = pesos % 1000;
+            if (chunk) groups.unshift(underThousand(chunk) + scale);
+            pesos = Math.floor(pesos / 1000);
+        });
+        const whole = Math.floor(total / 100);
+        return (groups.join(' ') || 'Zero') + (whole === 1 ? ' Peso' : ' Pesos')
+            + (centavos ? ' and ' + String(centavos).padStart(2, '0') + '/100' : '') + ' Only';
+    }
+
+    // The automatic item line (0117 / 0116) carries the payment date and reference
+    // ("<billing> · Payment received (Nov 20, 2026) · Ref. X"). Layout C (owner, 22 Nov
+    // 2026) prints those as plain rows under Payment Details, so on the PAGE only they
+    // are lifted out of the line. A line the owner typed differently prints as typed,
+    // and nothing saved changes.
+    const AUTO_LINE = /^(?:(.*?) · )?Payment received \(([A-Z][a-z]{2} \d{1,2}, \d{4})\)(?: · Ref\. (.+))?$/;
+    function splitLine(label, paidOn, reference) {
+        const text = String(label || '');
+        const m = text.match(AUTO_LINE);
+        const ref = String(reference == null ? '' : reference).trim();
+        const date = paidOn ? formatDate(paidOn) : '';
+        if (!m || (date && m[2] !== date) || (ref && (m[3] || '') !== ref)) {
+            return { item: text, paidText: date, reference: ref };
+        }
+        return { item: m[1] || 'Payment received', paidText: m[2], reference: m[3] || '' };
+    }
+
     const STYLE = '*{box-sizing:border-box}'
-        + "body{margin:0;background:#fff;color:#1c1c1a;font:13px/1.5 'IBM Plex Sans',Arial,Helvetica,sans-serif}"
-        + '.page{position:relative;max-width:210mm;margin:0 auto;padding:16mm 16mm 14mm}'
+        + "body{margin:0;background:#fff;color:#1a1d1b;font:12.5px/1.55 Inter,Arial,Helvetica,sans-serif}"
+        + '.page{position:relative;max-width:210mm;margin:0 auto;padding:15mm 17mm 12mm;display:flex;flex-direction:column;min-height:297mm}'
         + '.noprint{margin:12px;padding:8px 16px;border:1px solid #1a5c3a;border-radius:8px;background:#1a5c3a;color:#fff;font:inherit;font-weight:600;cursor:pointer}'
-        + '.top{display:flex;justify-content:space-between;align-items:flex-start;gap:24px;padding-bottom:20px;border-bottom:3px solid #1c1c1a}'
-        + '.logo{display:block;height:92px;width:auto;object-fit:contain}'
-        + '.company{margin:10px 0 0;font-size:19px;line-height:1.25;letter-spacing:.03em;text-transform:uppercase}'
-        + '.company-sub{margin-top:4px;color:#666;font-size:12px}'
-        + '.heading{text-align:right;max-width:55%}'
-        + '.heading h1{margin:0 0 12px;color:#14704a;font-size:23px;line-height:1.25;letter-spacing:.16em}'
-        + '.meta{color:#555;line-height:1.9}.meta strong{color:#1c1c1a}'
-        + '.party{padding:20px 0;border-bottom:1px solid #e4e4de}'
-        + '.lbl{color:#8a8a82;font-size:10.5px;font-weight:600;letter-spacing:.14em;text-transform:uppercase}'
-        + '.party .name{margin-top:6px;font-size:16px;font-weight:700}'
-        + 'table{width:100%;margin-top:22px;border-collapse:collapse}'
-        + 'th{padding:11px 12px;background:#f7f7f4;border-bottom:1px solid #e4e4de;color:#8a8a82;font-size:10.5px;font-weight:600;letter-spacing:.1em;text-align:left;text-transform:uppercase;white-space:nowrap}'
-        + 'td{padding:12px;border-bottom:1px solid #eeeeea}'
-        + '.num{text-align:right}.mid{text-align:center}.strong{font-weight:700}'
-        + '.subtotal{display:flex;justify-content:space-between;gap:20px;width:48%;margin:16px 0 0 auto;padding:0 16px;color:#555}.subtotal strong{color:#1c1c1a}.subtotal+.total{margin-top:8px}'
-        + '.total{display:flex;justify-content:space-between;align-items:center;gap:20px;width:48%;margin:18px 0 0 auto;padding:14px 16px;border-radius:9px;background:#e7f2ec;color:#14704a;font-weight:700}'
-        + '.total .label{font-size:15px;line-height:1.25;text-transform:uppercase}.total .value{font-size:18px;white-space:nowrap}'
-        + '.pay{margin-top:24px;padding:16px 20px;border:1px solid #e8e8e2;border-radius:10px;background:#f9f9f6}'
-        + '.pay-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px 24px;margin-top:10px}.pay-grid span{color:#666}'
-        + '.sign{width:250px;margin:64px auto 0;text-align:center}'
-        + '.sign .stamp{display:block;height:42px;width:auto;max-width:85%;margin:0 auto 2px;object-fit:contain}'
-        + '.sign .who{font-weight:700}.sign .org{color:#666;font-size:11.5px}'
-        + '.sign .line{margin-top:6px;border-top:2px solid #1c1c1a;padding-top:6px;color:#666}'
+        // Logo big on the left, company name and address beside it (owner, 22 Nov 2026).
+        + '.company-block{display:flex;align-items:center;gap:22px;text-align:left}'
+        + '.logo{display:block;flex:none;height:120px;width:auto;object-fit:contain}'
+        + '.company-text{display:flex;flex-direction:column;gap:4px;min-width:0}'
+        + ".company{margin:0;font:800 19px/1.25 Archivo,Inter,Arial,sans-serif;letter-spacing:.04em;text-transform:uppercase}"
+        + '.company-sub{color:#565d59;font-size:11.5px}'
+        + '.rule{margin-top:18px;border-top:1px solid #1a1d1b;border-bottom:1px solid #1a1d1b;height:4px}'
+        + ".heading h1{margin:20px 0 0;text-align:center;color:#1d6b46;font:800 18px/1.3 Archivo,Inter,Arial,sans-serif;letter-spacing:.18em}"
+        + '.meta{display:flex;justify-content:space-between;gap:24px;margin-top:16px}.meta span{color:#565d59}'
+        + 'table{width:100%;margin-top:20px;border-collapse:collapse}'
+        + 'th{padding:8px 10px;border-top:1px solid #1a1d1b;border-bottom:1px solid #1a1d1b;font-size:10px;font-weight:700;letter-spacing:.1em;text-align:left;text-transform:uppercase;white-space:nowrap}'
+        + 'td{padding:11px 10px;border-bottom:1px solid #dfe5e1;vertical-align:top}'
+        + '.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}.mid{text-align:center}.strong{font-weight:700}'
+        + '.subtotal,.total{display:flex;justify-content:flex-end;gap:28px;padding:9px 10px 0}.subtotal{color:#565d59}.subtotal strong{color:#1a1d1b}'
+        + '.total{font-weight:700}.total .value{min-width:150px;text-align:right;padding-bottom:4px;border-bottom:3px double #1a1d1b;font-variant-numeric:tabular-nums}'
+        + '.words{margin-top:8px;color:#565d59;font-size:11px}.words em{color:#1a1d1b}'
+        + '.pay{margin-top:26px}'
+        + '.lbl{padding-bottom:6px;border-bottom:1px solid #dfe5e1;color:#3f4642;font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase}'
+        + '.pay table{margin-top:0}.pay td{padding:6px 0;border:0}.pay td:first-child{width:170px;color:#565d59}.pay tr:last-child td{border-bottom:1px solid #dfe5e1}'
+        + '.spacer{flex:1;min-height:48px}'
+        + '.signs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:64px;align-items:end}'
+        + '.sign,.payer{text-align:center}'
+        + '.sign .stamp{display:block;height:42px;width:auto;max-width:85%;margin:0 auto 2px;object-fit:contain}.payer .blank{height:44px}'
+        + '.who{padding-top:6px;border-top:1px solid #1a1d1b;font-weight:700}.sign .stamp+.who{margin-top:0}'
+        + '.sign .org{color:#565d59;font-size:10.5px}'
+        + '.line{color:#565d59;font-size:10px;letter-spacing:.12em;text-transform:uppercase}'
+        + '.foot{margin-top:28px;padding-top:10px;border-top:1px solid #dfe5e1;color:#565d59;font-size:9.5px}'
         + '.void-banner{margin-top:18px;padding:12px 16px;border:2px solid #b4453a;border-radius:9px;color:#b4453a;font-weight:700}'
         + '.void-mark{position:absolute;top:38%;left:0;right:0;text-align:center;color:rgba(180,69,58,.16);font-size:130px;font-weight:800;letter-spacing:.1em;transform:rotate(-24deg);pointer-events:none}'
         // Tighter on paper, so a full list of billings still fits one A4 sheet.
-        + '@media print{.noprint{display:none}.page{padding:0}.top{padding-bottom:14px}.logo{height:72px}.party{padding:14px 0}'
-        + 'td{padding:8px 12px}.pay{margin-top:16px}.sign{margin-top:36px}.sign,.total,.pay,tr{break-inside:avoid}@page{size:A4 portrait;margin:12mm}}';
+        + '@media print{.noprint{display:none}.page{max-width:none;padding:13mm;min-height:290mm}.logo{height:105px}'
+        + 'td{padding:7px 10px}.pay{margin-top:18px}.spacer{min-height:28px}.sign,.total,.pay,tr{break-inside:avoid}@page{size:A4 portrait;margin:0}}'
+        // Show / hide the company details and the signature (owner, 20 Nov 2026). The switches never print.
+        + '.tools{display:flex;align-items:center;flex-wrap:wrap;gap:16px;margin:12px}.tools .noprint{margin:0}.noprint.ghost{background:#fff;color:#1a5c3a}.noprint:disabled{opacity:.6;cursor:wait}'
+        + '.tg{display:inline-flex;align-items:center;gap:6px;font-weight:600;cursor:pointer}'
+        + 'body.hide-company .company-block{display:none}body.hide-company .rule{margin-top:0}body.hide-sign .sign{display:none}body.hide-sign .signs{display:none}'
+        + '@media print{.tools{display:none}}'
+        // While Download PDF captures the page: exactly one A4 sheet wide and a hair under one tall.
+        + 'body.pdf .page{width:794px;max-width:none;min-height:1118px;padding:48px 60px 40px}';
+    // Download PDF (owner, 22 Nov 2026): saves the page itself as a file, so no browser
+    // date, title or address is printed on it. html2pdf.js comes off the CDN on first press.
+    const DOWNLOAD_SCRIPT = "<script>(function(){var b=document.getElementById('dlPdf');if(!b)return;"
+        + "function run(){var page=document.querySelector('.page');document.body.classList.add('pdf');"
+        + "return window.html2pdf(page,{margin:0,filename:(document.title||'Acknowledgement Receipt')+'.pdf',"
+        + "image:{type:'jpeg',quality:0.98},html2canvas:{scale:2,useCORS:true,backgroundColor:'#ffffff'},"
+        + "jsPDF:{unit:'mm',format:'a4',orientation:'portrait'}})"
+        + ".then(function(){document.body.classList.remove('pdf')},function(e){document.body.classList.remove('pdf');throw e})}"
+        + "b.addEventListener('click',function(){b.disabled=true;var t=b.textContent;b.textContent='Preparing…';"
+        + "var ready=window.html2pdf?Promise.resolve():new Promise(function(ok,no){var s=document.createElement('script');"
+        + "s.src='https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';s.onload=ok;"
+        + "s.onerror=function(){no(new Error('load'))};document.head.appendChild(s)});"
+        + "ready.then(run).catch(function(){alert('The PDF could not be made. Check the internet connection, or use Print / Save PDF.')})"
+        + ".then(function(){b.disabled=false;b.textContent=t})});})();</" + "script>";
+    // Remembered in this browser only; a browser that blocks storage just starts with both shown.
+    const TOGGLE_SCRIPT = "<script>(function(){var k='dacs.receipt.hide',v={};"
+        + "try{v=JSON.parse(localStorage.getItem(k)||'{}')||{}}catch(e){v={}}"
+        + "[['company','tglCompany'],['sign','tglSign']].forEach(function(p){var el=document.getElementById(p[1]);if(!el)return;"
+        + "var hide=!!v[p[0]];el.checked=!hide;document.body.classList.toggle('hide-'+p[0],hide);"
+        + "el.addEventListener('change',function(){v[p[0]]=!el.checked;document.body.classList.toggle('hide-'+p[0],!el.checked);"
+        + "try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}});});})();</" + "script>";
 
+    // Layout C (owner, 22 Nov 2026): centred letterhead, one receipt sentence, a plain
+    // # / Description / Amount table, Payment Details as plain rows (the reference is an
+    // ordinary row, never highlighted), then Paid by / Received by.
+    const amountCell = (value) => num(value).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     function pageHTML(o) {
         const business = o.business || {};
         const name = String(business.name || '').trim() || HOUSE_NAME;
         const sub = [business.address, business.tin ? 'TIN: ' + business.tin : ''].filter(Boolean).join(' · ');
-        const payment = paymentLines(o.payment);
+        const saved = paymentLines(o.payment);
+        // Payment date and Reference No. first, then how it was paid (Payment Via, number, account name).
+        const payment = (o.payRows || []).concat(saved.slice(0, 1)).concat(saved.slice(1).reverse());
         const logo = root.location ? root.location.origin + '/assets/images/DACS-TRANSPARENT.png' : '';
         // DAC's e-signature, the same stamp the Invoice module's "e-signature" option prints.
         const stamp = root.location ? root.location.origin + '/assets/images/dacs-signature.png' : '';
         return '<!doctype html><html lang="en"><head><meta charset="utf-8"><title>' + esc(o.windowTitle) + '</title>'
-            + '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600;700&amp;display=swap">'
+            + '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&amp;family=Archivo:wght@800&amp;display=swap">'
             + '<style>' + STYLE + '</style></head><body>'
-            + '<button type="button" class="noprint" onclick="window.print()">Print / Save PDF</button>'
+            + '<div class="tools"><button type="button" class="noprint" id="dlPdf">Download PDF</button>'
+            + '<button type="button" class="noprint ghost" onclick="window.print()">Print / Save PDF</button>'
+            + '<label class="tg"><input type="checkbox" id="tglCompany" checked> Company details</label>'
+            + '<label class="tg"><input type="checkbox" id="tglSign" checked> Signature</label></div>'
             + '<div class="page">' + (o.isVoid ? '<div class="void-mark">VOID</div>' : '')
-            + '<div class="top"><div>' + (logo ? '<img class="logo" alt="" src="' + esc(logo) + '" onerror="this.style.display=\'none\'">' : '')
-            + '<h2 class="company">' + esc(name) + '</h2>' + (sub ? '<div class="company-sub">' + esc(sub) + '</div>' : '') + '</div>'
-            + '<div class="heading"><h1>' + esc(o.heading) + '</h1><div class="meta">' + o.metaHtml + '</div></div></div>'
+            + '<div class="company-block">' + (logo ? '<img class="logo" alt="" src="' + esc(logo) + '" onerror="this.style.display=\'none\'">' : '')
+            + '<div class="company-text"><h2 class="company">' + esc(name) + '</h2>' + (sub ? '<div class="company-sub">' + esc(sub) + '</div>' : '') + '</div></div>'
+            + '<div class="rule"></div>'
+            + '<div class="heading"><h1>' + esc(o.heading) + '</h1></div>'
+            + '<div class="meta">' + o.meta.map((m) => '<div><span>' + esc(m[0]) + ': </span><strong>' + esc(m[1]) + '</strong></div>').join('') + '</div>'
             + (o.isVoid ? '<div class="void-banner">VOID. Reason: ' + esc(o.voidReason || '') + '</div>' : '')
-            + '<div class="party"><div class="lbl">Received From</div><div class="name">' + esc(o.receivedFrom) + '</div></div>'
             + o.tableHtml
             + (o.subtotalLabel ? '<div class="subtotal"><span>' + esc(o.subtotalLabel) + '</span><strong>' + esc(money(o.total)) + '</strong></div>' : '')
-            + '<div class="total"><div class="label">' + esc(o.totalLabel) + '</div><div class="value">' + esc(money(o.total)) + '</div></div>'
-            + (payment.length ? '<div class="pay"><div class="lbl">Payment Details</div><div class="pay-grid">'
-                + payment.map((row) => '<div><span>' + esc(row[0]) + ':</span> <strong>' + esc(row[1]) + '</strong></div>').join('') + '</div></div>' : '')
-            + '<div class="sign">' + (stamp ? '<img class="stamp" alt="" src="' + esc(stamp) + '" onerror="this.style.display=\'none\'">' : '') + '<div class="who">' + esc(o.receivedBy) + '</div><div class="org">' + esc(name) + '</div><div class="line">Received by</div></div>'
-            + '</div></body></html>';
+            + '<div class="total"><span class="label">' + esc(o.totalLabel) + '</span><span class="value">' + esc(money(o.total)) + '</span></div>'
+            + '<div class="words">Amount in words: <em>' + esc(pesoWords(o.total)) + '</em></div>'
+            + (payment.length ? '<div class="pay"><div class="lbl">Payment Details</div><table><tbody>'
+                + payment.map((row) => '<tr><td>' + esc(row[0]) + '</td><td>' + esc(row[1]) + '</td></tr>').join('') + '</tbody></table></div>' : '')
+            + '<div class="spacer"></div>'
+            + '<div class="signs"><div class="payer"><div class="blank"></div><div class="who">' + esc(o.receivedFrom) + '</div><div class="line">Paid by</div></div>'
+            + '<div class="sign">' + (stamp ? '<img class="stamp" alt="" src="' + esc(stamp) + '" onerror="this.style.display=\'none\'">' : '') + '<div class="who">' + esc(o.receivedBy) + '</div><div class="org">' + esc(name) + '</div><div class="line">Received by</div></div></div>'
+            + '<div class="foot">This is an Acknowledgement Receipt and is not valid as an Official Receipt.</div>'
+            + '</div>' + TOGGLE_SCRIPT + DOWNLOAD_SCRIPT + '</body></html>';
     }
 
     function receiptHTML(r) {
-        const amount = esc(money(r.amount));
+        const line = splitLine(r.billing_label, r.paid_on, r.payment_reference);
+        const payRows = [];
+        if (line.paidText) payRows.push(['Payment Date', line.paidText]);
+        if (line.reference) payRows.push(['Reference No.', line.reference]);
         return pageHTML({
             windowTitle: 'Acknowledgement Receipt ' + r.receipt_no,
             heading: 'ACKNOWLEDGEMENT RECEIPT',
-            metaHtml: 'Acknowledgement No: <strong>' + esc(r.receipt_no) + '</strong><br>Date: <strong>' + esc(formatDate(r.issued_on)) + '</strong>',
-            business: r.business, payment: r.payment_details, receivedFrom: r.received_from, receivedBy: r.received_by,
+            meta: [['AR No.', r.receipt_no], ['Date', formatDate(r.issued_on)]],
+            business: r.business, payment: r.payment_details, payRows, receivedFrom: r.received_from, receivedBy: r.received_by,
             isVoid: !!r.voided_at, voidReason: r.void_reason,
-            tableHtml: '<table><thead><tr><th style="width:36px">#</th><th>Item Description / Service</th><th class="mid" style="width:60px">Qty</th>'
-                + '<th class="num" style="width:130px">Unit Price</th><th class="num" style="width:130px">Amount</th></tr></thead>'
-                + '<tbody><tr><td>1</td><td>' + esc(r.billing_label) + '</td><td class="mid">1</td><td class="num">' + amount + '</td><td class="num strong">' + amount + '</td></tr></tbody></table>',
-            totalLabel: 'Full Payment Amount', total: r.amount
+            tableHtml: '<table><thead><tr><th style="width:36px">#</th><th>Description</th><th class="num" style="width:150px">Amount (PHP)</th></tr></thead>'
+                + '<tbody><tr><td>1</td><td>' + esc(line.item) + '</td><td class="num">' + esc(amountCell(r.amount)) + '</td></tr></tbody></table>',
+            totalLabel: 'Total', total: r.amount
         });
     }
 
@@ -162,12 +255,10 @@
         return pageHTML({
             windowTitle: 'Proof of Payments',
             heading: 'PROOF OF PAYMENTS',
-            metaHtml: (projectName ? 'Project: <strong>' + esc(projectName) + '</strong><br>' : '') + 'Date: <strong>' + esc(formatDate(dateKey)) + '</strong>',
+            meta: (projectName ? [['Project', projectName]] : []).concat([['Date', formatDate(dateKey)]]),
             business: state.business, payment: state.payment_details, receivedFrom, receivedBy,
-            tableHtml: '<table><thead><tr><th style="width:36px">#</th><th>Item Description / Service</th><th class="mid" style="width:56px">Qty</th>'
-                + '<th class="num" style="width:130px">Unit Price</th><th class="num" style="width:140px">Amount</th></tr></thead><tbody>'
-                + rows.map((p, i) => '<tr><td>' + (i + 1) + '</td><td>' + esc(p.label) + '</td><td class="mid">1</td><td class="num">' + esc(money(p.amount))
-                    + '</td><td class="num strong">' + esc(money(p.amount)) + '</td></tr>').join('')
+            tableHtml: '<table><thead><tr><th style="width:36px">#</th><th>Description</th><th class="num" style="width:150px">Amount (PHP)</th></tr></thead><tbody>'
+                + rows.map((p, i) => '<tr><td>' + (i + 1) + '</td><td>' + esc(p.label) + '</td><td class="num">' + esc(amountCell(p.amount)) + '</td></tr>').join('')
                 + '</tbody></table>',
             subtotalLabel: 'Total Billings', totalLabel: 'Total Received', total
         });
@@ -231,11 +322,22 @@
         REASON_REQUIRED: 'Please write a short reason first.',
         REASON_TOO_LONG: 'That reason is too long. Please keep it under 500 characters.',
         ALREADY_VOID: 'This receipt was already voided. Please press the button again to see the current one.',
+        PAID_ON_REQUIRED: 'Please enter the payment date.',
+        PAID_ON_FUTURE: 'The payment date cannot be later than today.',
+        REFERENCE_TOO_LONG: 'That reference is too long. Please keep it to 100 characters.',
+        DESCRIPTION_REQUIRED: 'Please enter a description.',
+        DESCRIPTION_TOO_LONG: 'That description is too long. Please keep it to 200 characters.',
     };
     function refusalText(error) {
         const text = String((error && error.message) || error || '');
-        const hit = text.match(/\b(NOT_SIGNED_IN|PROFILE_MISSING|INACTIVE|OWNER_ONLY|NOT_FOUND|COVER_PERIOD|NO_FUND_ALLOCATED|NAME_REQUIRED|NAME_TOO_LONG|REASON_REQUIRED|REASON_TOO_LONG|ALREADY_VOID)\b/);
+        const hit = text.match(/\b(NOT_SIGNED_IN|PROFILE_MISSING|INACTIVE|OWNER_ONLY|NOT_FOUND|COVER_PERIOD|NO_FUND_ALLOCATED|NAME_REQUIRED|NAME_TOO_LONG|REASON_REQUIRED|REASON_TOO_LONG|ALREADY_VOID|PAID_ON_REQUIRED|PAID_ON_FUTURE|REFERENCE_TOO_LONG|DESCRIPTION_TOO_LONG)\b/);
         if (hit) return MESSAGES[hit[1]];
+        if (/_described\b|bar_clean_description/.test(text)) {
+            return 'Typed receipt descriptions need database update 0118 applied first.';
+        }
+        if (/_with_payment|payment_reference|\bpaid_on\b/.test(text)) {
+            return 'Payment dates on receipts need database update 0117 applied first.';
+        }
         if ((error && error.code === 'PGRST202') || /\bbar_[a-z_]+\b|billing_receipt/.test(text)) {
             return 'Acknowledgement Receipts need database update 0114 applied first.';
         }
@@ -275,16 +377,28 @@
             return popup;
         },
         show(popup, receipt) { writeDoc(popup, receiptHTML(receipt)); },
-        issue(popup, periodId, receivedFrom, receivedBy) {
+        // payment ({ paidOn, reference }, 0117): the date the client paid and its reference.
+        // description (0118): the item line the owner typed. Without them, the older functions are used.
+        issue(popup, periodId, receivedFrom, receivedBy, payment, description) {
             return guarded(popup, async () => {
-                const receipt = await rpc('bar_issue', { p_period: periodId, p_received_from: receivedFrom, p_received_by: receivedBy });
+                const args = { p_period: periodId, p_received_from: receivedFrom, p_received_by: receivedBy };
+                const paid = payment ? { p_paid_on: payment.paidOn, p_reference: payment.reference } : null;
+                const receipt = paid && description !== undefined
+                    ? await rpc('bar_issue_described', { ...args, ...paid, p_description: description })
+                    : paid ? await rpc('bar_issue_with_payment', { ...args, ...paid })
+                    : await rpc('bar_issue', args);
                 writeDoc(popup, receiptHTML(receipt));
                 return receipt;
             });
         },
-        reissue(popup, receiptId, reason, receivedFrom, receivedBy) {
+        reissue(popup, receiptId, reason, receivedFrom, receivedBy, payment, description) {
             return guarded(popup, async () => {
-                const receipt = await rpc('bar_reissue', { p_receipt: receiptId, p_reason: reason, p_received_from: receivedFrom, p_received_by: receivedBy });
+                const args = { p_receipt: receiptId, p_reason: reason, p_received_from: receivedFrom, p_received_by: receivedBy };
+                const paid = payment ? { p_paid_on: payment.paidOn, p_reference: payment.reference } : null;
+                const receipt = paid && description !== undefined
+                    ? await rpc('bar_reissue_described', { ...args, ...paid, p_description: description })
+                    : paid ? await rpc('bar_reissue_with_payment', { ...args, ...paid })
+                    : await rpc('bar_reissue', args);
                 writeDoc(popup, receiptHTML(receipt));
                 return receipt;
             });
@@ -342,6 +456,60 @@
             : 'No payment details are saved in Acknowledgement Settings, so none will print.') + '</div>';
     };
     const amountLine = (label, amount) => '<div style="' + TEXT_STYLE + '">' + esc(label) + ': <b style="font-size:16px;">' + esc(money(amount)) + '</b></div>';
+    // The payment date (required, never after today) and reference (optional, up to 100 characters).
+    function checkPayment(paidOn, reference, today) {
+        const date = String(paidOn == null ? '' : paidOn).trim();
+        const ref = String(reference == null ? '' : reference).trim();
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return { error: MESSAGES.PAID_ON_REQUIRED };
+        if (date > today) return { error: MESSAGES.PAID_ON_FUTURE };
+        if (ref.length > 100) return { error: MESSAGES.REFERENCE_TOO_LONG };
+        return { paidOn: date, reference: ref };
+    }
+    const paymentFieldsHTML = (paidOn, reference, today) =>
+        '<label for="brPaidOn" style="' + LABEL_STYLE + '">Payment date</label>'
+        + '<input id="brPaidOn" type="date" value="' + esc(paidOn) + '" max="' + esc(today) + '" style="' + INPUT_STYLE + '">'
+        + '<label for="brRef" style="' + LABEL_STYLE + '">Reference no. <span style="font-weight:500;text-transform:none;letter-spacing:0;">(optional)</span></label>'
+        + '<input id="brRef" type="text" maxlength="100" value="' + esc(reference) + '" placeholder="GCash / bank reference" style="' + INPUT_STYLE + '">';
+    // ops.askPayment (Project Control): the dialog asks for both; otherwise null.
+    function readPayment(ov, ops) {
+        if (!ops.askPayment) return { skip: true };
+        const p = checkPayment(ov.querySelector('#brPaidOn').value, ov.querySelector('#brRef').value, todayKey());
+        if (p.error) { showErr(ov, p.error); return null; }
+        return p;
+    }
+
+    // ── The item line (0118, owner 20 Nov 2026): typed by the owner, pre-filled ──
+    // Project Control's automatic line: billing name, payment date, then the reference.
+    function paymentLine(label, paidOn, reference) {
+        const ref = String(reference == null ? '' : reference).trim();
+        return (String(label || '') + ' · Payment received (' + formatDate(paidOn) + ')' + (ref ? ' · Ref. ' + ref : '')).slice(0, 200);
+    }
+    function checkDescription(text) {
+        const v = String(text == null ? '' : text).trim();
+        if (!v) return { error: MESSAGES.DESCRIPTION_REQUIRED };
+        if (v.length > 200) return { error: MESSAGES.DESCRIPTION_TOO_LONG };
+        return { description: v };
+    }
+    const descriptionFieldHTML = (value) =>
+        '<label for="brDesc" style="' + LABEL_STYLE + '">Description <span style="font-weight:500;text-transform:none;letter-spacing:0;">(prints on the receipt)</span></label>'
+        + '<textarea id="brDesc" rows="2" maxlength="200" style="' + INPUT_STYLE + '">' + esc(value) + '</textarea>';
+    // While the box still holds the automatic line, it follows the payment date and reference.
+    function bindAutoLine(ov, plan, ops, startAuto) {
+        const box = ov.querySelector('#brDesc');
+        if (!box || !ops.askPayment) return;
+        let last = startAuto;
+        const follow = () => {
+            const next = ops.autoLine(plan, ov.querySelector('#brPaidOn').value, ov.querySelector('#brRef').value);
+            if (box.value === last) box.value = next;
+            last = next;
+        };
+        ['#brPaidOn', '#brRef'].forEach((id) => ov.querySelector(id).addEventListener('input', follow));
+    }
+    function readDescription(ov) {
+        const d = checkDescription(ov.querySelector('#brDesc').value);
+        if (d.error) { showErr(ov, d.error); return null; }
+        return d.description;
+    }
     function readNames(ov) {
         const from = String(ov.querySelector('#brFrom').value || '').trim();
         const by = String(ov.querySelector('#brBy').value || '').trim();
@@ -381,17 +549,26 @@
     // ops: who issues and re-issues (Project Control: bar_*; Project Management: js/pm-billing-docs.js)
     // and how the amount is named. Project Control passes PC_OPS, so its wording never changes.
     function issueDialog(state, plan, ops) {
+        const auto = ops.autoLine(plan, todayKey(), '');
         const { ov, close } = overlay('Acknowledgement Receipt', plan.period.label,
-            amountLine(ops.amountLabel, plan.amount) + nameFields(state) + paymentNote(state) + voidedList(plan.voided) + errorLine,
+            amountLine(ops.amountLabel, plan.amount) + nameFields(state)
+            + (ops.askPayment ? paymentFieldsHTML(todayKey(), '', todayKey()) : '')
+            + descriptionFieldHTML(auto)
+            + paymentNote(state) + voidedList(plan.voided) + errorLine,
             '<button type="button" class="lcm-btn" data-br-close>Cancel</button>'
             + '<button type="button" class="lcm-btn primary" id="brGo">Issue Receipt</button>');
         bindVoided(ov, plan.voided);
+        bindAutoLine(ov, plan, ops, auto);
         const go = ov.querySelector('#brGo');
         go.addEventListener('click', () => {
             const names = readNames(ov);
             if (!names) return;
+            const payment = readPayment(ov, ops);
+            if (!payment) return;
+            const description = readDescription(ov);
+            if (description == null) return;
             runInWindow(ov, go, close, async (popup) => {
-                const receipt = await ops.issue(popup, plan.period.id, names.from, names.by);
+                const receipt = await ops.issue(popup, plan.period.id, names.from, names.by, payment.skip ? undefined : payment, description);
                 notify('Receipt ' + receipt.receipt_no + ' issued.', 'success');
             });
         });
@@ -421,22 +598,35 @@
     }
 
     function reissueDialog(state, plan, ops) {
+        // Pre-filled from the old receipt. Its line follows the date and reference only if it
+        // was the automatic one; a line the owner typed stays as typed.
+        const oldPaidOn = plan.live.paid_on || todayKey();
+        const oldRef = plan.live.payment_reference || '';
+        const auto = ops.autoLine(plan, oldPaidOn, oldRef);
         const { ov, close } = overlay('Void and Re-issue', plan.live.receipt_no + ' · ' + plan.period.label,
             amountLine('New receipt amount (' + ops.amountLabel + ')', plan.amount)
             + '<label for="brReason" style="' + LABEL_STYLE + '">Reason <span style="color:#B4453A;">(required)</span></label>'
             + '<textarea id="brReason" rows="2" maxlength="500" placeholder="Why is this receipt being replaced?" style="' + INPUT_STYLE + '"></textarea>'
             + nameFields({ received_from: plan.live.received_from, received_by: plan.live.received_by })
+            // Pre-filled from the old receipt; one issued before 0117 has neither, so today and blank.
+            + (ops.askPayment ? paymentFieldsHTML(oldPaidOn, oldRef, todayKey()) : '')
+            + descriptionFieldHTML(plan.live.billing_label || auto)
             + '<div style="' + TEXT_STYLE + 'margin-top:14px;">The old receipt stays on record, marked void. The new one gets a new number.</div>' + errorLine,
             '<button type="button" class="lcm-btn" data-br-close>Cancel</button>'
             + '<button type="button" class="lcm-btn primary" id="brGo">Void and Issue New Receipt</button>');
+        bindAutoLine(ov, plan, ops, auto);
         const go = ov.querySelector('#brGo');
         go.addEventListener('click', () => {
             const reason = String(ov.querySelector('#brReason').value || '').trim();
             if (!reason) { showErr(ov, MESSAGES.REASON_REQUIRED); return; }
             const names = readNames(ov);
             if (!names) return;
+            const payment = readPayment(ov, ops);
+            if (!payment) return;
+            const description = readDescription(ov);
+            if (description == null) return;
             runInWindow(ov, go, close, async (popup) => {
-                const receipt = await ops.reissue(popup, plan.live.id, reason, names.from, names.by);
+                const receipt = await ops.reissue(popup, plan.live.id, reason, names.from, names.by, payment.skip ? undefined : payment, description);
                 notify('Receipt ' + receipt.receipt_no + ' issued.', 'success');
             });
         });
@@ -452,6 +642,10 @@
         reissue: (...args) => actions.reissue(...args),
         amountLabel: 'Fund Allocated',
         noAmountText: 'A new receipt can be issued once this billing has Fund Allocated.',
+        // 0117 (owner, 20 Nov 2026): the receipt line gets the payment date and reference.
+        askPayment: true,
+        // 0118: the Description box starts with this line, which the owner may change.
+        autoLine: (plan, paidOn, reference) => paymentLine(plan.period.label, paidOn, reference),
     };
 
     // ── What the Billing Periods buttons call ──────────────
@@ -570,5 +764,6 @@
 
     root.BillingReceipts = { receiptHTML, overallHTML, planFor, refusalText, formatDate, paymentLines, actions, openReceipt, openOverall,
         requestAmount, validPercent, requestWarning, askRequestPercent, loadPreparedBy, savePreparedBy,
-        openReceiptDialog, messageDialog, requestSummary, percentWindowTop, percentPreviewText };
+        openReceiptDialog, messageDialog, requestSummary, percentWindowTop, percentPreviewText, checkPayment, paymentFieldsHTML,
+        paymentLine, checkDescription, descriptionFieldHTML, pesoWords, splitLine };
 })(typeof window !== 'undefined' ? window : globalThis);

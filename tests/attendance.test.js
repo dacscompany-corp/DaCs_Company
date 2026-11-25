@@ -1161,6 +1161,99 @@ test("office v5: Close this day opens on <body> when the worker's day is in the 
   ok(/attOpenResolve\(attFormHost\(container, '#attDetailModalHost'\)/.test(src), 'Close this day uses it');
 });
 
+console.log('\nWork photos (0119)');
+// A WorkMate Time Out takes 3-6 work photos: the first stays in
+// timeout_photo_path, the rest arrive in timeout_extra_photo_paths. The
+// pop-up must show every one; an old record must look exactly as before.
+const halfEsc = (s) => String(s === null || s === undefined ? '' : s)
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+const H = evalWith(slice(src, 'function attHalf(', '// ── A7', 'attendance-admin.js'),
+  { attEsc: halfEsc, attTime: () => '5:30 PM' }, ['attHalf']);
+const outHalf = (extras) => H.attHalf('When they left', 'time out', 'out', 'log-out',
+  '2026-11-22T09:30:00Z', 'Site A', 'Laid hollow blocks', 'u0', 'p0', extras);
+
+test('no extras: the Time Out half looks exactly as before', () => {
+  const html = outHalf(undefined);
+  ok(!/Work photos/.test(html), 'no work-photo block');
+  ok(!/att-work-strip/.test(html), 'no strip');
+  ok(/src="u0"/.test(html), 'the one photo still shows');
+});
+
+test('extras: titled with the count, the first photo included', () => {
+  const html = outHalf([{ url: 'u1', path: 'p1' }, { url: 'u2', path: 'p2' }]);
+  ok(/Work photos \(3\)/.test(html), 'Work photos (3): ' + html);
+  const strip = html.slice(html.indexOf('att-work-strip'));
+  ok(/src="u1"/.test(strip) && /src="u2"/.test(strip), 'both extras in the strip');
+  eq((strip.match(/target="_blank"/g) || []).length, 2, 'each opens in a new tab');
+});
+
+test('an extra that could not be signed says so', () => {
+  const html = outHalf([{ url: null, path: 'p1' }]);
+  const strip = html.slice(html.indexOf('att-work-strip'));
+  ok(/Photo unavailable/.test(strip), 'Photo unavailable in the strip');
+});
+
+test('extra photo links are escaped', () => {
+  const html = outHalf([{ url: 'u"><script>', path: 'p1' }]);
+  ok(!/<script>/.test(html), 'no raw script tag');
+});
+
+// After a WorkMate 1030 Time Out's LAST photo the worker types the required
+// note and 3-6 photos upload, so "arrived N min after the shutter" no longer
+// says anything about the phone's clock. Only the trusted clock at the
+// shutter does (0078's timeout_trusted_at). An honest worker on weak signal
+// must not be shown as "Phone clock was N min behind".
+const vocab = () => evalWith(
+  slice(src, '// ==== ATT VOCABULARY START ====', '// ==== ATT VOCABULARY END ====', 'attendance-admin.js'),
+  { window: {} }, ['attStatusNote', 'attBadges', 'attOutSkewMinutes']);
+const workDay = (o) => Object.assign({
+  status: 'complete', timein_photo_path: 'a', timeout_photo_path: 'b',
+  timein_at: '2026-11-22T00:00:00Z', timein_received_at: '2026-11-22T00:00:00Z',
+  timeout_at: '2026-11-22T09:30:00Z', timeout_received_at: '2026-11-22T09:55:00Z',
+  timeout_app_version: 1030, timeout_trusted_at: '2026-11-22T09:30:01Z'
+}, o);
+
+test('a 1030 Time Out that arrived 25 min after its last photo is not a clock problem', () => {
+  const V2 = vocab();
+  eq(V2.attOutSkewMinutes(workDay()), 0, 'measured against the trusted clock');
+  eq(V2.attStatusNote(workDay()), 'Both photos received');
+  ok(!/clock/.test(V2.attBadges(workDay())), 'no clock badge: ' + V2.attBadges(workDay()));
+});
+
+test('a 1030 Time Out whose phone clock really was behind still says so', () => {
+  const V2 = vocab();
+  const behind = workDay({ timeout_trusted_at: '2026-11-22T09:45:00Z' });
+  eq(V2.attOutSkewMinutes(behind), 15);
+  eq(V2.attStatusNote(behind), 'Phone clock was 15 min behind');
+});
+
+test('a 1030 Time Out with no trusted time makes no clock claim', () => {
+  const V2 = vocab();
+  eq(V2.attOutSkewMinutes(workDay({ timeout_trusted_at: null })), null);
+  eq(V2.attStatusNote(workDay({ timeout_trusted_at: null })), 'Both photos received');
+});
+
+test('an old-app Time Out is still measured by when it arrived', () => {
+  const V2 = vocab();
+  const old = workDay({ timeout_app_version: 5, timeout_trusted_at: null });
+  eq(V2.attOutSkewMinutes(old), 25);
+  eq(V2.attStatusNote(old), 'Phone clock was 25 min behind');
+});
+
+test('the day list loads the two columns the Time Out clock check needs', () => {
+  const list = slice(src, "sb.from('attendance_records')", ".eq('work_date', workDate)", 'attendance-admin.js');
+  ok(/timeout_trusted_at/.test(list) && /timeout_app_version/.test(list), 'list select has both');
+  const chips = slice(src, 'function chipsOf(record)', 'const loc = [', 'attendance-admin.js');
+  ok(/attOutSkewMinutes\(record\)/.test(chips), 'the card chips use the same Time Out measure');
+});
+
+test('the pop-up signs the extra work photos', () => {
+  const pop = slice(src, 'async function attRenderWorker(', 'function attHalf(', 'attendance-admin.js');
+  ok(/timeout_extra_photo_paths/.test(pop), 'reads timeout_extra_photo_paths');
+  ok(/timeout_extra_photo_paths[\s\S]{0,200}attSignedPhoto|attSignedPhoto[\s\S]{0,200}timeout_extra_photo_paths/.test(pop),
+     'signs them with attSignedPhoto');
+});
+
 console.log(passed + ' passed, ' + failed + ' failed');
 if (failed) { failures.forEach(f => console.log('  · ' + f)); process.exit(1); }
 console.log('Attendance reports state only what the database computed.');

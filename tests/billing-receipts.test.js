@@ -47,13 +47,46 @@ const STATE = {
 console.log('\nThe receipt page');
 test('it carries everything on the sample', () => {
   const html = api.receiptHTML(RECEIPT);
-  for (const text of ['ACKNOWLEDGEMENT RECEIPT', 'Acknowledgement No:', 'AR-202611-001', 'Nov 9, 2026', 'Received From',
-    'MH Interior and Construction Incorporated', 'Progress Billing 3 (November 2026)', 'Item Description / Service',
-    'Full Payment Amount', 'Payment Details', 'Bank Transfer', 'Security Bank', '0001', 'Received by', 'Cristher Dacome']) {
+  for (const text of ['ACKNOWLEDGEMENT RECEIPT', 'AR No.: </span><strong>AR-202611-001', 'Date: </span><strong>Nov 9, 2026',
+    'MH Interior and Construction Incorporated', 'Progress Billing 3 (November 2026)', '<th>Description</th>', 'Amount (PHP)',
+    'One Hundred Fifty-Nine Thousand Pesos Only', 'Amount in words', 'Payment Details', 'Bank Transfer', 'Security Bank', '0001',
+    'Paid by', 'Received by', 'Cristher Dacome', 'not valid as an Official Receipt']) {
     assert(html.includes(text), 'missing: ' + text);
   }
   assert(html.includes('DAC&#39;S Building Design Services'), 'company name');
-  assert.strictEqual(html.split('₱159,000.00').length - 1, 3, 'unit price, amount and the total box');
+  assert.strictEqual(html.split('₱159,000.00').length - 1, 1, 'the total');
+  assert(!html.includes('class="statement"') && !html.includes('as payment for'), 'no receipt sentence (owner, 22 Nov 2026)');
+  assert(html.includes('<td class="num">159,000.00</td>'), 'the item row');
+  for (const gone of ['Qty', 'Unit Price', 'Full Payment Amount', 'Item Description']) assert(!html.includes(gone), 'layout C drops: ' + gone);
+});
+test('layout C: the payment date and reference move out of the automatic line into plain Payment Details rows', () => {
+  const html = api.receiptHTML({ ...RECEIPT, billing_label: 'Progress Billing 3 (November 2026) · Payment received (Nov 18, 2026) · Ref. PC-NDBMOB-1',
+    paid_on: '2026-11-18', payment_reference: 'PC-NDBMOB-1' });
+  assert(html.includes('<td>1</td><td>Progress Billing 3 (November 2026)</td>'), 'the item line is the billing alone');
+  assert(html.includes('<tr><td>Payment Date</td><td>Nov 18, 2026</td></tr>'));
+  assert(html.includes('<tr><td>Reference No.</td><td>PC-NDBMOB-1</td></tr>'), 'a plain row');
+  assert.strictEqual(html.split('PC-NDBMOB-1').length - 1, 1, 'printed once, not highlighted');
+  assert(html.indexOf('Payment Date') < html.indexOf('Reference No.') && html.indexOf('Reference No.') < html.indexOf('Payment Via'), 'date, reference, then how it was paid');
+});
+test('a Project Management line (no billing name, no saved columns) splits the same way', () => {
+  const html = api.receiptHTML({ ...RECEIPT, billing_label: 'Payment received (Nov 20, 2026) · Ref. GC-9' });
+  assert(html.includes('<td>1</td><td>Payment received</td>'));
+  assert(html.includes('<td>Payment Date</td><td>Nov 20, 2026</td>') && html.includes('<td>Reference No.</td><td>GC-9</td>'));
+});
+test('a line the owner typed differently prints as typed', () => {
+  const typed = 'Full Payment of the Down Payment';
+  const html = api.receiptHTML({ ...RECEIPT, billing_label: typed, paid_on: '2026-11-20', payment_reference: 'X1' });
+  assert(html.includes('<td>1</td><td>' + typed + '</td>'));
+  assert(html.includes('<td>Reference No.</td><td>X1</td>'), 'the saved reference still prints');
+  const other = api.splitLine('Progress Billing 3 · Payment received (Nov 18, 2026) · Ref. OLD', '2026-11-18', 'NEW');
+  assert.strictEqual(other.item, 'Progress Billing 3 · Payment received (Nov 18, 2026) · Ref. OLD', 'a line that disagrees with the saved reference is left whole');
+});
+test('amounts in words', () => {
+  assert.strictEqual(api.pesoWords(169000), 'One Hundred Sixty-Nine Thousand Pesos Only');
+  assert.strictEqual(api.pesoWords(1), 'One Peso Only');
+  assert.strictEqual(api.pesoWords(50000.5), 'Fifty Thousand Pesos and 50/100 Only');
+  assert.strictEqual(api.pesoWords(1234567.08), 'One Million Two Hundred Thirty-Four Thousand Five Hundred Sixty-Seven Pesos and 08/100 Only');
+  assert.strictEqual(api.pesoWords(0), 'Zero Pesos Only');
 });
 const STAMP = 'src="https://example.test/assets/images/dacs-signature.png"';
 const stampedAboveName = html => {
@@ -86,6 +119,23 @@ test('everything typed is escaped', () => {
   assert(!html.includes('<i>L</i>'));
   assert(html.includes('&lt;img src=x'));
 });
+test('a bank prints as Payment Via <bank>, Bank Transfer No. and Account Name, with no Branch', () => {
+  const html = api.receiptHTML({ ...RECEIPT, payment_details: { method: 'bank', bank: 'BDO', accountNo: '013570037929', accountName: 'Cristher Dacome', branch: 'Cubao' } });
+  for (const text of ['<td>Payment Via</td><td>BDO</td>', '<td>Bank Transfer No.</td><td>013570037929</td>', '<td>Account Name</td><td>Cristher Dacome</td>']) {
+    assert(html.includes(text), 'missing: ' + text);
+  }
+  assert(!html.includes('Branch') && !html.includes('Cubao'), 'no branch line');
+});
+test('company details and signature can be hidden and shown, never printed as controls, and remembered', () => {
+  for (const html of [api.receiptHTML(RECEIPT), api.overallHTML(STATE, 'MH', 'Ana', '2026-11-09')]) {
+    for (const text of ['id="tglCompany"', 'id="tglSign"', 'Company details', 'Signature', 'class="company-block"',
+                        'body.hide-company .company-block{display:none}', 'body.hide-sign .sign{display:none}', "'dacs.receipt.hide'"]) {
+      assert(html.includes(text), 'missing: ' + text);
+    }
+    assert(/@media print\{\.tools\{display:none\}\}/.test(html), 'the switches never print');
+    assert(/try\{[^}]*localStorage/.test(html), 'storage is guarded');
+  }
+});
 test('a blank company name falls back to the house name', () => {
   assert(api.receiptHTML({ ...RECEIPT, business: {} }).includes('DAC&#39;S Building Design Services'));
 });
@@ -95,6 +145,13 @@ test('a live receipt is not marked void; a voided one clearly is, with its reaso
   assert(/\bVOID\b/.test(html));
   assert(html.includes('Client &lt;added&gt; funds'));
 });
+test('Download PDF saves the page as a file, and printing leaves no browser header or footer', () => {
+  for (const html of [api.receiptHTML(RECEIPT), api.overallHTML(STATE, 'MH', 'Ana', '2026-11-09')]) {
+    assert(html.includes('id="dlPdf"') && html.includes('Download PDF'), 'the button');
+    assert(html.includes('html2pdf.bundle.min.js') && html.includes('html2pdf(page,'), 'saves through html2pdf (its one-call form downloads the file)');
+    assert(/@page\{size:A4 portrait;margin:0\}/.test(html), 'a zero page margin leaves the browser no room for its date, title and address');
+  }
+});
 test('the print button never prints', () => {
   assert(/@media print\{[^}]*\.noprint\{display:none/.test(api.receiptHTML(RECEIPT).replace(/\s+/g, '')) || /\.noprint\{display:none/.test(api.receiptHTML(RECEIPT)));
   assert(api.receiptHTML(RECEIPT).includes('window.print()'));
@@ -103,13 +160,13 @@ test('the print button never prints', () => {
 console.log('\nThe Overall Billing Acknowledgement page');
 const OVERALL = api.overallHTML ? api.overallHTML(STATE, 'MH Interior', 'Cristher Dacome', '2026-11-09') : '';
 test('it is headed correctly and ends with the grand total', () => {
-  for (const text of ['PROOF OF PAYMENTS', 'Received From', 'MH Interior', 'Total Received', '₱200,000.00', 'Tuth Residence', 'Received by', 'Cristher Dacome', 'Nov 9, 2026']) {
+  for (const text of ['PROOF OF PAYMENTS', 'MH Interior', 'Two Hundred Thousand Pesos Only', 'Total Received', '₱200,000.00', 'Tuth Residence', 'Received by', 'Cristher Dacome', 'Nov 9, 2026']) {
     assert(OVERALL.includes(text), 'missing: ' + text);
   }
 });
-test('every client billing that has Fund Allocated is listed with its amount, like the invoice layout', () => {
-  for (const text of ['Item Description / Service', 'Qty', 'Unit Price', 'Amount',
-    'Downpayment (October 2026)', '₱41,000.00', 'Progress Billing 3 (November 2026)', '₱159,000.00', 'Total Billings']) {
+test('every client billing that has Fund Allocated is listed with its amount, in layout C\'s table', () => {
+  for (const text of ['<th>Description</th>', 'Amount (PHP)',
+    'Downpayment (October 2026)', '41,000.00', 'Progress Billing 3 (November 2026)', '159,000.00', 'Total Billings']) {
     assert(OVERALL.includes(text), 'missing: ' + text);
   }
 });
@@ -200,6 +257,70 @@ test('issuing sends the billing and the two names, never an amount', async () =>
   await h.api.actions.issue(h.popup, 'p1', 'MH', 'Ana');
   assert.deepStrictEqual(JSON.parse(JSON.stringify(h.calls)), [['bar_issue', { p_period: 'p1', p_received_from: 'MH', p_received_by: 'Ana' }]]);
   assert(h.popup.html.includes('AR-202611-001'));
+});
+test('issuing with a payment date and reference uses 0117, still never an amount', async () => {
+  const h = harness();
+  await h.api.actions.issue(h.popup, 'p1', 'MH', 'Ana', { paidOn: '2026-11-18', reference: 'PC-NDBMOB-1' });
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(h.calls)), [['bar_issue_with_payment',
+    { p_period: 'p1', p_received_from: 'MH', p_received_by: 'Ana', p_paid_on: '2026-11-18', p_reference: 'PC-NDBMOB-1' }]]);
+});
+test('re-issuing with a payment date and reference uses 0117', async () => {
+  const h = harness();
+  await h.api.actions.reissue(h.popup, 'r1', 'Wrong date', 'MH', 'Ana', { paidOn: '2026-11-17', reference: '' });
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(h.calls)), [['bar_reissue_with_payment',
+    { p_receipt: 'r1', p_reason: 'Wrong date', p_received_from: 'MH', p_received_by: 'Ana', p_paid_on: '2026-11-17', p_reference: '' }]]);
+});
+test('the payment date is required and never in the future; the reference is optional, up to 100 characters', () => {
+  const today = '2026-11-20';
+  assert.deepStrictEqual({ ...api.checkPayment('2026-11-18', '  PC-1  ', today) }, { paidOn: '2026-11-18', reference: 'PC-1' });
+  assert.deepStrictEqual({ ...api.checkPayment(today, '', today) }, { paidOn: today, reference: '' });
+  assert.deepStrictEqual({ ...api.checkPayment('', 'x', today) }, { error: 'Please enter the payment date.' });
+  assert.deepStrictEqual({ ...api.checkPayment('18/11/2026', 'x', today) }, { error: 'Please enter the payment date.' });
+  assert.deepStrictEqual({ ...api.checkPayment('2026-11-21', '', today) }, { error: 'The payment date cannot be later than today.' });
+  assert.deepStrictEqual({ ...api.checkPayment(today, 'r'.repeat(101), today) }, { error: 'That reference is too long. Please keep it to 100 characters.' });
+  assert.strictEqual(api.checkPayment(today, 'r'.repeat(100), today).reference.length, 100);
+});
+test('the window\'s payment fields: a date box up to today, filled in, and a reference box', () => {
+  const html = api.paymentFieldsHTML('2026-11-18', 'A"<b>', '2026-11-20');
+  assert(/<input id="brPaidOn" type="date" value="2026-11-18" max="2026-11-20"/.test(html), 'date box');
+  assert(/<input id="brRef" type="text" maxlength="100" value="A&quot;&lt;b&gt;"/.test(html), 'reference box, escaped');
+  assert(html.includes('Payment date') && html.includes('Reference no.'));
+});
+test('Project Control\'s window asks for the payment; Project Management\'s does not', () => {
+  assert(/askPayment: true/.test(source), 'PC_OPS asks');
+  assert(!/askPayment/.test(read('js/pm-billing-docs.js')), 'PM never asks');
+});
+test('issuing with a typed description uses 0118, still never an amount', async () => {
+  const h = harness();
+  await h.api.actions.issue(h.popup, 'p1', 'MH', 'Ana', { paidOn: '2026-11-20', reference: '' }, 'Full Payment of the Down Payment (Nov 20, 2026)');
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(h.calls)), [['bar_issue_described',
+    { p_period: 'p1', p_received_from: 'MH', p_received_by: 'Ana', p_paid_on: '2026-11-20', p_reference: '', p_description: 'Full Payment of the Down Payment (Nov 20, 2026)' }]]);
+});
+test('re-issuing with a typed description uses 0118', async () => {
+  const h = harness();
+  await h.api.actions.reissue(h.popup, 'r1', 'Wording', 'MH', 'Ana', { paidOn: '2026-11-20', reference: 'X' }, 'Down payment');
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(h.calls)), [['bar_reissue_described',
+    { p_receipt: 'r1', p_reason: 'Wording', p_received_from: 'MH', p_received_by: 'Ana', p_paid_on: '2026-11-20', p_reference: 'X', p_description: 'Down payment' }]]);
+});
+test('the automatic line: billing name, payment date, then the reference when there is one', () => {
+  assert.strictEqual(api.paymentLine('Progress Billing 3 (November 2026)', '2026-11-18', 'PC-NDBMOB-1'),
+    'Progress Billing 3 (November 2026) · Payment received (Nov 18, 2026) · Ref. PC-NDBMOB-1');
+  assert.strictEqual(api.paymentLine('Downpayment (October 2026)', '2026-10-05', ''), 'Downpayment (October 2026) · Payment received (Oct 5, 2026)');
+  assert.strictEqual(api.paymentLine('B'.repeat(190), '2026-10-05', 'R').length, 200, 'cut to 200');
+});
+test('the description is required and at most 200 characters', () => {
+  assert.deepStrictEqual({ ...api.checkDescription('  Full Payment of the Down Payment  ') }, { description: 'Full Payment of the Down Payment' });
+  assert.deepStrictEqual({ ...api.checkDescription('   ') }, { error: 'Please enter a description.' });
+  assert.deepStrictEqual({ ...api.checkDescription('d'.repeat(201)) }, { error: 'That description is too long. Please keep it to 200 characters.' });
+  assert.strictEqual(api.checkDescription('d'.repeat(200)).description.length, 200);
+});
+test('the description box is filled in and escaped', () => {
+  const html = api.descriptionFieldHTML('Payment "A" <b>');
+  assert(/<textarea id="brDesc"[^>]*maxlength="200"[^>]*>Payment &quot;A&quot; &lt;b&gt;<\/textarea>/.test(html), html);
+  assert(html.includes('Description'));
+});
+test('Project Control fills the description from the billing, date and reference', () => {
+  assert(/autoLine: \(plan, paidOn, reference\) => paymentLine\(plan\.period\.label, paidOn, reference\)/.test(source));
 });
 test('re-issuing sends the reason', async () => {
   const h = harness();
@@ -294,6 +415,16 @@ test('each server refusal has its own message', () => {
     const text = api.refusalText({ code: 'P0001', message: code });
     assert(text && !text.includes(code) && !text.startsWith('Something went wrong'), code + ': ' + text);
   }
+});
+test('the payment refusals read in plain words, and a database without 0117 says so', () => {
+  assert.strictEqual(api.refusalText({ message: 'PAID_ON_REQUIRED' }), 'Please enter the payment date.');
+  assert.strictEqual(api.refusalText({ message: 'PAID_ON_FUTURE' }), 'The payment date cannot be later than today.');
+  assert.strictEqual(api.refusalText({ message: 'REFERENCE_TOO_LONG' }), 'That reference is too long. Please keep it to 100 characters.');
+  assert(/0117/.test(api.refusalText({ code: 'PGRST202', message: 'Could not find the function public.bar_issue_with_payment' })));
+});
+test('a too-long description reads in plain words, and a database without 0118 says so', () => {
+  assert.strictEqual(api.refusalText({ message: 'DESCRIPTION_TOO_LONG' }), 'That description is too long. Please keep it to 200 characters.');
+  assert(/0118/.test(api.refusalText({ code: 'PGRST202', message: 'Could not find the function public.bar_issue_described' })));
 });
 test('a database without 0114 says so', () => {
   assert(/0114/.test(api.refusalText({ code: 'PGRST202', message: 'Could not find the function public.bar_state' })));

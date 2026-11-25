@@ -1,5 +1,7 @@
 # DAC's — Weekly Employee Reports MVP terms
 
+> **Replaced by the 22 Nov 2026 version:** [2026-11-22-weekly-employee-report-mvp-terms.md](2026-11-22-weekly-employee-report-mvp-terms.md). Kept for history only; do not build from this file.
+
 Date: 14 October 2026 (Asia/Manila)
 
 Status: **Draft for review.** This document records the recommended scope and conditions for the Weekly Employee Reports MVP. Creating this file does not start implementation, apply migrations, change storage policies, schedule jobs, commit, push or deploy. Recommended defaults below remain proposals until reviewed.

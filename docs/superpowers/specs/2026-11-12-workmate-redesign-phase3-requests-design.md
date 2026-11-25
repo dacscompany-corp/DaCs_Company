@@ -219,3 +219,31 @@ previous keep their §11 pages. Every field, rule, draft-saving behaviour and se
    with text in the quick-add boxes** first opens Add item filled in (as +) and sends nothing; the worker saves (or backs
    out) and taps SEND REQUEST again. (c) **Delete draft** shows on every reopened draft, and on a new one once it has a
    project, a team, an item or a note (fixes a review finding: a draft saved by a team or note choice had no Delete).
+
+## 13. Quick-add + closer to the mockup (owner decision 24 Nov 2026, after a phone check on 1030)
+
+On the phone the owner typed "Add" · 11 and pressed **+**: Add item opened on "Nothing in the list matches." and the +
+looked broken. The mockup's + (`WorkMate App.dc.html`, `addLine`) puts the line straight into ITEMS, but it has no unit,
+and the server refuses a line without one (0085 `pr_submit_request`), so + cannot always do that. The office's list
+held 3 active materials and no tools on 24 Nov, so almost every typed name missed it. Owner approved the recommended
+option ("go ahead"). Build **0.19.1+1031**. No server change; every Add item rule stays.
+
+1. **One list item fits and the quantity is usable** → **+ adds it at once** (no page), quantity as typed, unit and
+   kind from the list; the two boxes clear. "Fits": every typed word is a **whole word** of the item's name or size
+   (capitals and extra spaces ignored), and of no other item — "sand" never picks Sandpaper, a trade alone picks
+   nothing, "cement" with 40kg and 25kg on the list picks neither. Materials and tools alike. The card opens Edit
+   item as before.
+2. **One item fits, quantity empty or unusable** → Add item opens with that item **already picked**; only the
+   quantity is left.
+3. **Several items match** → Add item on the list search, as before (name in the search, quantity filled), on
+   **Material**, or on **Tool** when only tools match.
+4. **Nothing on the list matches** → Add item opens **on "Describe it"**: name and quantity filled, the cursor on
+   **Unit**. "Pick from the list instead" still returns to the search.
+5. **Both boxes empty** → a blank Add item, as before.
+6. Describe it tapped by hand with a name carried over from the search also puts the cursor on Unit; editing a saved
+   item puts it nowhere.
+7. SEND REQUEST with text in the boxes runs the same + first and sends nothing (§12 5b); a fitting item is simply
+   added, and the worker taps SEND REQUEST again.
+8. Code: `lib/requests/domain/catalog_match.dart` (`quickAddFit`, `searchCatalog` — Add item's search, moved there
+   unchanged — and `listKindFor`); tests `test/requests/domain/catalog_match_test.dart` and the quick-add cases in
+   `compose_test.dart`.

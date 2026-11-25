@@ -53,6 +53,7 @@
     <link rel="stylesheet" href="css/closeout-dialog.css?v=20260803f">
     <!-- Office split-view frame (Attendance / Requests / Work Plan redesign), js/split-view.js -->
     <link rel="stylesheet" href="css/split-view.css?v=20261125c">
+    <link rel="stylesheet" href="css/weekly-report.css?v=20261123b">
     <!-- Mobile (iOS/Android) responsiveness layer — loads AFTER everything so it overrides module grids at phone widths -->
     <link rel="stylesheet" href="css/admin-mobile.css">
 </head>
@@ -2627,6 +2628,7 @@
         <div id="attWorkerView"     class="content-view" style="display: none;"></div>
         <div id="attProjectsView"   class="content-view" style="display: none;"></div>
         <div id="attReportsView"    class="content-view" style="display: none;"></div>
+        <div id="attWeeklyView" class="content-view" style="display: none;"></div>
         <div id="attRewardsView"    class="content-view" style="display: none;"></div>
         <!-- Owner-only: publish a worker APK (0079), js/app-updates-admin.js -->
         <div id="attAppUpdatesView" class="content-view" style="display: none;"></div>
@@ -5604,6 +5606,9 @@
 <script src="js/app-updates-admin.js?v=20261116c"></script>
 <!-- The shared split-view frame + NavCounts; before every screen that uses it. -->
 <script src="js/split-view.js?v=20261125b"></script>
+<script src="js/weekly-report-data.js?v=20261123b"></script>
+<script src="js/weekly-report-print.js?v=20261123b"></script>
+<script src="js/weekly-report-admin.js?v=20261123b"></script>
 <script src="js/requests-admin-core.js?v=20261116b"></script>
 <script src="js/requests-admin-queue.js?v=20261125a"></script>
 <script src="js/requests-admin-detail.js?v=20261125a"></script>
@@ -5631,9 +5636,9 @@
 <script src="js/payment-requests.js"></script>
 <script src="js/invoice-module.js?v=20261126a"></script>
 <script src="js/labor-invoice-module.js"></script>
-<script src="js/billing-receipts.js?v=20261118b"></script>
+<script src="js/billing-receipts.js?v=20261122e"></script>
 <!-- PM Billing Request + Acknowledgement Receipts (0116). After billing-receipts.js, whose page and dialogs it reuses. -->
-<script src="js/pm-billing-docs.js?v=20261118b"></script>
+<script src="js/pm-billing-docs.js?v=20261122a"></script>
 <script src="js/pm-sharing.js?v=20261031a"></script>
 <script src="js/pm-admin.js?v=20261118b"></script>
 <script src="js/pm-report-print.js?v=20260915a"></script>
@@ -6504,6 +6509,7 @@
         attWorker:        "One worker's day",
         attProjects:      'Sites & schedule',
         attReports:       'Hours report',
+        attWeekly:        'Weekly reports',
         attRewards:       'Weekly bonus',
         attAppUpdates:    'App updates',
         reqQueue:         'Request queue',
@@ -6647,6 +6653,7 @@
         if (ATT_VIEWS.includes(view)   && typeof initAttendanceModule === 'function') initAttendanceModule(view);
         if (view === 'attAppUpdates' && typeof initAppUpdatesModule === 'function')
             initAppUpdatesModule(document.getElementById('attAppUpdatesView'));
+        if (view === 'attWeekly' && typeof initWeeklyReportModule === 'function') initWeeklyReportModule(document.getElementById('attWeeklyView'));
         if (REQ_VIEWS.includes(view)   && typeof initRequestsModule === 'function') initRequestsModule(view);
         if (WP_VIEWS.includes(view)    && typeof initWorkPlanModule === 'function') initWorkPlanModule(view);
 
