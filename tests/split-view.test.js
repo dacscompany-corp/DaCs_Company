@@ -399,11 +399,15 @@ console.log('\nsplit-view: wired into admin.html');
 
 test('the frame is loaded before the Requests scripts, cache-busted', () => {
   const h = src('admin.html');
-  for (const f of ['js/split-view.js', 'js/admin.js', 'js/requests-admin-core.js', 'js/requests-admin-queue.js', 'js/requests-admin-detail.js'])
+  for (const f of ['js/admin.js', 'js/requests-admin-core.js'])
     ok(h.includes(f + '?v=20261116b'), f + ' cache-busted');
   // Changed again by the Attendance cards plan (16 Nov 2026).
-  for (const f of ['css/split-view.css', 'css/attendance-admin.css', 'js/attendance-admin.js', 'js/app-updates-admin.js'])
+  for (const f of ['css/attendance-admin.css', 'js/attendance-admin.js', 'js/app-updates-admin.js'])
     ok(h.includes(f + '?v=20261116c'), f + ' cache-busted');
+  // Changed again by the Requests Queue and Purchasing updates (PR #48, 25 Nov 2026).
+  for (const [f, v] of [['js/split-view.js', '20261125b'], ['css/split-view.css', '20261125c'],
+                        ['js/requests-admin-queue.js', '20261125a'], ['js/requests-admin-detail.js', '20261125a']])
+    ok(h.includes(f + '?v=' + v), f + ' cache-busted');
   ok(h.indexOf('js/split-view.js') < h.indexOf('js/requests-admin-core.js'), 'order');
   ok(h.indexOf('css/split-view.css') > h.indexOf('css/admin-renovation.css'), 'frame styles after the shared renovation styles');
 });

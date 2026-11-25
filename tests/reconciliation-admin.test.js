@@ -232,7 +232,8 @@ test('"office review" on no-billing-period Cover follows the flag: "Cover is rig
   const portal = read('js/portal-app.compiled.js');
   ok(/const noPeriodReview = typeof window\.expPurNeedsReview === "function"\s+&& expensesRaw\.some\(e => !e\.projectId && e\.folderId === project\.id && window\.expPurNeedsReview\(e\.purchaseLineId\)\);/.test(portal), 'the billing-periods page reads the flag');
   ok(/noPeriodReview \? "; office review needed\." : "\."\]/.test(portal) && /\(noPeriodReview \? " — office review needed\." : "\."\)/.test(portal), 'both wordings');
-  ok(/const afterMark = \(\) => \{ if \(root\.expPurReloadFlags\) root\.expPurReloadFlags\(\); render\(body\); \};/.test(BROWSER)
+  // Cards layout (PR #48): the redraw also refreshes the open pop-up.
+  ok(/const afterMark = \(\) => \{ if \(root\.expPurReloadFlags\) root\.expPurReloadFlags\(\); render\(host, me, \{ refreshPanel: true \}\); \};/.test(BROWSER)
      && /openCover\(l, afterMark\)/.test(BROWSER) && /openWithdraw\(m, afterMark\)/.test(BROWSER), 'the tab reloads the flags after a mark');
 });
 

@@ -574,11 +574,20 @@ test('22 Oct: the four changed scripts are re-fetched', () => {
   }
 });
 
-test('office v5: Purchasing on the frame — Shopping list and Purchases are cards, the other tabs keep their content', () => {
+test('office v5: Purchasing on the frame — every tab is cards, each drawn by its own file', () => {
   const list = read('js/purchasing-admin-list.js'), pur = read('js/purchasing-admin-purchases.js'), core = read('js/purchasing-admin-core.js');
   ok(list.includes('SplitView.render(') && pur.includes('SplitView.render('), 'drawn by the shared frame');
   ok(/tickBar: \{ label: 'Record purchase'/.test(list) && /tick: canBuy \? \{ on: !!ui\.picked\[l\.line_id\], label: 'Add to the purchase' \}/.test(list), 'tick boxes and Record purchase (N)');
-  ok(/custom: true/.test(list), 'approvals, cash, company stock and reconciliation keep their content');
+  // PR #48 (25 Nov 2026): Owner approvals, Cash, Company stock and Reconciliation became
+  // cards too (no more custom body). Company stock and Reconciliation still open only
+  // when their tab is allowed for this account.
+  ok(/if \(ui\.tab === 'approvals'\) return PA\.renderApprovals\(host, me\);/.test(list)
+     && /if \(ui\.tab === 'cash' && PA\.renderCash\) return PA\.renderCash\(host, me\);/.test(list)
+     && /if \(ui\.tab === 'company' && companyStockTab\(\)\) return root\.StockCostAdmin\.renderCompanyStock\(host, me\);/.test(list)
+     && /if \(ui\.tab === 'reconcile' && reconcileTab\(\)\) return root\.ReconciliationAdmin\.render\(host, me\);/.test(list),
+    'approvals, cash, company stock and reconciliation are routed to their own files, gated as before');
+  for (const f of ['purchasing-admin-purchases', 'purchasing-admin-cash', 'stock-cost-admin', 'reconciliation-admin'])
+    ok(read('js/' + f + '.js').includes('root.SplitView.render(host, PA.frame(host, me, {'), f + ' draws its cards in the shared Purchasing frame');
   ok(!/<table/.test(pur.slice(0, pur.indexOf('function lineRow('))), 'the Purchases list is cards');
   ok(/function openPurchase\(id\) \{[\s\S]{0,200}root\.switchView\('reqPurchasing'\)/.test(core), 'a purchase opens in the Purchasing pop-up');
   ok(/views\.reqPurchase = \(\) => root\.switchView\('reqPurchasing'\)/.test(pur), 'the old route lands on Purchasing');

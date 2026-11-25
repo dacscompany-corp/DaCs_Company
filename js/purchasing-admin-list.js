@@ -28,7 +28,8 @@
 // are cards — a card's tick box adds the line to the purchase, the sticky
 // "Record purchase (N)" records it, and a card opens its line (or
 // purchase) in the pop-up. Owner approvals, Cash, Company stock and
-// Reconciliation keep their own content inside the frame (custom body).
+// Reconciliation are cards too, each drawn by its own file in the same
+// frame (PA.frame).
 // Record purchase opens in the pop-up, wide, and is never closed by a
 // stray click or Escape.
 // ════════════════════════════════════════════════════════════════════
