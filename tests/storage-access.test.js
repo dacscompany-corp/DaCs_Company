@@ -80,6 +80,9 @@ const FOLDERS = {
   tools: 'admin',
   // 0110: PM sharing personal-item receipts — main owner writes, owner-role of the company reads.
   pmSharing: 'pmSharing',
+  // 0116: PM payment photos — the generic office rule (owner / staff), the same access as the
+  // payment rows themselves; never clients. 0116 adds no storage rule.
+  paymentReceipts: 'admin',
 };
 const OWNER_ONLY_SQL = "('quotations', 'reimbursementReceipts')";
 const CLIENT_PROJECT_SQL = "('weeklyBillReceipts', 'procurementReceipts', 'accomplishmentReports', 'projectTerms')";
@@ -240,6 +243,17 @@ test('PM sharing receipts: main owner writes, owner-role of the company reads (0
   ok(upd.includes("split_part(name, '/', 1) = 'pettyCash' then false"), 'pettyCash overwrite rule kept');
 });
 
+test('PM payment photos follow the office rule, like the payment rows (0116 adds no storage rule)', () => {
+  const r = lastFn('uploads_can_read');
+  const w = lastFn('uploads_can_write');
+  // No folder-specific branch: a company lock would hide admin-pm@'s photos from the main owner
+  // (each owner-role account is its own data_owner_id), while every office account sees every PM
+  // payment row (payreq_admin: owner or staff). Clients fall past the generic rule and get nothing.
+  ok(!r.includes('paymentReceipts') && !w.includes('paymentReceipts'), 'a paymentReceipts branch narrows the office rule');
+  ok(r.includes('if is_owner() or is_staff() then return true') && w.includes('if is_owner() or is_staff() then return true'), 'generic office rule missing');
+  ok(!allRules().includes('paymentReceipts'), 'a migration names paymentReceipts');
+});
+
 console.log('\nIII. Every upload folder is classified');
 function uploadFolders() {
   const files = fs.readdirSync(path.join(ROOT, 'js')).filter((f) => f.endsWith('.js')).map((f) => path.join(ROOT, 'js', f));
@@ -249,7 +263,7 @@ function uploadFolders() {
     /storage\.ref\(\s*[`'"]([A-Za-z][\w-]*)\//g,          // storage.ref('folder/…')
     /const path\s*=\s*[`'"]([A-Za-z][\w-]*)\//g,           // const path = `folder/…`
     /\b(?:store|contracts):\s*'([A-Za-z][\w-]*)'/g,        // expenses-module agreement config
-    /\b(?:expense|payroll|purchase|petty_cash|pm_sharing):\s*'([A-Za-z][\w-]*)'/g, // receipt-storage.js FOLDER map
+    /\b(?:expense|payroll|purchase|petty_cash|pm_sharing|payment):\s*'([A-Za-z][\w-]*)'/g, // receipt-storage.js FOLDER map
   ];
   for (const f of files) {
     const src = fs.readFileSync(f, 'utf8');
@@ -269,7 +283,7 @@ test('the scan still finds the known upload sites (guards against a silent regex
   const found = uploadFolders();
   for (const f of ['expenseInbox', 'weeklyBillReceipts', 'procurementReceipts', 'signatures', 'signed-terms',
                    'quotations', 'reimbursementReceipts', 'workerAgreementGlobal', 'workerAgreements',
-                   'expenseReceipts', 'payrollReceipts', 'purchases', 'pettyCash', 'pmSharing']) {
+                   'expenseReceipts', 'payrollReceipts', 'purchases', 'pettyCash', 'pmSharing', 'paymentReceipts']) {
     ok(found.has(f), 'scan no longer sees uploads to ' + f);
   }
 });

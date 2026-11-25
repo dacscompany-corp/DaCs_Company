@@ -21,11 +21,104 @@
 
   function peso(n) {
     n = parseFloat(n) || 0;
-    return '₱' + n.toLocaleString('en-PH', { maximumFractionDigits: 0 });
+    return '₱' + n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
   function esc(s) {
     return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
+
+  // ── AI health facts (pure) ──
+  // Every figure is computed here — never by the AI — and named for what it IS
+  // (Financial MVP, spec 2026-11-14 §3.4):
+  //   • contract − cost is "Contract value minus costs", NEVER profit;
+  //   • a loss comes only from cost above the contract, or from a NEGATIVE
+  //     BOQ-based estimate (named as an estimate, with its Draft / Stale status);
+  //   • a low margin comes only from a CURRENT BOQ-based estimate.
+  // Pure (no DOM), so tests/ai-health-facts.test.js runs it as is.
+  function aiHealthFacts(projects, coverLimit) {
+    coverLimit = coverLimit || 10000;
+    projects = Array.isArray(projects) ? projects : [];
+    var NEAR_PCT = 15;     // remaining below this % of budget = "near limit"
+    var LOW_MARGIN = 10;   // a CURRENT BOQ-based margin below this % = "low margin"
+
+    var totals = projects.reduce(function (a, p) {
+      a.contract += Number(p.revenue) || 0;
+      a.allocated += Number(p.allocated) || 0;
+      a.spent += Number(p.spent) || 0;
+      a.cover += Number(p.coverCost) || 0;
+      return a;
+    }, { contract: 0, allocated: 0, spent: 0, cover: 0 });
+    totals.contractLessCost = totals.contract - totals.spent;
+
+    var healthy = projects.filter(function (p) { return /HEALTHY/i.test(p.statusLabel || ''); });
+
+    // Per-project checks (rule-based, always accurate). Risk alerts first, then warnings.
+    var risks = [], warns = [];
+    projects.forEach(function (p) {
+      var name = '<strong>' + esc(p.name) + '</strong>';
+      var revenue = Number(p.revenue) || 0;
+      var allocated = Number(p.allocated) || 0;
+      var spent = Number(p.spent) || 0;
+      // Fund Allocated − Spent: the total allocation remaining, reserve included.
+      var remaining = (p.remaining != null) ? Number(p.remaining) : (allocated - spent);
+      var cover = Number(p.coverCost) || 0;
+      var boqProfit = p.boqProfit == null ? null : Number(p.boqProfit);
+      var badges = Array.isArray(p.boqBadges) ? p.boqBadges : [];
+
+      var fid = p.id;
+      if (remaining < 0) {                                   // over budget
+        risks.push({ kind: 'risk', id: fid, text: name + ' is over budget by ' + peso(Math.abs(remaining)) });
+      } else {
+        if (allocated <= 0 && spent > 0) {                   // no budget set
+          warns.push({ kind: 'warn', id: fid, text: name + ' has ' + peso(spent) + ' spent but no budget set' });
+        } else if (allocated > 0 && remaining < allocated * (NEAR_PCT / 100)) {  // near limit
+          warns.push({ kind: 'warn', id: fid, text: name + ' is near its budget limit — only ' + peso(remaining) + ' left (' + (remaining / allocated * 100).toFixed(0) + '%)' });
+        }
+        if (cover > coverLimit) {                            // cover expenses over limit
+          warns.push({ kind: 'warn', id: fid, text: name + ' cover expenses ' + peso(cover) + ' — over ' + peso(coverLimit) });
+        }
+        if (revenue > 0 && spent > revenue) {               // cost already above the contract
+          risks.push({ kind: 'risk', id: fid, text: name + ' cost exceeds the contract by ' + peso(spent - revenue) });
+        } else if (boqProfit !== null && boqProfit < 0) {    // the BOQ-based ESTIMATE shows a loss
+          risks.push({ kind: 'risk', id: fid, text: name + ': BOQ-based estimate shows a loss of ' + peso(Math.abs(boqProfit))
+            + (!p.boqCurrent && badges.length ? ' (' + badges.join(', ') + ')' : '') });
+        } else if (p.boqCurrent && p.boqMarginPct != null && Number(p.boqMarginPct) < LOW_MARGIN) {
+          warns.push({ kind: 'warn', id: fid, text: name + ' has a low BOQ-based margin of ' + Number(p.boqMarginPct).toFixed(1) + '%' });
+        }
+      }
+    });
+    var alerts = risks.concat(warns);
+    var issuesPlain = alerts.map(function (a) { return a.text.replace(/<[^>]+>/g, ''); });
+
+    var verdict, vKind;
+    if (risks.length) { verdict = 'At Risk'; vKind = 'risk'; }
+    else if (warns.length) { verdict = 'Needs Attention'; vKind = 'warn'; }
+    else { verdict = 'Healthy'; vKind = 'ok'; }
+
+    if (!alerts.length) alerts.push({ kind: 'ok', text: 'All projects are within budget and within limits.' });
+    return { projects: projects, totals: totals, risks: risks, warns: warns, alerts: alerts, issuesPlain: issuesPlain,
+      verdict: verdict, vKind: vKind, healthyCount: healthy.length };
+  }
+
+  function aiHealthPrompt(facts, today) {
+    var totals = facts.totals;
+    return "You are a financial assistant for DAC's Building Design Services, a construction company. " +
+      'Today is ' + today + '. Write a SHORT daily health briefing (3-5 sentences) for the owner in plain professional English. ' +
+      'Begin with the overall verdict (' + facts.verdict + '), then specifically mention the most important issues below by project name, ' +
+      'and end with ONE practical recommendation. Use Philippine Peso (₱). Use ONLY the facts below — do not invent any. No markdown, no bullet points. ' +
+      'Never describe contract value minus costs as profit. A BOQ-based estimate is an estimate; when it is Draft or Stale, say so.\n\n' +
+      'Company snapshot:\n' +
+      '- Total projects: ' + facts.projects.length + ' (' + facts.healthyCount + ' healthy)\n' +
+      '- Total Contract: ' + peso(totals.contract) + '\n' +
+      '- Total Spent: ' + peso(totals.spent) + '\n' +
+      '- Contract value minus costs (what is left of the contracts after cost so far — NOT profit): ' + peso(totals.contractLessCost) + '\n' +
+      '- Total Cover Expenses: ' + peso(totals.cover) + '\n' +
+      'Issues detected (' + facts.issuesPlain.length + '): ' + (facts.issuesPlain.length ? facts.issuesPlain.join('; ') : 'none — all projects are healthy');
+  }
+  window.aiHealthFacts = aiHealthFacts;
+  window.aiHealthPrompt = aiHealthPrompt;
+  // ── end AI health facts ──
+
 
   function ensureStyles() {
     if (document.getElementById('aiHcStyles')) return;
@@ -129,63 +222,10 @@
   }
 
   window.aiHealthCheck = async function (projects, coverLimit) {
-    coverLimit = coverLimit || 10000;
-    projects = Array.isArray(projects) ? projects : [];
-
-    // ── Compute the facts ourselves (never trust the AI with the math) ──
-    var NEAR_PCT = 15;     // remaining below this % of budget = "near limit"
-    var LOW_MARGIN = 10;   // gross margin below this % = "low margin"
-
-    var totals = projects.reduce(function (a, p) {
-      a.contract += Number(p.revenue) || 0;
-      a.allocated += Number(p.allocated) || 0;
-      a.spent += Number(p.spent) || 0;
-      a.cover += Number(p.coverCost) || 0;
-      return a;
-    }, { contract: 0, allocated: 0, spent: 0, cover: 0 });
-    totals.profit = totals.contract - totals.spent;
-
-    var healthy = projects.filter(function (p) { return /HEALTHY/i.test(p.statusLabel || ''); });
-
-    // Per-project checks (rule-based, always accurate). Risk alerts first, then warnings.
-    var risks = [], warns = [];
-    projects.forEach(function (p) {
-      var name = '<strong>' + esc(p.name) + '</strong>';
-      var revenue = Number(p.revenue) || 0;
-      var allocated = Number(p.allocated) || 0;
-      var spent = Number(p.spent) || 0;
-      var remaining = (p.remaining != null) ? Number(p.remaining) : (allocated - spent);
-      var cover = Number(p.coverCost) || 0;
-      var margin = revenue > 0 ? (revenue - spent) / revenue * 100 : null;
-
-      var fid = p.id;
-      if (remaining < 0) {                                   // over budget
-        risks.push({ kind: 'risk', id: fid, text: name + ' is over budget by ' + peso(Math.abs(remaining)) });
-      } else {
-        if (allocated <= 0 && spent > 0) {                   // no budget set
-          warns.push({ kind: 'warn', id: fid, text: name + ' has ' + peso(spent) + ' spent but no budget set' });
-        } else if (allocated > 0 && remaining < allocated * (NEAR_PCT / 100)) {  // near limit
-          warns.push({ kind: 'warn', id: fid, text: name + ' is near its budget limit — only ' + peso(remaining) + ' left (' + (remaining / allocated * 100).toFixed(0) + '%)' });
-        }
-        if (cover > coverLimit) {                            // cover expenses over limit
-          warns.push({ kind: 'warn', id: fid, text: name + ' cover expenses ' + peso(cover) + ' — over ' + peso(coverLimit) });
-        }
-        if (margin !== null && margin < 0) {                 // losing money
-          risks.push({ kind: 'risk', id: fid, text: name + ' is losing money — margin ' + margin.toFixed(1) + '%' });
-        } else if (margin !== null && margin < LOW_MARGIN) { // low margin
-          warns.push({ kind: 'warn', id: fid, text: name + ' has a low margin of ' + margin.toFixed(1) + '%' });
-        }
-      }
-    });
-    var alerts = risks.concat(warns);
-    var issuesPlain = alerts.map(function (a) { return a.text.replace(/<[^>]+>/g, ''); });
-
-    var verdict, vKind;
-    if (risks.length) { verdict = 'At Risk'; vKind = 'risk'; }
-    else if (warns.length) { verdict = 'Needs Attention'; vKind = 'warn'; }
-    else { verdict = 'Healthy'; vKind = 'ok'; }
-
-    if (!alerts.length) alerts.push({ kind: 'ok', text: 'All projects are within budget, on margin, and within limits.' });
+    // The facts (and their names) come from aiHealthFacts — never from the AI.
+    var facts = aiHealthFacts(projects, coverLimit);
+    var totals = facts.totals, alerts = facts.alerts, verdict = facts.verdict, vKind = facts.vKind;
+    projects = facts.projects;
 
     var today = new Date().toLocaleDateString('en-PH', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
 
@@ -199,7 +239,7 @@
       '<div class="ai-hc-stat"><div class="k">Projects</div><div class="v">' + projects.length + '</div></div>' +
       '<div class="ai-hc-stat"><div class="k">Total Contract</div><div class="v">' + peso(totals.contract) + '</div></div>' +
       '<div class="ai-hc-stat"><div class="k">Total Spent</div><div class="v">' + peso(totals.spent) + '</div></div>' +
-      '<div class="ai-hc-stat"><div class="k">Gross Profit</div><div class="v">' + peso(totals.profit) + '</div></div>';
+      '<div class="ai-hc-stat"><div class="k">Contract value minus costs</div><div class="v">' + peso(totals.contractLessCost) + '</div></div>';
     o.querySelector('#aiHcAlerts').innerHTML =
       '<div class="ai-hc-alerts-title">Alerts</div>' +
       alerts.map(function (a) {
@@ -215,18 +255,7 @@
     bodyEl.innerHTML = '<div class="ai-hc-spin"><div class="ring"></div><span>Writing your briefing…</span></div>';
 
     // ── Ask the AI to phrase the briefing (facts only) ──
-    var prompt =
-      "You are a financial assistant for DAC's Building Design Services, a construction company. " +
-      'Today is ' + today + '. Write a SHORT daily health briefing (3-5 sentences) for the owner in plain professional English. ' +
-      'Begin with the overall verdict (' + verdict + '), then specifically mention the most important issues below by project name, ' +
-      'and end with ONE practical recommendation. Use Philippine Peso (₱). Use ONLY the facts below — do not invent any. No markdown, no bullet points.\n\n' +
-      'Company snapshot:\n' +
-      '- Total projects: ' + projects.length + ' (' + healthy.length + ' healthy)\n' +
-      '- Total Contract: ' + peso(totals.contract) + '\n' +
-      '- Total Spent: ' + peso(totals.spent) + '\n' +
-      '- Total Gross Profit: ' + peso(totals.profit) + '\n' +
-      '- Total Cover Expenses: ' + peso(totals.cover) + '\n' +
-      'Issues detected (' + issuesPlain.length + '): ' + (issuesPlain.length ? issuesPlain.join('; ') : 'none — all projects are healthy');
+    var prompt = aiHealthPrompt(facts, today);
 
     try {
       // The AI worker serves signed-in, active owner accounts only

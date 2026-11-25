@@ -191,9 +191,12 @@ test('the active list is DERIVED from the full set, never the other way round', 
 });
 
 test('the profit banner is not gated on completion', () => {
-  // Redesign 2026-09-22: the banner became the ledger's third cell; the label
-  // is still built from profit sign + forecast/earned, never completion state.
-  const banner = slice(src, 'const heroName', 'const cells', F);
+  // Redesign 2026-09-22: the banner became the ledger's third cell. Since the
+  // Financial MVP (2026-11-14) its headline comes from the shared finance view
+  // (BOQ basis, date filter) — still never from completion state. Design 1b
+  // (2026-11-14): the slice runs to the end of ProjectLedger, so the bars and
+  // the footer line are fenced too.
+  const banner = slice(src, 'const f = finance ||', 'function NeedsAction', F);
   ok(!/completedAt|_fldDone/.test(banner), 'the hero profit label now depends on completion state: ' + banner.trim());
 });
 

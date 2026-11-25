@@ -20,12 +20,19 @@
 // redraws the screen with the error, so every button works again. A late
 // result never redraws a different meeting. AI suggestions live only in
 // this browser tab; leaving the page with unsaved edits asks first.
+//
+// Office redesign v5: the meetings are cards (tabs Needs you · All
+// meetings); a meeting — and New meeting — opens in the frame's pop-up
+// through its page shell (WP.renderMeetingPanel). Closing the pop-up loses
+// nothing: unsaved edits and AI suggestions stay in this tab's memory.
 // ════════════════════════════════════════════════════════════════════
 (function (root) {
     'use strict';
     const WP = root.WorkPlanAdmin;
     if (!WP) return;
     const esc = WP.esc;
+    const SV = root.SplitView;
+    const NEW = WP.NEW_MEETING || '__new';
 
     const suggestions = {};   // meetingId → { shared_notes, items: [{ task, resolved, added }] }
     const pending = {};       // meetingId (or 'new') → unsaved edits
@@ -47,67 +54,140 @@
         WP.settlePending(pending[id], sent);
     }
 
-    function card(title, body, sub, tools) {
-        return '<div class="att-card"><div class="att-card-head"><div><div class="att-card-title">' + esc(title) + '</div>' +
-            (sub ? '<div class="att-card-sub">' + esc(sub) + '</div>' : '') + '</div>' +
-            (tools ? '<div class="att-card-tools">' + tools + '</div>' : '') + '</div><div class="att-card-body">' + body + '</div></div>';
+    // One of the frame's sections (v5): its title with its own buttons beside
+    // it (the fields they read are on this page), an optional line under it,
+    // then its content.
+    function sec(title, body, sub, tools) {
+        return '<section class="sv-sec wp-sec">' +
+            '<div class="wp-sec-head"><div class="sv-sec-title">' + esc(title) + '</div>' +
+              (tools ? '<div class="wp-sec-tools">' + tools + '</div>' : '') + '</div>' +
+            (sub ? '<div class="wp-sec-sub">' + esc(sub) + '</div>' : '') +
+            body + '</section>';
     }
 
     function confirm(title, sub, label, run) {
         WP.modal({ title, sub, submitLabel: label, body: '', onSubmit: async () => {}, onDone: run });
     }
 
-    // ── Meetings list ───────────────────────────────────────────────
+    // ── Meetings list (cards) ───────────────────────────────────────
 
-    async function renderMeetings(host) {
-        host.innerHTML = '<div class="att-stack wp"><div class="att-empty">Loading meetings…</div></div>';
-        let list;
-        try { list = await WP.rpc('wp_office_meetings'); } catch (e) { WP.fail(host, e); return; }
-        list = list || [];
-        const rows = list.map(m =>
-            '<tr tabindex="0" data-id="' + esc(m.id) + '">' +
-            '<td class="wp-nowrap">' + esc(WP.formatDay(m.held_on)) + '</td>' +
-            '<td><strong>' + esc(m.title) + '</strong></td>' +
-            '<td>' + (m.current_version
-                ? '<span class="att-pill att-pill--done">Published · version ' + esc(m.current_version) + '</span>'
-                : '<span class="att-pill att-pill--none">Not published</span>') + '</td>' +
-            '<td>' + ((m.draft_count || m.task_count)
-                ? (m.draft_count ? '<span class="wp-chip wp-chip--gold wp-chip--first">' + esc(m.draft_count) + ' draft' + (m.draft_count === 1 ? '' : 's') + '</span>' : '') +
-                  (m.task_count ? '<span class="wp-count-text">' + esc(m.task_count) + ' task' + (m.task_count === 1 ? '' : 's') + '</span>' : '')
-                : '<span class="req-muted">No tasks yet</span>') + '</td>' +
-            '<td class="req-go"><i data-lucide="chevron-right"></i></td></tr>').join('');
+    const ui = { tab: null, text: '', selectedId: null };
+    let visitTab = null;
+    let host = null;
+    let list = null;
+    const loads = SV && SV.seq ? SV.seq() : { next() { return 0; }, isLatest() { return true; } };
+
+    function cardOf(m) {
+        const tasks = (m.draft_count ? m.draft_count + ' draft' + (m.draft_count === 1 ? '' : 's') : '') +
+            (m.draft_count && m.task_count ? ' · ' : '') +
+            (m.task_count ? m.task_count + ' task' + (m.task_count === 1 ? '' : 's') : '');
+        return {
+            id: m.id,
+            title: m.title,
+            sub: 'Held on ' + WP.formatDay(m.held_on),
+            meta: tasks || 'No tasks yet',
+            right: WP.formatDay(m.held_on),
+            pill: m.current_version ? { text: 'Published · version ' + m.current_version, tone: 'done' } : { text: 'Not published', tone: 'none' },
+            chips: m.draft_count ? [{ text: 'Draft tasks waiting', tone: 'gold' }] : [],
+        };
+    }
+
+    function emptyHtml() {
+        return '<div class="wp-empty-body"><h3 class="wp-empty-title">No meetings yet</h3>' +
+            '<p class="wp-empty-sub">Paste the notes from your meeting. The AI suggests the tasks; you check them before anything reaches workers.</p>' +
+            '<button class="att-btn att-btn--primary" type="button" data-new><i data-lucide="plus"></i> New meeting</button></div>';
+    }
+
+    function openNew() { ui.selectedId = NEW; draw(); }
+
+    function draw(opts) {
+        if (!host || !list) return;
+        const text = String(ui.text || '').trim().toLowerCase();
+        const shown = list.filter(m => !text || String(m.title || '').toLowerCase().includes(text));
+        const tabs = [
+            { id: 'needs', label: 'Needs you', count: shown.filter(m => m.draft_count > 0).length, needs: true,
+              help: 'Meetings with draft tasks waiting to be published.' },
+            { id: 'all', label: 'All meetings', count: shown.length },
+        ];
+        if (!ui.tab && !visitTab) visitTab = SV.pickDefaultTab(tabs, null);
+        const tab = ui.tab || visitTab;
+        const inTab = tab === 'needs' ? shown.filter(m => m.draft_count > 0) : shown;
+        if (opts && opts.leaveSelection && ui.selectedId && ui.selectedId !== NEW && !inTab.some(m => m.id === ui.selectedId)) ui.selectedId = null;
         const waiting = list.filter(m => m.draft_count > 0).length;
-        host.innerHTML = '<div class="att-stack wp wp-meetings">' +
-            WP.head('Meetings', list.length
-                    ? list.length + (list.length === 1 ? ' meeting' : ' meetings') + '. Type or paste the notes, let the AI suggest tasks, check each one, then publish.'
-                    : 'Type or paste the notes, let the AI suggest tasks, check each one, then publish.',
-                '<button class="att-btn" type="button" data-board><i data-lucide="clipboard-list"></i> Board</button>' +
-                '<button class="att-btn att-btn--primary" type="button" data-new><i data-lucide="plus"></i> New meeting</button>') +
-            (waiting
-                ? '<div class="wp-alert wp-alert--gold"><i data-lucide="file-pen-line"></i><div><strong>' + waiting +
-                  (waiting === 1 ? ' meeting has' : ' meetings have') + ' draft tasks waiting</strong>' +
-                  '<div>Open it, check each draft, then publish so workers see the tasks and the notes.</div></div></div>'
-                : '') +
-            '<div class="att-card"><div class="att-card-body" style="padding:0">' +
-            (list.length
-                ? '<div class="req-table-wrap"><table class="att-table req-table wp-mtable"><thead><tr><th>Held on</th><th>Meeting</th>' +
-                  '<th>Shared notes</th><th>Tasks</th><th class="req-go"><span class="req-sr">Open</span></th></tr></thead>' +
-                  '<tbody data-rows>' + rows + '</tbody></table></div>'
-                : '<div class="wp-empty-body"><h3 class="wp-empty-title">No meetings yet</h3>' +
-                  '<p class="wp-empty-sub">Paste the notes from your meeting. The AI suggests the tasks; you check them before anything reaches workers.</p>' +
-                  '<button class="att-btn att-btn--primary" type="button" data-new><i data-lucide="plus"></i> New meeting</button></div>') +
-            '</div></div></div>';
-        host.querySelector('[data-board]').addEventListener('click', () => root.switchView('wpBoard'));
-        host.querySelectorAll('[data-new]').forEach(b => b.addEventListener('click', () => WP.openMeeting(null)));
-        const body = host.querySelector('[data-rows]');
-        if (body) {
-            body.addEventListener('click', e => { const tr = e.target.closest('tr[data-id]'); if (tr) WP.openMeeting(tr.dataset.id); });
-            body.addEventListener('keydown', e => {
-                const tr = e.target.closest('tr[data-id]');
-                if (tr && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); WP.openMeeting(tr.dataset.id); }
-            });
+        let empty;
+        if (!list.length) empty = emptyHtml();
+        else if (text && !inTab.length) empty = 'No meeting matches this search. <button class="att-link" type="button" data-clear>Clear filters</button>';
+        else empty = tab === 'needs' ? 'Nothing here. You\'re done.' : 'Nothing in this tab.';
+
+        root.SplitView.render(host, {
+            key: 'wpMeetings',
+            title: 'Meetings',
+            sub: list.length
+                ? list.length + (list.length === 1 ? ' meeting' : ' meetings') + '. Type or paste the notes, let the AI suggest tasks, check each one, then publish.'
+                : 'Type or paste the notes, let the AI suggest tasks, check each one, then publish.',
+            primary: { label: 'New meeting', onClick: openNew },
+            more: [{ label: 'Board', icon: 'clipboard-list', onClick: () => root.switchView('wpBoard') }],
+            lede: waiting ? waiting + (waiting === 1 ? ' meeting has' : ' meetings have') + ' draft tasks waiting — ' +
+                'Open it, check each draft, then publish so workers see the tasks and the notes.' : '',
+            tabs: tabs,
+            tab: tab,
+            onTab: id => { ui.tab = id; draw({ leaveSelection: true }); },
+            search: { placeholder: 'Search meetings…', value: ui.text, onInput: t => { ui.text = t; draw({ leaveSelection: true }); } },
+            showing: text ? 'Showing ' + shown.length + ' of ' + list.length : '',
+            groups: [{ title: '', rows: inTab.map(cardOf) }],
+            empty: empty,
+            onEmpty: el => {
+                const add = el.querySelector('[data-new]');
+                if (add) add.addEventListener('click', openNew);
+                const clear = el.querySelector('[data-clear]');
+                if (clear) clear.addEventListener('click', () => { ui.text = ''; draw({ leaveSelection: true }); });
+            },
+            selectedId: ui.selectedId,
+            refreshPanel: !!(opts && opts.refreshPanel),
+            onSelect: (id, panel) => {
+                ui.selectedId = id;
+                renderMeetingPanel(panel, id, {
+                    nextLabel: 'Next meeting',
+                    // A new meeting was saved: open it in the pop-up.
+                    onCreated: newId => { ui.selectedId = newId; load({ refreshPanel: true }); },
+                    // Tasks or publishing changed the list: refresh the cards,
+                    // never the open meeting (it redraws itself).
+                    onListChanged: () => load(),
+                });
+            },
+            // The pop-up closed: forget the meeting — never redraw from here.
+            // Unsaved edits and suggestions stay (pending, suggestions).
+            onClose: () => { ui.selectedId = null; },
+        });
+    }
+
+    async function load(opts) {
+        if (!host) return;
+        const mine = loads.next();
+        if (!list) host.innerHTML = '<div class="sv"><div class="sv-empty">Loading meetings…</div></div>';
+        let rows;
+        try { rows = await WP.rpc('wp_office_meetings'); } catch (e) { if (loads.isLatest(mine)) WP.fail(host, e); return; }
+        if (!loads.isLatest(mine)) return;
+        list = rows || [];
+        if (root.NavCounts) root.NavCounts.set('meetings', list.filter(m => m.draft_count > 0).length);
+        if (opts && opts.reveal && ui.selectedId && ui.selectedId !== NEW) {
+            const m = list.find(x => x.id === ui.selectedId);
+            const shown = ui.tab || visitTab || 'needs';
+            if (m && shown === 'needs' && !(m.draft_count > 0)) ui.tab = 'all';
         }
-        WP.icons();
+        draw({ refreshPanel: !!(opts && opts.refreshPanel) });
+    }
+
+    function renderMeetings(el) {
+        host = el;
+        visitTab = null;
+        let reveal = false;
+        if (WP.state.meetingId) {
+            ui.selectedId = WP.state.meetingId;
+            WP.state.meetingId = null;
+            reveal = true;
+        }
+        load({ reveal: reveal, refreshPanel: true });
     }
 
     // ── One meeting ─────────────────────────────────────────────────
@@ -161,17 +241,15 @@
         return p;
     }
 
-    function renderNew(host) {
+    function renderNew(panel, hooks) {
         loaded.new = { held_on: WP.todayManila() };
         const f = WP.meetingFields(loaded.new, pending.new);
-        host.innerHTML = '<div class="att-stack wp wp-meeting wp-meeting--new">' +
-            '<div class="att-crumbs"><button class="att-link" type="button" data-back>← Meetings</button></div>' +
-            WP.head('New meeting', 'Save the notes first; then draft tasks with AI or add them by hand.') +
-            card('Notes', notesFields(f) +
+        const host = SV.page(panel, { kicker: 'Meeting', title: 'New meeting', sub: 'Save the notes first; then draft tasks with AI or add them by hand.' });
+        host.innerHTML = '<div class="wp wp-meeting wp-meeting--new">' +
+            sec('Notes', notesFields(f) +
                 '<div class="wp-actions"><button class="att-btn att-btn--primary" type="button" data-save>Save meeting</button></div>') +
             '</div>';
         track(host, 'new');
-        host.querySelector('[data-back]').addEventListener('click', () => root.switchView('wpMeetings'));
         host.querySelector('[data-save]').addEventListener('click', async e => {
             e.target.disabled = true;
             const sent = readNotes(host);
@@ -180,10 +258,8 @@
                 const rest = pending.new ? WP.settlePending(pending.new, sent) : {};   // typed while saving: carried over
                 delete pending.new;
                 if (Object.keys(rest).length) pending[newId] = rest;
-                if (WP.state.meetingId === null) {                    // still on this screen
-                    WP.state.meetingId = newId;
-                    renderMeeting(host);
-                }
+                // Still showing the new meeting: open the saved one.
+                if (panel.isConnected && panel.dataset.svId === NEW && hooks.onCreated) hooks.onCreated(newId);
             } catch (err) { root.alert(WP.errorMessage(err)); e.target.disabled = false; }
         });
         WP.icons();
@@ -259,51 +335,62 @@
             '<div class="req-muted">To: ' + esc((v.recipients || []).map(r => r.name).join(', ') || 'no one') + '</div></li>').join('') + '</ul>';
     }
 
-    async function renderMeeting(host) {
-        const id = WP.state.meetingId;
+    // One meeting in the pop-up's panel. hooks: { nextLabel, onCreated(id)
+    // (New meeting saved), onListChanged() (refresh the cards only) }.
+    async function renderMeetingPanel(panel, id, hooks) {
+        hooks = hooks || {};
         const ticket = tickets.take();            // a newer load — another meeting, or New meeting — wins
-        if (!id) { renderNew(host); return; }
-        const current = () => tickets.isLatest(ticket) && WP.state.meetingId === id;
-        host.innerHTML = '<div class="att-stack wp wp-meeting"><div class="att-empty">Loading the meeting…</div></div>';
+        if (id === NEW) { renderNew(panel, hooks); return; }
+        // Only the newest load may draw, and only while the pop-up still
+        // shows this meeting (not closed, not replaced by another item).
+        const showing = () => panel.isConnected && panel.dataset.svId === id;
+        const current = () => tickets.isLatest(ticket) && showing();
+        if (!panel.dataset.svRestore) panel.innerHTML = '<div class="sv-panel-empty">Loading the meeting…</div>';
         let m, L;
         try { [m, L] = await Promise.all([WP.rpc('wp_office_meeting', { p_meeting: id }), WP.loadLookups(true)]); }
-        catch (e) { if (current()) WP.fail(host, e); return; }
+        catch (e) { if (current()) SV.error(panel, WP.errorMessage(e)); return; }
         if (!current()) return;                   // an older load answered late: draw nothing
         loaded[id] = m;
         const f = WP.meetingFields(m, pending[id]);
-        // Only redraw if this meeting is still the one open.
-        const rerender = () => { if (WP.state.meetingId === id) renderMeeting(host); };
+        // Only redraw if this meeting is still the one open; the cards
+        // behind refresh too (draft and task counts).
+        const rerender = () => {
+            if (!showing()) return;
+            renderMeetingPanel(panel, id, hooks);
+            if (hooks.onListChanged) hooks.onListChanged();
+        };
         const s = suggestions[id];
 
         const drafts = (m.tasks || []).filter(t => t.status === 'draft').length;
         const nv = (m.versions || []).length;
-        const main =
-            card('Notes', notesFields(f) +
+        const sections =
+            sec('Notes', notesFields(f) +
                 '<div class="wp-actions"><button class="att-btn" type="button" data-save>Save notes</button></div>') +
-            card('AI drafts', '<div data-ai>' + (drafting[id] ? DRAFTING_HTML : suggestionsHtml(s, aiErrors[id])) + '</div>',
+            sec('AI drafts', '<div data-ai>' + (drafting[id] ? DRAFTING_HTML : suggestionsHtml(s, aiErrors[id])) + '</div>',
                 'Saves the notes, then sends them to Cloudflare\'s AI to suggest tasks. Nothing reaches workers until you review and publish.',
                 '<button class="att-btn att-btn--primary" type="button" data-ai-run' + (drafting[id] ? ' disabled' : '') + '><i data-lucide="sparkles"></i> ' +
                 (s ? 'Draft again' : 'Draft tasks with AI') + '</button>') +
-            card('Publish', publishHtml(m, f, L));
-        const side =
-            card('Tasks from this meeting', tasksHtml(m), '',
+            sec('Tasks from this meeting', tasksHtml(m), '',
                 '<button class="att-btn" type="button" data-add><i data-lucide="plus"></i> Add task</button>') +
-            '<details class="att-card wp-hist"' + (nv <= 3 ? ' open' : '') + '><summary>Published versions <span class="req-muted">' + nv +
+            sec('Publish', publishHtml(m, f, L)) +
+            '<details class="sv-sec sv-hist"' + (nv <= 3 ? ' open' : '') + '><summary class="sv-sec-title">Published versions <span class="sv-hist-n">' + nv +
               '</span></summary>' + versionsHtml(m) + '</details>';
 
-        host.innerHTML = '<div class="att-stack wp wp-meeting">' +
-            '<div class="att-crumbs"><button class="att-link" type="button" data-back>← Meetings</button></div>' +
-            WP.head(m.title, WP.formatDay(m.held_on) + (m.current_version
-                ? ' · shared notes published (version ' + m.current_version + ')' : ' · not published yet')) +
-            (drafts
-                ? '<div class="wp-alert wp-alert--gold"><i data-lucide="file-pen-line"></i><div><strong>' + drafts + ' draft task' + (drafts === 1 ? '' : 's') +
-                  ' waiting to be published</strong><div>Check each one, make sure it has a responsible person, then use Publish.</div></div></div>'
-                : '') +
-            '<div class="wp-layout"><div class="wp-main">' + main + '</div><aside class="wp-side">' + side + '</aside></div>' +
-            '</div>';
+        // "What to do now" is the sentence alone: Publish… reads the shared
+        // notes and recipients on this page, so it stays below.
+        const host = SV.page(panel, {
+            kicker: 'Meeting · held on ' + WP.formatDay(m.held_on),
+            title: m.title,
+            pills: [m.current_version ? { text: 'Published · version ' + m.current_version, tone: 'done' } : { text: 'Not published', tone: 'none' }],
+            sub: WP.formatDay(m.held_on) + (m.current_version
+                ? ' · shared notes published (version ' + m.current_version + ')' : ' · not published yet'),
+            step: drafts ? SV.nextStep(drafts + ' draft task' + (drafts === 1 ? '' : 's') +
+                ' waiting to be published. Check each one, make sure it has a responsible person, then use Publish.', '') : '',
+            nextLabel: hooks.nextLabel,
+        });
+        host.innerHTML = '<div class="wp wp-meeting">' + sections + '</div>';
         const p = track(host, id);
 
-        host.querySelector('[data-back]').addEventListener('click', () => root.switchView('wpMeetings'));
         host.querySelector('[data-save]').addEventListener('click', async e => {
             e.target.disabled = true;
             const sent = readNotes(host);
@@ -386,5 +473,10 @@
     }
 
     WP.views.wpMeetings = renderMeetings;
-    WP.views.wpMeeting = renderMeeting;
+
+    // D5: the red count on Meetings — meetings with draft tasks waiting.
+    if (root.NavCounts) {
+        root.NavCounts.register('meetings', async () => ((await WP.rpc('wp_office_meetings')) || []).filter(m => m.draft_count > 0).length);
+    }
+    WP.renderMeetingPanel = renderMeetingPanel;
 })(window);

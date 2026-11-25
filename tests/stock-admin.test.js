@@ -198,7 +198,7 @@ console.log('\nstock: wiring');
 test('Requests → Stock: in the nav, the view list and the page; hidden until stock is on, except from the main owner', () => {
   const admin = read('js/admin.js');
   const html = read('admin.html');
-  ok(/\{ view: 'reqStock',\s+label: 'Stock',\s+icon: 'warehouse' \}/.test(admin), 'PRIMARY_NAV entry');
+  ok(/\{ view: 'reqStock',\s+label: 'Stock',\s+icon: 'warehouse', count: 'stock' \}/.test(admin), 'PRIMARY_NAV entry (with its D5 count)');
   ok(/if \(!window\.currentStockOn && !window\.currentStockMainOwner\) hidden\.push\('reqStock'\);/.test(admin), 'hidden until on');
   ok(/const \{ data: stk \} = await window\.sbClient\.rpc\('stk_status'\);/.test(admin), 'the server says (before 0104: hidden)');
   ok(/window\.currentStockOn = !!\(stk && stk\.enabled\);/.test(admin) && /window\.currentStockMainOwner = !!\(stk && stk\.is_main_owner\);/.test(admin));
@@ -326,6 +326,16 @@ test('the pilot\'s way back (2B-b): the main owner alone may switch stock off ag
   eq((BROWSER.match(/RA\.rpc\('stk_set_enabled'/g) || []).length, 2, 'on and off, nowhere else');
   const server = SQL.slice(SQL.indexOf('function stk_set_enabled'));
   ok(/v_owner uuid := pur_main_owner\(\);/.test(server.slice(0, 300)), 'the server checks it is the main owner');
+});
+
+test('office v5: Stock on the frame — items, receiving lines and records are cards; one opens in the pop-up', () => {
+  ok(JS.includes('SplitView.render('), 'drawn by the shared frame');
+  ok(/primary: \{ label: 'Issue \/ move'/.test(JS), 'Issue / move is the primary button');
+  for (const s of ['Record leftovers', 'Count', 'Opening stock']) ok(JS.includes("label: '" + s + "'"), 'More: ' + s);
+  ok(/SV\.page\(panel, \{/.test(JS) && !/data-back/.test(JS), 'an item opens in the pop-up, no "← All items"');
+  ok(/custom: ui\.tab === 'pending'/.test(JS) && /root\.StockCostAdmin\.renderApprovals\(/.test(JS), 'Waiting for owner keeps its records and the cost-move cards');
+  ok(/off: \{ title: 'Not switched on yet\.'/.test(JS), 'the switched-off card');
+  ok(/data-line-act="receive"/.test(JS) && /sameKey\(want, /.test(JS), 'a receiving card starts only the step it showed');
 });
 
 console.log('\n' + passed + ' passed, ' + failed + ' failed');

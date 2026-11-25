@@ -800,9 +800,12 @@
         return state.me;
     }
 
+    // One purchase opens in the Purchasing screen's pop-up (office v5), on
+    // the Purchases tab.
     function openPurchase(id) {
         state.purchaseId = id;
-        root.switchView('reqPurchase');
+        if (root.PurchasingAdmin && root.PurchasingAdmin.ui) root.PurchasingAdmin.ui.tab = 'purchases';
+        root.switchView('reqPurchasing');
     }
 
     // A refusal from the server, in words, in a one-button box.

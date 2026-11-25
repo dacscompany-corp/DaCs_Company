@@ -38,6 +38,10 @@ atest('path: folder / owner / local yyyy-mm / uuid.jpg, matching 0089\'s ledger 
   const re = new RegExp(sql.match(/check \(path ~ '([^']+)'\)/)[1]);
   ok(re.test(R.receiptPath('expense', OWNER)), 'generated path fails the ledger check constraint');
 });
+atest('payment photos are filed under paymentReceipts/<company>/<yyyy-mm>/<uuid>.jpg (0116)', async () => {
+  const p = R.receiptPath('payment', OWNER, new Date(2026, 10, 18), 'ffffffff-0000-4000-8000-000000000002');
+  ok(p === 'paymentReceipts/' + OWNER + '/2026-11/ffffffff-0000-4000-8000-000000000002.jpg', p);
+});
 atest('path: unknown kind or missing owner throws', async () => {
   let a = false, b = false;
   try { R.receiptPath('bogus', OWNER); } catch (_) { a = true; }

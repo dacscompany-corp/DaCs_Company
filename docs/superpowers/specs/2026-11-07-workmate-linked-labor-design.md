@@ -164,6 +164,7 @@ Numbers are read the way `_billNum` reads them (commas dropped, leading number t
 - **New Labor Contract** (`admin.html`, `handleSaveLaborContract`). The main owner gets an optional "WorkMate account" picker, showing name and worker number.
   - Choosing an account fills in the name and the trade as defaults; both stay editable on the contract, and the profile isn't touched.
   - Before saving, it says: "**[Name] · W-00xx will see this agreement's amounts and payments in WorkMate.**"
+    - **Changed 17 Nov 2026 (0115):** it now says the worker will see "agreed amount, paid so far and balance in WorkMate, not the list of payments"; the link dialog says the same.
   - Staff never see the picker.
 - **Edit contract / Raise cap:** save through `lc_edit`. A reason box appears once the contract is signed or paid. The pay basis is locked after that, with a note to end the contract and make a new one.
 - **Contract card** (Project Control → Labor, owner only):
@@ -184,6 +185,7 @@ Numbers are read the way `_billNum` reads them (commas dropped, leading number t
   - **fixed:** Agreed / Paid / Balance, or "Over by ₱x"
   - **daily:** "Paid so far ₱x · Daily basis"
 - **Detail:** the scope, the works names, and the payments (date · amount · method). It says: "**Payments are the company's records. Progress is the whole project's, not your own work.**"
+  - **Changed 17 Nov 2026 (owner decision):** the payment list is no longer shown or sent to the phone. The worker keeps Agreed / Paid so far / Balance (Over by), and Paid so far only for a daily agreement. Migration `0115`, WorkMate 0.18.1 (1028); see `2026-11-17-workmate-agreements-no-payment-list-design.md`.
 - **Online only (Q2):**
   - Amounts live only in memory, inside the screen's controller, keyed to the account.
   - They're **cleared** when:

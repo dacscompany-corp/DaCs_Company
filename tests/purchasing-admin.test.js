@@ -393,16 +393,16 @@ test('Q17: each purchase says where it came from — Project Control, Purchasing
   eq(pa.sourceLabel('workmate'), 'Phone');
   eq(pa.sourceLabel('something new'), 'something new', 'an unknown source is shown as it is');
   const list = read('js/purchasing-admin-purchases.js');
-  ok(/<th>Source<\/th>/.test(list) && /PA\.sourceLabel\(p\.source\)/.test(list), 'the list has a Source column');
+  ok(/function purchaseCard\(p\) \{[\s\S]{0,800}PA\.sourceLabel\(p\.source\)/.test(list), 'every purchase card says its source (office v5: cards, not a Source column)');
 });
 test('Q17: search matches every word against supplier, projects, people and source', () => {
   const rows = [
     { id: 1, supplier: 'Wilcon Depot', projects: ['Barlin Residence'], warehouse: false, bought_by_name: 'Juan', recorded_by_name: 'Juan', source: 'workmate', receipt_total: 1500 },
-    { id: 2, supplier: 'Citi Hardware', projects: ['Sulit Residence', 'Prado'], warehouse: true, bought_by_name: 'Pedro', recorded_by_name: 'admin', source: 'expenses_form', receipt_total: 15750 },
+    { id: 2, supplier: 'Citi Hardware', projects: ['Sample Residence', 'Prado'], warehouse: true, bought_by_name: 'Pedro', recorded_by_name: 'admin', source: 'expenses_form', receipt_total: 15750 },
   ];
   eq(pa.searchPurchases(rows, '').map(r => r.id), [1, 2], 'empty search keeps all');
   eq(pa.searchPurchases(rows, 'barlin').map(r => r.id), [1], 'project, any case');
-  eq(pa.searchPurchases(rows, 'hardware sulit').map(r => r.id), [2], 'every word must match');
+  eq(pa.searchPurchases(rows, 'hardware sample').map(r => r.id), [2], 'every word must match');
   eq(pa.searchPurchases(rows, 'project control').map(r => r.id), [2], 'by source label');
   eq(pa.searchPurchases(rows, 'phone').map(r => r.id), [1], 'phone');
   eq(pa.searchPurchases(rows, 'warehouse').map(r => r.id), [2], 'warehouse');
@@ -414,7 +414,7 @@ test('Q17: the Purchases list filters by project (and its Additional Works) on t
   const list = read('js/purchasing-admin-purchases.js');
   ok(/RA\.rpc\('pur_purchases', \{ p_from: ui\.from \|\| null, p_to: ui\.to \|\| null, p_folder: ui\.folder \|\| null, p_status: ui\.status \}\)/.test(list), 'p_folder is the chosen project');
   ok(/RA\.rpc\('pr_office_projects'\)/.test(list), 'the project choices come from pr_office_projects (completed ones included)');
-  ok(/data-folder/.test(list) && /data-search/.test(list), 'a project filter and a search box');
+  ok(/data-folder/.test(list) && /search: \{ placeholder: 'Search supplier, project, person, source…'/.test(list), 'a project filter and a search box (the frame\'s)');
 });
 test('R6: the word to type — the one project\'s first word, else VOID', () => {
   eq(pa.voidWord(['Barlin Residence']), 'Barlin');
@@ -432,7 +432,7 @@ test('R6: the word to type — the one project\'s first word, else VOID', () => 
 });
 test('R6: the places of a purchase (purchase view) and of an approval (review doc)', () => {
   eq(pa.placesOf({ lines: [{ destination: 'project', folder_name: 'Barlin' }, { destination: 'warehouse', folder_name: '' }] }), ['Barlin', 'Warehouse']);
-  eq(pa.placesOf({ lines: [{ where: 'Sulit · Main Contract' }, { where: 'Warehouse' }] }), ['Sulit · Main Contract', 'Warehouse']);
+  eq(pa.placesOf({ lines: [{ where: 'Sample · Main Contract' }, { where: 'Warehouse' }] }), ['Sample · Main Contract', 'Warehouse']);
   eq(pa.placesOf(null), []);
 });
 test('R6: Void asks for the word, and so does the owner\'s approval of a staff void', () => {
@@ -572,6 +572,28 @@ test('22 Oct: the four changed scripts are re-fetched', () => {
   for (const f of ['purchasing-admin-core', 'purchasing-admin-purchases', 'purchasing-admin-record', 'expenses-module']) {
     ok(busterOf(html, 'js/' + f + '.js') >= '20261022a', f + ' bumped');
   }
+});
+
+test('office v5: Purchasing on the frame — Shopping list and Purchases are cards, the other tabs keep their content', () => {
+  const list = read('js/purchasing-admin-list.js'), pur = read('js/purchasing-admin-purchases.js'), core = read('js/purchasing-admin-core.js');
+  ok(list.includes('SplitView.render(') && pur.includes('SplitView.render('), 'drawn by the shared frame');
+  ok(/tickBar: \{ label: 'Record purchase'/.test(list) && /tick: canBuy \? \{ on: !!ui\.picked\[l\.line_id\], label: 'Add to the purchase' \}/.test(list), 'tick boxes and Record purchase (N)');
+  ok(/custom: true/.test(list), 'approvals, cash, company stock and reconciliation keep their content');
+  ok(!/<table/.test(pur.slice(0, pur.indexOf('function lineRow('))), 'the Purchases list is cards');
+  ok(/function openPurchase\(id\) \{[\s\S]{0,200}root\.switchView\('reqPurchasing'\)/.test(core), 'a purchase opens in the Purchasing pop-up');
+  ok(/views\.reqPurchase = \(\) => root\.switchView\('reqPurchasing'\)/.test(pur), 'the old route lands on Purchasing');
+  ok(/PA\.renderPurchasePanel = /.test(pur) && /SV\.page\(panel, \{/.test(pur) && !/data-back/.test(pur), 'the purchase page renders into the pop-up, no back link');
+  ok(/panel\.isConnected && panel\.dataset\.svId === id/.test(pur), 'a closed pop-up never draws a late purchase');
+  ok(/keep: true/.test(list) && /wide: true/.test(list), 'Record purchase opens wide and kept in the pop-up');
+  ok(!/host\.closest\('\.content-view'\)/.test(read('js/purchasing-admin-record.js')), 'Record purchase never redraws the screen inside the pop-up');
+  ok(/ERRORS\.BUYER_REQUIRED/.test(list), 'the lock notice for non-buyers stays');
+});
+
+test('office v5: the Purchasing count follows the approvals the owner just loaded', () => {
+  const pur = read('js/purchasing-admin-purchases.js');
+  const approvals = pur.slice(pur.indexOf('async function renderApprovals('), pur.indexOf('PA.renderPurchases = renderPurchases;'));
+  ok(/if \(root\.NavCounts && me\.isOwner\) root\.NavCounts\.set\('purchasing', pending\.length\);/.test(approvals),
+    'deciding the last change clears the badge without a reload (owner accounts only, like the count)');
 });
 
 Promise.all(pending).then(() => {

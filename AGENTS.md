@@ -44,8 +44,17 @@ Profit   = Earned − Spent
 - Indirect labor is **Overhead, not Labor** — counted once, never both.
 - Statutory burden follows its worker: a coordinator's SSS is Overhead, a mason's is Labor.
 - **Overhead pay never draws down a pakyaw contract.**
-- Profit uses **earned** revenue. With no accomplishment data it falls back to the contract and
-  must be labelled **"Forecast"**, never "Earned".
+- Earned − Spent is the **BOQ-based profit estimate**. `_projMargin` keeps the arithmetic;
+  `js/project-finance.js` labels it. It always shows the BOQ %, **BOQ last saved** and Draft / For
+  review / Stale (> 30 Manila days) / BOQ date unavailable. Unless the BOQ is approved and current it
+  is not the headline, which then reads **"Profit not confirmed"**. With no BOQ progress there is no
+  estimate, and contract − cost is **Contract value minus costs**, never profit. **Recognized Project
+  Profit** is Unavailable (there is no accounting source). Cumulative figures read "All Time only"
+  under a date filter. Sample Residence's ₱74,267 case is frozen in `tests/fixtures/` (spec
+  `docs/superpowers/specs/2026-11-14-financial-management-mvp-design.md`). **One exception (owner
+  decision 2026-11-14, design 1b):** the Project Control *hero* uses short labels — **Profit
+  Estimate**, "BOQ 90.1% done · saved 14 Nov 2026", Profit / Loss · Margin · Cost, Hide / Show —
+  with the full names and the save note on hover. Everything else keeps the full names.
 - Company overhead (G&A) is never charged to a job.
 - **Cover money is Spent, and the Cover figure is a *subset* — never a fourth bucket.** A
   president-funded period, or a row flagged `coverExpense`, is the same work paid from the

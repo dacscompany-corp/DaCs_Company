@@ -378,9 +378,11 @@
         overlay(title, sub, '<div style="' + TEXT_STYLE + '">' + esc(text) + '</div>', '<button type="button" class="lcm-btn" data-br-close>Close</button>');
     }
 
-    function issueDialog(state, plan) {
+    // ops: who issues and re-issues (Project Control: bar_*; Project Management: js/pm-billing-docs.js)
+    // and how the amount is named. Project Control passes PC_OPS, so its wording never changes.
+    function issueDialog(state, plan, ops) {
         const { ov, close } = overlay('Acknowledgement Receipt', plan.period.label,
-            amountLine('Fund Allocated', plan.amount) + nameFields(state) + paymentNote(state) + voidedList(plan.voided) + errorLine,
+            amountLine(ops.amountLabel, plan.amount) + nameFields(state) + paymentNote(state) + voidedList(plan.voided) + errorLine,
             '<button type="button" class="lcm-btn" data-br-close>Cancel</button>'
             + '<button type="button" class="lcm-btn primary" id="brGo">Issue Receipt</button>');
         bindVoided(ov, plan.voided);
@@ -389,18 +391,18 @@
             const names = readNames(ov);
             if (!names) return;
             runInWindow(ov, go, close, async (popup) => {
-                const receipt = await actions.issue(popup, plan.period.id, names.from, names.by);
+                const receipt = await ops.issue(popup, plan.period.id, names.from, names.by);
                 notify('Receipt ' + receipt.receipt_no + ' issued.', 'success');
             });
         });
     }
 
-    function existingDialog(state, plan) {
+    function existingDialog(state, plan, ops) {
         const changed = plan.kind === 'changed';
         const canReissue = cents(plan.amount) > 0;
         const note = changed
-            ? '<div style="' + TEXT_STYLE + 'margin-top:12px;color:#8A5A00;font-weight:600;">This receipt says ' + esc(money(plan.live.amount)) + ', but Fund Allocated is now ' + esc(money(plan.amount)) + '. '
-              + (canReissue ? 'Void it and issue a new one to match.' : 'A new receipt can be issued once this billing has Fund Allocated.') + '</div>'
+            ? '<div style="' + TEXT_STYLE + 'margin-top:12px;color:#8A5A00;font-weight:600;">This receipt says ' + esc(money(plan.live.amount)) + ', but ' + esc(ops.amountLabel) + ' is now ' + esc(money(plan.amount)) + '. '
+              + (canReissue ? 'Void it and issue a new one to match.' : esc(ops.noAmountText)) + '</div>'
             : '';
         const { ov, close } = overlay('Acknowledgement Receipt', plan.period.label,
             '<div style="' + TEXT_STYLE + '"><b>' + esc(plan.live.receipt_no) + '</b> · ' + esc(formatDate(plan.live.issued_on)) + '<br>Received from ' + esc(plan.live.received_from) + '</div>'
@@ -415,12 +417,12 @@
             close();
         });
         const reissue = ov.querySelector('#brReissue');
-        if (reissue) reissue.addEventListener('click', () => reissueDialog(state, plan));
+        if (reissue) reissue.addEventListener('click', () => reissueDialog(state, plan, ops));
     }
 
-    function reissueDialog(state, plan) {
+    function reissueDialog(state, plan, ops) {
         const { ov, close } = overlay('Void and Re-issue', plan.live.receipt_no + ' · ' + plan.period.label,
-            amountLine('New receipt amount (Fund Allocated)', plan.amount)
+            amountLine('New receipt amount (' + ops.amountLabel + ')', plan.amount)
             + '<label for="brReason" style="' + LABEL_STYLE + '">Reason <span style="color:#B4453A;">(required)</span></label>'
             + '<textarea id="brReason" rows="2" maxlength="500" placeholder="Why is this receipt being replaced?" style="' + INPUT_STYLE + '"></textarea>'
             + nameFields({ received_from: plan.live.received_from, received_by: plan.live.received_by })
@@ -434,11 +436,23 @@
             const names = readNames(ov);
             if (!names) return;
             runInWindow(ov, go, close, async (popup) => {
-                const receipt = await actions.reissue(popup, plan.live.id, reason, names.from, names.by);
+                const receipt = await ops.reissue(popup, plan.live.id, reason, names.from, names.by);
                 notify('Receipt ' + receipt.receipt_no + ' issued.', 'success');
             });
         });
     }
+
+    // The receipt dialog for a plan of kind new / issued / changed.
+    function openReceiptDialog(state, plan, ops) {
+        if (plan.kind === 'new') issueDialog(state, plan, ops);
+        else existingDialog(state, plan, ops);
+    }
+    const PC_OPS = {
+        issue: (...args) => actions.issue(...args),
+        reissue: (...args) => actions.reissue(...args),
+        amountLabel: 'Fund Allocated',
+        noAmountText: 'A new receipt can be issued once this billing has Fund Allocated.',
+    };
 
     // ── What the Billing Periods buttons call ──────────────
 
@@ -454,8 +468,7 @@
         const state = await loadState(project);
         if (!state) return;
         const plan = planFor(state, periodId);
-        if (plan.kind === 'new') issueDialog(state, plan);
-        else if (plan.kind === 'issued' || plan.kind === 'changed') existingDialog(state, plan);
+        if (plan.kind === 'new' || plan.kind === 'issued' || plan.kind === 'changed') openReceiptDialog(state, plan, PC_OPS);
         else if (plan.kind === 'no_fund') messageDialog('Acknowledgement Receipt', plan.period.label, MESSAGES.NO_FUND_ALLOCATED);
         else messageDialog('Acknowledgement Receipt', '', 'Acknowledgement Receipts are only for client billing periods.');
     }
@@ -480,12 +493,52 @@
         });
     }
 
+    // The share one amount is of another: "50%", "33.33%"; '' when there is no budget.
+    function shareOf(part, whole) {
+        const w = cents(whole);
+        if (!(w > 0)) return '';
+        return String(Math.round(cents(part) * 10000 / w) / 100) + '%';
+    }
+    // What is left of the budget now and after this request, never below zero
+    // (o.showRemaining: Project Management's window, owner 18 Nov 2026).
+    function requestSummary(contract, allocated, percent) {
+        const amount = percent ? requestAmount(contract, percent) : 0;
+        const remaining = Math.max(0, cents(contract) - cents(allocated));
+        const after = Math.max(0, remaining - cents(amount));
+        return { receivedPct: shareOf(allocated, contract), remaining: remaining / 100, remainingPct: shareOf(remaining / 100, contract),
+                 amount, after: after / 100, afterPct: shareOf(after / 100, contract) };
+    }
+    const amountNote = (label, amount, note) => '<div style="' + TEXT_STYLE + '">' + esc(label) + ': <b style="font-size:16px;">' + esc(money(amount)) + '</b>'
+        + (note ? ' <span style="color:#6E6E73;">(' + esc(note) + ')</span>' : '') + '</div>';
+    // The figures above the percentage box. Without o.showRemaining (Project Control) they read exactly as before.
+    function percentWindowTop(o) {
+        const contractLabel = o.contractLabel || 'Project Budget (contract)';
+        const allocatedLabel = o.allocatedLabel || 'Total Allocated so far';
+        if (!o.showRemaining) {
+            return amountLine(contractLabel, o.contract) + '<div style="margin-top:6px;">' + amountLine(allocatedLabel, o.allocated) + '</div>';
+        }
+        const s = requestSummary(o.contract, o.allocated, 0);
+        const of = (pct) => (pct ? pct + ' of ' + contractLabel : '');
+        return amountLine(contractLabel, o.contract)
+            + '<div style="margin-top:6px;">' + amountNote(allocatedLabel, o.allocated, of(s.receivedPct)) + '</div>'
+            + '<div style="margin-top:6px;">' + amountNote('Remaining', s.remaining, of(s.remainingPct)) + '</div>';
+    }
+    function percentPreviewText(o, percent) {
+        if (!percent) return '';
+        const s = requestSummary(o.contract, o.allocated, percent);
+        let text = 'Requested amount: ' + money(s.amount);
+        if (o.showRemaining) {
+            text += '. Remaining after this request: ' + money(s.after)
+                + (s.afterPct ? ' (' + s.afterPct + ' of ' + (o.contractLabel || 'Project Budget (contract)') + ')' : '');
+        }
+        return text;
+    }
+
     // Billing Request: set the percentage first. onContinue runs inside the click,
     // so the browser allows the page to open.
     function askRequestPercent(o) {
         const { ov, close } = overlay('Billing Request', o.projectName,
-            amountLine('Project Budget (contract)', o.contract)
-            + '<div style="margin-top:6px;">' + amountLine('Total Allocated so far', o.allocated) + '</div>'
+            percentWindowTop(o)
             + '<label for="brPct" style="' + LABEL_STYLE + '">Percentage to request</label>'
             + '<input id="brPct" type="text" inputmode="decimal" placeholder="For example 10" style="' + INPUT_STYLE + '">'
             + '<div data-br-preview style="' + TEXT_STYLE + 'margin-top:12px;font-weight:600;"></div>'
@@ -501,8 +554,8 @@
         input.addEventListener('input', () => {
             const percent = validPercent(input.value);
             const amount = percent ? requestAmount(o.contract, percent) : 0;
-            preview.textContent = percent ? 'Requested amount: ' + money(amount) : '';
-            warn.textContent = percent ? requestWarning(o.contract, o.allocated, amount) : '';
+            preview.textContent = percentPreviewText(o, percent);
+            warn.textContent = percent ? (o.warning || requestWarning)(o.contract, o.allocated, amount) : '';
         });
         ov.querySelector('#brGo').addEventListener('click', () => {
             const percent = validPercent(input.value);
@@ -516,5 +569,6 @@
     }
 
     root.BillingReceipts = { receiptHTML, overallHTML, planFor, refusalText, formatDate, paymentLines, actions, openReceipt, openOverall,
-        requestAmount, validPercent, requestWarning, askRequestPercent, loadPreparedBy, savePreparedBy };
+        requestAmount, validPercent, requestWarning, askRequestPercent, loadPreparedBy, savePreparedBy,
+        openReceiptDialog, messageDialog, requestSummary, percentWindowTop, percentPreviewText };
 })(typeof window !== 'undefined' ? window : globalThis);

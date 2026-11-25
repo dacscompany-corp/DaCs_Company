@@ -9,9 +9,13 @@ import { PGlite } from '@electric-sql/pglite';
 import fs from 'node:fs';
 import path from 'node:path';
 import vm from 'node:vm';
-import { LL_PRE, LL_TABLES, LL_HELPERS, M98, M113, IDS, seed, ROOT } from './ll_base.mjs';
+import { LL_PRE, LL_TABLES, LL_HELPERS, M98, M113, M115, IDS, seed, ROOT } from './ll_base.mjs';
 
 const I = IDS;
+// --with-0115: 0115 over 0113 — the phone gets agreed / paid / balance and no
+// payment list (owner decision 17 Nov 2026).
+const W115 = process.argv.includes('--with-0115');
+if (W115) console.log('  (with 0115: no payment list on the phone)');
 let passed = 0, failed = 0;
 const failures = [];
 async function test(name, fn) {
@@ -50,6 +54,7 @@ async function fresh() {
   await db.exec(LL_HELPERS);
   await db.exec(M98);
   await db.exec(M113);
+  if (W115) await db.exec(M115);
   await seed((sql) => db.exec(sql));
   await db.exec(`insert into folders (id, owner_id, name, parent_folder_id, completed_at) values
     ('${F.A1}', '${I.OWNER}', 'Alpha House', null, null),
@@ -643,7 +648,8 @@ await test('H2 fixed: agreed, paid (Overhead pay excluded) and balance; split pa
   const s = await phoneSetup();
   const a = (await mine(s.db, I.W1)).agreements.find(x => x.id === s.main.id);
   eq([a.pay_basis, a.agreed, a.paid, a.balance], ['fixed', 50000, 20000, 30000]);
-  eq(a.payments, [{ date: '2026-10-08', amount: 10000, method: 'gcash' }, { date: '2026-10-01', amount: 10000, method: 'cash' }]);
+  if (W115) assert(!has(a, 'payments'), '0115: no payment list');
+  else eq(a.payments, [{ date: '2026-10-08', amount: 10000, method: 'gcash' }, { date: '2026-10-01', amount: 10000, method: 'cash' }]);
   eq([a.project, a.main_project, a.project_completed, a.ended, a.scope, a.trade], ['Alpha House', null, false, false, 'Masonry works', 'Masonry']);
   eq(a.progress_pct, 25);
 });
@@ -658,13 +664,15 @@ await test('H4 daily: paid only, no agreed and no balance; completed project fla
   const s = await phoneSetup();
   const a = (await mine(s.db, I.W1)).agreements.find(x => x.id === s.daily.id);
   eq([a.pay_basis, a.agreed, a.paid, a.balance, a.project_completed, a.progress_pct], ['daily', null, 700, null, true, null]);
-  eq(a.payments, [{ date: '2026-10-21', amount: 700, method: null }]);
+  if (W115) assert(!has(a, 'payments'), '0115: no payment list');
+  else eq(a.payments, [{ date: '2026-10-21', amount: 700, method: null }]);
 });
 
 await test('H5 over cap shows a negative balance; no BOQ shows no progress, never 100%', async () => {
   const s = await phoneSetup();
   const a = (await mine(s.db, I.W1)).agreements.find(x => x.id === s.gamma.id);
   eq([a.agreed, a.paid, a.balance, a.progress_pct], [1000, 1500, -500, null]);
+  if (W115) assert(!has(a, 'payments'), '0115: no payment list');
 });
 
 await test('H6 nothing private leaves the server', async () => {
@@ -674,6 +682,12 @@ await test('H6 nothing private leaves the server', async () => {
   for (const bad of ['SECRET', 'receipts/x.jpg', 'paid at site', 'cap_history', 'Initial cap', 'worker_name', 'pay_milestone',
                      'DP', 'owner_id', 'folder_id', 'split_group', 'Juan Cruz', 'Same name', 'Unlinked']) {
     assert(!text.includes(bad), 'leaked ' + bad);
+  }
+  // 0115: no payment's list, date or method reaches the phone.
+  if (W115) {
+    for (const bad of ['"payments"', 'gcash', '"cash"', '2026-10-08', '2026-10-01', '2026-10-21']) {
+      assert(!text.includes(bad), '0115 leaked ' + bad);
+    }
   }
 });
 

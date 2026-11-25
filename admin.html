@@ -15,15 +15,15 @@
     <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
     <link rel="stylesheet" href="css/expenses-module.css">
     <link rel="stylesheet" href="css/expenses-mvp.css"> 
-    <link rel="stylesheet" href="css/dacs-portal.css?v=20260924c">
+    <link rel="stylesheet" href="css/dacs-portal.css?v=20261114b">
     <!-- Overhead Module Styles -->
     <link rel="stylesheet" href="css/overhead-module.css">
     <!-- Client Reimbursement Tracker Styles -->
     <link rel="stylesheet" href="css/reimbursement-module.css">
-    <link rel="stylesheet" href="css/attendance-admin.css">
-    <link rel="stylesheet" href="css/requests-admin.css?v=20261012a">
-    <link rel="stylesheet" href="css/purchasing-admin.css?v=20261028a">
-    <link rel="stylesheet" href="css/workplan-admin.css?v=20261014a">
+    <link rel="stylesheet" href="css/attendance-admin.css?v=20261116c">
+    <link rel="stylesheet" href="css/requests-admin.css?v=20261114c">
+    <link rel="stylesheet" href="css/purchasing-admin.css?v=20261116b">
+    <link rel="stylesheet" href="css/workplan-admin.css?v=20261116b">
     <!-- Warranty Retention Register + Fund Styles -->
     <link rel="stylesheet" href="css/warranty-fund.css?v=20260803f">
     <!-- Construction Module Styles -->
@@ -38,7 +38,7 @@
     <link rel="stylesheet" href="css/payment-requests.css">
     <link rel="stylesheet" href="css/invoice-module.css">
     <!-- Project Management Module Styles -->
-    <link rel="stylesheet" href="css/pm-admin.css?v=20261018a">
+    <link rel="stylesheet" href="css/pm-admin.css?v=20261118a">
     <!-- Admin PWA manifest (separate from the client-portal manifest.json) -->
     <link rel="manifest" href="manifest-admin-v2.json">
     <meta name="theme-color" content="#0f6342">
@@ -51,6 +51,8 @@
     <!-- Renovation: site-wide design refresh (must load LAST so overrides win) -->
     <link rel="stylesheet" href="css/admin-renovation.css">
     <link rel="stylesheet" href="css/closeout-dialog.css?v=20260803f">
+    <!-- Office split-view frame (Attendance / Requests / Work Plan redesign), js/split-view.js -->
+    <link rel="stylesheet" href="css/split-view.css?v=20261116c">
     <!-- Mobile (iOS/Android) responsiveness layer — loads AFTER everything so it overrides module grids at phone widths -->
     <link rel="stylesheet" href="css/admin-mobile.css">
 </head>
@@ -1050,7 +1052,7 @@
                 <h2>Period Summary</h2>
                 <button class="rpt-export-btn" onclick="exportRptTable()"><i data-lucide="download"></i>CSV</button>
                 <div class="pc-report-scroll" role="region" aria-label="Period Summary" tabindex="0">
-                    <table class="pc-report-table"><caption>Actual Costs by Period</caption><thead id="rptSummaryHead"></thead><tbody id="rptSummaryTbody"></tbody></table>
+                    <table class="pc-report-table"><caption>Actual Costs by Period · Costs by date</caption><thead id="rptSummaryHead"></thead><tbody id="rptSummaryTbody"></tbody></table>
                 </div>
                 <div id="rptAllocationReport" data-pc-owner-only></div>
             </section>
@@ -2521,22 +2523,6 @@
 
           <!-- ── Money Panel (Payment + Revolving Fund) ── -->
           <div class="pm-ws-panel" id="ws-panel-money">
-            <!-- design: next payment due banner -->
-            <div class="pm-pay-banner" id="pm-pay-banner" style="display:none;">
-              <div>
-                <div class="pm-pay-banner-top">
-                  <span class="pm-pay-banner-label" id="pm-pay-banner-when">Next payment due</span>
-                  <span class="pm-pay-banner-strict" id="pm-pay-banner-strict" style="display:none;">STRICT</span>
-                </div>
-                <div class="pm-pay-banner-amt num" id="pm-pay-banner-amt">₱0</div>
-                <div class="pm-pay-banner-sub" id="pm-pay-banner-sub">—</div>
-              </div>
-              <div class="pm-pay-banner-actions">
-                <button class="pm-pay-banner-send" onclick="pmOpenPaymentRequestModal()">Send request</button>
-                <button class="pm-pay-banner-edit" onclick="pmOpenPaymentRequestModal()">Edit amount</button>
-              </div>
-            </div>
-
             <!-- Revolving fund section — weekly fund to collect from the partner -->
             <div class="pm-ws-section">
             <div class="pm-ws-panel-header">
@@ -2567,27 +2553,25 @@
             <div class="pm-ws-panel-header">
               <div>
                 <div class="pm-ws-panel-title">Payment</div>
-                <div class="pm-ws-panel-sub">Send payment requests, edit amounts, mark weeks as strict, and track payment history.</div>
+                <div class="pm-ws-panel-sub">Record client payments, print a Billing Request, and issue Acknowledgement Receipts.</div>
               </div>
               <div style="display:flex;gap:10px;flex-wrap:wrap;">
-                <button class="pm-btn pm-btn-secondary" onclick="pmOpenAddPaymentModal()">
-                  <i data-lucide="plus" style="width:14px;height:14px;"></i> Add Payment
+                <!-- 0116: owner accounts only (shown by _pmLoadPayments) -->
+                <button class="pm-btn pm-btn-secondary" id="pm-pay-billing-request" style="display:none;" onclick="pmOpenBillingRequest()">
+                  <i data-lucide="file-text" style="width:14px;height:14px;"></i> Billing Request
                 </button>
-                <button class="pm-btn pm-btn-primary" onclick="pmOpenPaymentRequestModal()">
-                  <i data-lucide="send" style="width:14px;height:14px;"></i> Send Payment Request
+                <button class="pm-btn pm-btn-primary" onclick="pmOpenAddPaymentModal()">
+                  <i data-lucide="plus" style="width:14px;height:14px;"></i> Add Payment
                 </button>
               </div>
             </div>
             <div class="pm-stat-grid">
-              <div class="pm-stat"><div class="pm-stat-label">Outstanding balance</div><div class="pm-stat-value is-danger num" id="pm-pay-outstanding">₱0</div></div>
               <div class="pm-stat"><div class="pm-stat-label">Total cash receipt</div><div class="pm-stat-value is-green num" id="pm-pay-total-paid">₱0</div></div>
-              <div class="pm-stat"><div class="pm-stat-label">Next payment due</div><div class="pm-stat-value" id="pm-pay-next-due">—</div></div>
-              <div class="pm-stat"><div class="pm-stat-label">Strict weeks</div><div class="pm-stat-value num" id="pm-pay-strict-count">0</div></div>
             </div>
             <div class="pm-table-wrap">
               <table class="pm-table">
-                <thead><tr><th>Week Of (Friday)</th><th>Amount Due</th><th>Carryover</th><th>Total</th><th>Strict</th><th>Status</th><th>Actions</th></tr></thead>
-                <tbody id="pm-pay-tbody"><tr><td colspan="7" class="pm-empty-row" style="color:#9ca3af;">Loading…</td></tr></tbody>
+                <thead><tr><th>Date</th><th>Amount</th><th>Status</th><th>Actions</th></tr></thead>
+                <tbody id="pm-pay-tbody"><tr><td colspan="4" class="pm-empty-row" style="color:#9ca3af;">Loading…</td></tr></tbody>
               </table>
             </div>
             </div><!-- /payment section -->
@@ -5537,54 +5521,59 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="js/supabase-config.js?v=20261023a"></script>
 <script src="js/billing-allocation.js"></script>
+<script src="js/project-finance.js?v=20261114c"></script>
 <script src="js/booking.js"></script>
 <!-- ?v= is a cache-buster, same convention as expenses-module.js below. Bump
      it whenever a change to this file must reach an already-open browser —
      admin.js carries PRIMARY_NAV, so a stale copy silently hides new tabs. -->
-<script src="js/admin.js?v=20261018a"></script>
-<script src="js/print-utils.js"></script>
-<script src="js/receipt-storage.js?v=20261031a"></script>
+<script src="js/admin.js?v=20261116b"></script>
+<script src="js/print-utils.js?v=20261114c"></script>
+<script src="js/receipt-storage.js?v=20261118a"></script>
 <script src="js/expense-split-rows.js?v=20261028a"></script>
 <script src="js/expense-pending-save.js?v=20261031a"></script>
-<script src="js/linked-labor.js?v=20261108a"></script>
-<script src="js/expenses-module.js?v=20261109a"></script>
+<script src="js/linked-labor.js?v=20261117a"></script>
+<script src="js/expenses-module.js?v=20261114b"></script>
 <script src="js/overhead-module.js?v=20261104b"></script>
 <script src="js/reimbursement-module.js"></script>
 <script src="js/construction-module.js"></script>
 <script src="js/boq-module.js"></script>
 <script src="js/quotation-module.js"></script>
-<script src="js/attendance-admin.js"></script>
-<script src="js/app-updates-admin.js"></script>
-<script src="js/requests-admin-core.js?v=20261013a"></script>
-<script src="js/requests-admin-queue.js?v=20261012a"></script>
-<script src="js/requests-admin-detail.js?v=20261012a"></script>
-<script src="js/requests-admin-setup.js?v=20261104b"></script>
-<script src="js/requests-admin-history.js?v=20261012a"></script>
-<script src="js/requests-admin-gallery.js?v=20261012a"></script>
-<script src="js/purchasing-admin-core.js?v=20261026a"></script>
-<script src="js/purchasing-admin-list.js?v=20261030a"></script>
-<script src="js/purchasing-admin-record.js?v=20261022b"></script>
-<script src="js/purchasing-admin-purchases.js?v=20261026a"></script>
+<script src="js/attendance-admin.js?v=20261116c"></script>
+<script src="js/app-updates-admin.js?v=20261116c"></script>
+<!-- The shared split-view frame + NavCounts; before every screen that uses it. -->
+<script src="js/split-view.js?v=20261116b"></script>
+<script src="js/requests-admin-core.js?v=20261116b"></script>
+<script src="js/requests-admin-queue.js?v=20261116b"></script>
+<script src="js/requests-admin-detail.js?v=20261116b"></script>
+<script src="js/requests-admin-setup.js?v=20261116b"></script>
+<script src="js/requests-admin-history.js?v=20261116b"></script>
+<script src="js/requests-admin-gallery.js?v=20261116b"></script>
+<script src="js/purchasing-admin-core.js?v=20261116b"></script>
+<script src="js/purchasing-admin-list.js?v=20261116b"></script>
+<script src="js/purchasing-admin-record.js?v=20261116b"></script>
+<script src="js/purchasing-admin-purchases.js?v=20261116b"></script>
 <script src="js/purchasing-admin-pay.js?v=20261023a"></script>
 <script src="js/purchasing-admin-cash.js?v=20261023b"></script>
-<script src="js/stock-admin.js?v=20261028a"></script>
+<script src="js/stock-admin.js?v=20261116b"></script>
 <script src="js/stock-cost-admin.js?v=20261026a"></script>
 <script src="js/reconciliation-admin.js?v=20261103b"></script>
-<script src="js/tools-admin.js?v=20261104a"></script>
-<script src="js/workplan-admin-core.js?v=20261013a"></script>
+<script src="js/tools-admin.js?v=20261116b"></script>
+<script src="js/workplan-admin-core.js?v=20261116b"></script>
 <script src="js/workplan-admin-form.js?v=20261014a"></script>
-<script src="js/workplan-admin-board.js?v=20261014a"></script>
-<script src="js/workplan-admin-task.js?v=20261014a"></script>
-<script src="js/workplan-admin-meetings.js?v=20261014a"></script>
+<script src="js/workplan-admin-board.js?v=20261116b"></script>
+<script src="js/workplan-admin-task.js?v=20261116b"></script>
+<script src="js/workplan-admin-meetings.js?v=20261116b"></script>
 <script src="js/quotation-print.js"></script>
 <script src="js/user-navigator.js?v=20261104a"></script>
 <script src="js/client-accounts.js"></script>
 <script src="js/payment-requests.js"></script>
 <script src="js/invoice-module.js?v=20261108a"></script>
 <script src="js/labor-invoice-module.js"></script>
-<script src="js/billing-receipts.js?v=20261109a"></script>
+<script src="js/billing-receipts.js?v=20261118b"></script>
+<!-- PM Billing Request + Acknowledgement Receipts (0116). After billing-receipts.js, whose page and dialogs it reuses. -->
+<script src="js/pm-billing-docs.js?v=20261118b"></script>
 <script src="js/pm-sharing.js?v=20261031a"></script>
-<script src="js/pm-admin.js?v=20261031a"></script>
+<script src="js/pm-admin.js?v=20261118b"></script>
 <script src="js/pm-report-print.js?v=20260915a"></script>
 <script src="js/expense-inbox.js"></script>
 <script src="js/push-notify.js"></script>
@@ -5603,8 +5592,8 @@
 <script src="js/cash-advance-admin.js?v=20261020a"></script>
 <script src="js/cash-advance-forms.js?v=20261020a"></script>
 <script src="js/error-log.js"></script>
-<script src="js/ai-summary.js?v=20261013a"></script>
-<script src="js/ai-assistant.js?v=20261013a"></script>
+<script src="js/ai-summary.js?v=20261114b"></script>
+<script src="js/ai-assistant.js?v=20261114b"></script>
 
 <!-- ════════════ DACS PORTAL (Project Control) — React via CDN ════════════
      React + ReactDOM are loaded from CDN. js/portal-app.compiled.js IS the
@@ -6271,52 +6260,6 @@
   </div>
 </div>
 
-<!-- Payment Request Modal -->
-<div id="pmPaymentRequestModal" class="pm-modal-overlay" onclick="if(event.target===this)pmCloseModal('pmPaymentRequestModal')" style="display:none;">
-  <div class="pm-modal-box">
-    <div class="pm-modal-header">
-      <h3>Send Payment Request</h3>
-      <button class="pm-modal-close" aria-label="Close" onclick="pmCloseModal('pmPaymentRequestModal')"><i data-lucide="x"></i></button>
-    </div>
-    <div class="pm-modal-body">
-      <input type="hidden" id="pmPayReqId">
-      <div class="pm-form-row pm-two-col">
-        <div class="pm-form-group">
-          <label class="pm-field-label">Week Of (Friday) <span class="pm-req">*</span></label>
-          <input type="date" id="pmPayReqDate" class="pm-input">
-          <div class="pm-field-err" id="err-pmPayReqDate"></div>
-        </div>
-        <div class="pm-form-group">
-          <label class="pm-field-label">Amount Due (₱) <span class="pm-req">*</span></label>
-          <input type="number" id="pmPayReqAmount" class="pm-input" placeholder="0.00" min="0" step="0.01">
-          <div class="pm-field-err" id="err-pmPayReqAmount"></div>
-        </div>
-      </div>
-      <div class="pm-form-row pm-two-col">
-        <div class="pm-form-group">
-          <label class="pm-field-label">Carryover from Previous (₱)</label>
-          <input type="number" id="pmPayReqCarryover" class="pm-input" placeholder="0.00" min="0" step="0.01" value="0">
-        </div>
-        <div class="pm-form-group" style="display:flex;align-items:flex-end;gap:10px;">
-          <label class="pm-field-label" style="flex:0 0 auto;margin-bottom:0;">
-            <input type="checkbox" id="pmPayReqStrict" style="margin-right:6px;">
-            Strict mode (exact payment required)
-          </label>
-        </div>
-      </div>
-      <div class="pm-form-group">
-        <label class="pm-field-label">Notes (optional)</label>
-        <textarea id="pmPayReqNotes" class="pm-input pm-textarea" rows="2" placeholder="Additional notes for client…"></textarea>
-      </div>
-    </div>
-    <div class="pm-modal-footer">
-      <button class="pm-btn pm-btn-secondary" onclick="pmCloseModal('pmPaymentRequestModal')">Cancel</button>
-      <button class="pm-btn pm-btn-primary" onclick="pmSavePaymentRequest()">
-        <i data-lucide="send" style="width:14px;height:14px;"></i> Send Request
-      </button>
-    </div>
-  </div>
-</div>
 <!-- PM: Add Payment (record an offline / direct client payment) -->
 <div id="pmAddPaymentModal" class="pm-modal-overlay" onclick="if(event.target===this)pmCloseModal('pmAddPaymentModal')" style="display:none;">
   <div class="pm-modal-box">
@@ -6326,11 +6269,11 @@
     </div>
     <div class="pm-modal-body">
       <div style="font-size:12.5px;color:#6b7280;background:#f9fafb;border:1px solid #eef0f2;border-radius:8px;padding:10px 12px;margin-bottom:14px;">
-        Record a payment the client made <strong>directly</strong> (cash, bank transfer, GCash) without using the website. It's saved as a completed, client-paid week.
+        Record a payment the client made <strong>directly</strong> (cash, bank transfer, GCash) without using the website. It's saved as a completed client payment.
       </div>
       <div class="pm-form-row pm-two-col">
         <div class="pm-form-group">
-          <label class="pm-field-label">Payment for week of <span class="pm-req">*</span></label>
+          <label class="pm-field-label">Payment date <span class="pm-req">*</span></label>
           <input type="date" id="pmAddPayDate" class="pm-input">
           <div class="pm-field-err" id="err-pmAddPayDate"></div>
         </div>
@@ -6347,6 +6290,16 @@
       <div class="pm-form-group">
         <label class="pm-field-label">Notes (optional)</label>
         <textarea id="pmAddPayNotes" class="pm-input pm-textarea" rows="2" placeholder="How the payment was received, who handed it over, etc."></textarea>
+      </div>
+      <!-- 0116: a photo of the payment (deposit slip, transfer screenshot). Office only. -->
+      <div class="pm-form-group">
+        <label class="pm-field-label" for="pmAddPayPhoto">Receipt photo (optional)</label>
+        <input type="file" id="pmAddPayPhoto" class="pm-input" accept="image/*" onchange="pmAddPayPhotoChanged(this)">
+        <div style="display:flex;align-items:flex-start;gap:10px;margin-top:8px;">
+          <img id="pmAddPayPhotoPreview" alt="Chosen photo" style="display:none;max-width:160px;max-height:120px;border-radius:6px;border:1px solid #e5e7eb;">
+          <button type="button" id="pmAddPayPhotoClear" class="pm-btn pm-btn-secondary" style="display:none;" onclick="pmAddPayPhotoClear()">Remove</button>
+        </div>
+        <div class="pm-field-err" id="err-pmAddPayPhoto"></div>
       </div>
     </div>
     <div class="pm-modal-footer">
@@ -6395,6 +6348,12 @@
         <div style="border:1px solid #e5e7eb;border-radius:8px;padding:8px;text-align:center;background:#f9fafb;">
           <img id="pmSelfPayImg" src="" alt="Receipt" style="max-width:100%;max-height:360px;border-radius:6px;display:none;">
           <div id="pmSelfPayNoImg" style="color:#9ca3af;font-size:13px;padding:24px 0;display:none;">No receipt image attached.</div>
+        </div>
+        <!-- 0116: payments recorded by hand only. Replaced, never removed. -->
+        <div id="pmPayPhotoRow" style="display:none;margin-top:8px;">
+          <button type="button" id="pmPayPhotoBtn" class="pm-btn pm-btn-secondary" onclick="pmPickPaymentPhoto()">Add photo</button>
+          <input type="file" id="pmPayPhotoInput" accept="image/*" style="display:none;" onchange="pmSavePaymentPhoto(this)">
+          <div class="pm-field-err" id="pmPayPhotoErr"></div>
         </div>
       </div>
       <div id="pmSelfPayStatusNote" style="display:none;font-weight:600;font-size:13px;margin-top:6px;"></div>
@@ -6687,7 +6646,7 @@
 
 <script>
     document.addEventListener('DOMContentLoaded', () => {
-        if (window.lucide) lucide.createIcons();
+         if (window.lucide) lucide.createIcons();
     });
     function refreshIcons() {
         if (window.lucide) lucide.createIcons();

@@ -22,7 +22,7 @@ vm.createContext(receiptsCtx);
 vm.runInContext(fs.readFileSync('js/billing-receipts.js', 'utf8'), receiptsCtx);
 const receipts = receiptsWindow.BillingReceipts;
 
-const REQUEST = { percent: 10, amount: 220000 };
+const REQUEST = { percent: 10, amount: 660000 };
 const render = (budget, request = REQUEST) => ctx._pcBillingRequestHTML({ name: '<Project>', id: 'f' },
   [{ id: 'p', fundingType: 'progress', billingNumber: 1, month: 'November', year: 2026, monthlyBudget: budget }], request);
 const visible = html => html.replace(/<style>.*<\/style>/s, '');
@@ -35,7 +35,7 @@ assert.strictEqual((visible(render(1000)).match(/%/g) || []).length, 1, 'the onl
 assert.match(render(1000), /&lt;Project&gt;/);
 // The amount being requested: the percentage set first, and the pesos it comes to.
 assert.match(render(1000), /Requested this billing/);
-assert.match(render(1000), /10% of Project Budget.*₱220,000\.00/);
+assert.match(render(1000), /10% of Project Budget.*₱660,000\.00/);
 assert.match(render(1000, { percent: 12.5, amount: 275000 }), /12\.5% of Project Budget.*₱275,000\.00/);
 assert(render(1000).indexOf('Requested this billing') < render(1000).indexOf('<table'), 'the request comes before the breakdown');
 // Design 1b: one formal page.
@@ -169,21 +169,21 @@ async function testSettingThePercentage() {
     vm.createContext(env);
     vm.runInContext(realPrintSource, env);
     env._pcPrintBillingRequest = (project, percent, preparedBy) => printed.push([project.id, percent, preparedBy]);
-    await env._pcStartBillingRequest({ id: 'f', name: 'Sulit Residence' }, 1980000);
+    await env._pcStartBillingRequest({ id: 'f', name: 'Sample Residence' }, 5940000);
     return { asked, printed, alerts, reads };
   }
-  const ok = await start({ contract: 2200000 });
+  const ok = await start({ contract: 6600000 });
   assert.equal(ok.asked.length, 1, 'the percentage is asked first');
   assert.equal(ok.printed.length, 0, 'nothing opens until a percentage is set');
-  assert.equal(ok.asked[0].contract, 2200000);
-  assert.equal(ok.asked[0].allocated, 1980000);
-  assert.equal(ok.asked[0].projectName, 'Sulit Residence');
+  assert.equal(ok.asked[0].contract, 6600000);
+  assert.equal(ok.asked[0].allocated, 5940000);
+  assert.equal(ok.asked[0].projectName, 'Sample Residence');
   ok.asked[0].onContinue(10, 'Ana Cruz');
   assert.deepEqual(ok.printed, [['f', 10, 'Ana Cruz']], 'the page opens with the percentage and name set');
-  const staff = await start({ role: 'staff', contract: 2200000 });
+  const staff = await start({ role: 'staff', contract: 6600000 });
   assert.equal(staff.asked.length, 0, 'staff get nothing');
   assert.equal(staff.reads, 0, 'staff never even load the contract');
-  assert.equal((await start({ revoke: true, contract: 2200000 })).asked.length, 0, 'owner access lost while loading stops it');
+  assert.equal((await start({ revoke: true, contract: 6600000 })).asked.length, 0, 'owner access lost while loading stops it');
   for (const options of [{ contract: 0 }, {}, { fail: true, contract: 1 }]) {
     const refused = await start(options);
     assert.equal(refused.asked.length, 0, JSON.stringify(options));
@@ -207,7 +207,9 @@ Object.assign(ctx, {
   _staff: () => ctx.window.currentUserRole === 'staff', _pcMoneyAction: fn => fn, _pcBillingWhen: m => m.when || '', _pcBillingName: m => m.name,
   Ico: {}, peso: String, pcAllocationStatus: () => ({ key: 'healthy', pct: 20 }),
   PC_PERIOD_BANDS: { healthy: {}, empty: {} }, pcPeriodAllocationView: () => null,
-  AllocationBands: () => {}, AllocationHistory: () => {}
+  AllocationBands: () => {}, AllocationHistory: () => {},
+  // The labelling layer (duplicate billing numbers, All Time only, labels).
+  ...require('../js/project-finance.js')
 });
 ctx._pcActualsForPeriod = p => ({ directActual: p.cost, indirectActual: 0 });
 const drillStart = source.indexOf('function BillingPeriodsDrill(');
@@ -244,7 +246,7 @@ const totalTree = ctx.BillingPeriodsDrill({ ...props, expensesRaw: [{ folderId: 
   { folderId: 'elsewhere', scope: 'project', amount: 900 }
 ] });
 const totalStat = nodes(totalTree).find(n => n.props && n.props.className === 'drill-stat' && n.children[0].children[0] === 'Total Spent');
-assert.equal(totalStat.children[1].children[0][1], '1100', 'project total includes no-period material and unassigned project overhead once');
+assert.equal(totalStat.children[1].children[0], '₱ 1,100.00', 'project total includes no-period material and unassigned project overhead once');
 
 ctx.window.currentUserRole = 'staff';
 assert.equal(documentButtons(ctx.BillingPeriodsDrill(props)).length, 0, 'document buttons remain owner-only');

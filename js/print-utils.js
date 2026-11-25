@@ -145,22 +145,25 @@ window.dacsPrintProjectCostSummary = function (d) {
 
     const contract = num(d.contract);
     const spent    = num(d.spent);
-    const profit   = num(d.profit);
-    const isLoss   = profit < 0;
-    const accent   = isLoss ? '#991b1b' : '#1a5c3a';
 
     // Share of contract — the same basis as the on-screen formula chip.
     const share = (v) => contract > 0 ? (num(v) / contract * 100).toFixed(1) + '%' : '—';
     // Share of the money actually spent — drives each module's bar and pill.
     const mix   = (v) => spent > 0 ? num(v) / spent * 100 : 0;
 
-    // No accomplishment data => the figure assumes the job runs to completion and
-    // must never be presented as earned. Same rule as the overview banner.
-    const profitLbl = isLoss ? 'Net loss' : 'Net profit';
-    const profitSub = d.isForecast ? 'Forecast — not yet earned' : 'Earned against accomplishment';
-    const revLbl    = d.isForecast ? 'Contract revenue' : 'Earned revenue';
-    const revSub    = d.isForecast ? 'Full contract · not yet earned' : num(d.completePct).toFixed(1) + '% accomplished';
-    const marginTxt = d.marginPct == null ? '—' : num(d.marginPct).toFixed(1) + '%';
+    // Profit is labelled exactly as on screen (js/project-finance.js, spec
+    // 2026-11-14 §3.2): Earned − Spent is a BOQ-based ESTIMATE, the headline only
+    // while the BOQ is approved and current; otherwise "Profit not confirmed".
+    // Recognized Project Profit is Unavailable. Under a date filter the
+    // cumulative figures print as "All Time only", like the screen.
+    const fin = d.finance || null;
+    const pv = fin ? fin.profit : null;
+    const L = window.PF_LABELS || {};
+    const centsTxt = (c) => c == null ? (L.allTimeOnly || 'All Time only') : (c < 0 ? '-' : '') + '₱' + peso(Math.abs(c) / 100);
+    const hl = pv ? pv.headline : { kind: 'notConfirmed', label: 'Profit not confirmed', cents: null, reasons: ['Profit figures unavailable'] };
+    const boq = pv ? pv.boq : null;
+    const basis = boq ? boq.basis : null;
+    const pctTxt = (p) => typeof window.pfPct === 'function' ? window.pfPct(p) : (p == null ? '—' : num(p).toFixed(2) + '%');
     const logo      = window.location.origin + '/assets/images/DACS-TRANSPARENT.png';
     // Date the project was started, when the folder carries one.
     const started   = d.startedAt || d.dateStarted || d.startDate || '';
@@ -215,14 +218,45 @@ window.dacsPrintProjectCostSummary = function (d) {
         + '</div>'
         + '<div class="sw" style="height:3px;background:#14181f;margin-top:20px"></div>';
 
+    const isLoss = hl.kind === 'boq' && hl.cents < 0;
+    const accent = hl.kind !== 'boq' ? '#4b5563' : isLoss ? '#991b1b' : '#1a5c3a';
+    const headSub = hl.kind === 'boq'
+        ? num(basis.completePct).toFixed(1) + '% complete · ' + basis.savedText
+        : (hl.reasons || []).join(' · ');
+    const clc = pv ? pv.contractLessCost : null;
     const standHtml =
         '<div style="display:flex;flex-direction:column;gap:14px;margin-top:22px">'
+        + (d.periodLabel && d.periodLabel !== 'All Time'
+            ? '<div style="font-size:11px;color:#5b636f">Costs: ' + esc(d.periodLabel) + ' · cumulative figures print as All Time only</div>' : '')
         + '<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:14px 40px">'
         +   big('Total contract', '₱' + peso(contract), 'Approved contract value')
         +   big('Fund spent', '₱' + peso(spent), share(spent) + ' of the contract')
-        +   big(profitLbl, '₱' + peso(profit), profitSub, accent)
-        +   big('That is a margin of', marginTxt, 'On ' + (d.isForecast ? 'contract' : 'earned') + ' revenue', accent)
+        +   big(esc(hl.label), hl.cents == null ? '—' : centsTxt(hl.cents), esc(headSub), accent)
+        +   (hl.kind === 'boq'
+              ? big('That is a margin of', pctTxt(boq.marginPct), 'Of BOQ-earned revenue', accent)
+              : big(esc(clc ? clc.label : 'Contract value minus costs'), clc ? centsTxt(clc.cents) : '—', 'What is left of the contract after cost so far — not profit'))
         + '</div></div>';
+
+    // Every profit figure, each named for what it is — the screen's breakdown.
+    // When the estimate IS the headline it is not repeated here (printed once).
+    const figRows = pv ? [
+        hl.kind === 'boq' ? null : [boq.label, !boq.available ? (L.noBoqProgress || 'No BOQ progress recorded') : centsTxt(boq.profitCents),
+            boq.available ? [num(basis.completePct).toFixed(1) + '% complete', basis.savedText]
+                .concat(boq.marginPct != null ? [pctTxt(boq.marginPct) + ' of BOQ-earned revenue'] : [])
+                .concat(basis.badges.map(b => '⚠ ' + b)).join(' · ') : ''],
+        pv.projected ? [pv.projected.label, pv.projected.text, ''] : null,
+        [pv.recognized.label, pv.recognized.text, pv.recognized.note],
+        [pv.contractLessCost.label, centsTxt(pv.contractLessCost.cents), 'What is left of the contract after cost so far — not profit']
+    ].filter(Boolean) : [];
+    const figuresHtml = figRows.length ? '<section style="margin-top:20px;break-inside:avoid">'
+        + '<h2 class="q">Profit figures</h2>'
+        + '<table style="width:100%;border-collapse:collapse;font-size:11px;margin-top:8px"><tbody>'
+        + figRows.map(([label, value, note]) => '<tr><th scope="row" style="text-align:left;padding:4px 0;font-weight:500;vertical-align:top">' + esc(label)
+            + (note ? '<div style="font-size:9.5px;color:#6b7280;font-weight:400">' + esc(note) + '</div>' : '')
+            + '</th><td style="text-align:right;vertical-align:top;font-variant-numeric:tabular-nums">' + esc(value) + '</td></tr>').join('')
+        + '</tbody></table>'
+        + (boq && boq.available && !basis.isUndated ? '<p style="font-size:9.5px;color:#6b7280;margin-top:6px">' + esc(L.boqSaveNote || '') + '</p>' : '')
+        + '</section>' : '';
 
     const spendHtml =
         '<div style="display:flex;flex-direction:column;gap:12px;margin-top:24px">'
@@ -242,18 +276,36 @@ window.dacsPrintProjectCostSummary = function (d) {
         + '</div></div>';
 
     const allocation = window.currentUserRole === 'owner' ? d.allocationSummary : null;
+    // The estimate row reads from the same finance view as the screen; the
+    // reserve variance prints only against a CURRENT estimate on All Time.
+    const allTime = !fin || fin.allTime !== false;
+    const current = allocation && allocation.profitBasis === 'current';
+    const estimateLbl = (L.boqEstimate || 'BOQ-based profit estimate')
+        + (boq && boq.available && !basis.current ? ' (' + basis.badges.join(' · ') + ')' : '');
+    const estimateVal = !boq || !boq.available ? (L.noBoqProgress || 'No BOQ progress recorded') : centsTxt(boq.profitCents);
+    const rem = fin ? fin.remaining : null;
+    const missing = rem ? rem.missing : 0;
     const allocationRows = allocation ? [
         ['Direct Budget', allocation.directBudget],
         ['Indirect Budget', allocation.indirectBudget],
         ['Target Margin Reserve', allocation.targetMarginReserve],
         ['Unallocated Indirect Cost', allocation.unallocatedIndirect],
-        [allocation.isForecast ? 'Forecast Profit' : 'Actual Earned Profit', allocation.actualProfit]
+        [estimateLbl, estimateVal]
     ] : [];
-    if (allocation && !allocation.isForecast && allocation.configuredCount) allocationRows.push(['Target Variance', allocation.targetMarginVariance]);
+    if (allocation && current && allTime && allocation.configuredCount) allocationRows.push(['Target Variance', allocation.targetMarginVariance]);
+    if (allocation) {
+        allocationRows.push([L.operatingRemaining || 'Operating allocation remaining', !rem ? (L.unavailable || 'Unavailable')
+            : !allTime ? (L.allTimeOnly || 'All Time only')
+            : rem.incomplete ? (L.incomplete || 'Incomplete') + ' — ' + missing + ' billing period' + (missing === 1 ? ' has' : 's have') + ' no allocation'
+            : centsTxt(rem.operatingCents)]);
+        allocationRows.push([L.totalRemaining || 'Total Allocation Remaining',
+            !rem ? (L.unavailable || 'Unavailable') : centsTxt(rem.totalCents)]);
+    }
     const allocationHtml = allocation ? '<section style="margin-top:20px;break-inside:avoid">'
         + '<h2 class="q">Billing Allocations</h2>'
         + '<table style="width:100%;border-collapse:collapse;font-size:11px;margin-top:8px"><caption style="text-align:left;font-size:10px;margin-bottom:6px">Target Margin Reserve: planning only</caption><tbody>'
-        + allocationRows.map(([label, value]) => '<tr><th scope="row" style="text-align:left;padding:4px 0;font-weight:500">' + esc(label) + '</th><td style="text-align:right;font-variant-numeric:tabular-nums">&#8369; ' + peso(value) + '</td></tr>').join('')
+        + allocationRows.map(([label, value]) => '<tr><th scope="row" style="text-align:left;padding:4px 0;font-weight:500">' + esc(label) + '</th><td style="text-align:right;font-variant-numeric:tabular-nums">'
+            + (typeof value === 'number' ? '&#8369; ' + peso(value) : esc(value)) + '</td></tr>').join('')
         + '</tbody></table>'
         + (allocation.legacyCount ? '<p style="font-size:10px;margin-top:6px">Allocation not configured: ' + esc(allocation.legacyCount) + ' billing period(s)</p>' : '')
         + '</section>' : '';
@@ -290,7 +342,7 @@ window.dacsPrintProjectCostSummary = function (d) {
         + '<title>Project Cost Summary — ' + esc(d.name || '') + '</title>'
         + '<style>' + css + '</style></head><body>'
         + '<div class="sheet">'
-        +   headHtml + standHtml + spendHtml + allocationHtml
+        +   headHtml + standHtml + figuresHtml + spendHtml + allocationHtml
         +   '<div style="flex:1"></div>'
         +   signHtml + footHtml
         + '</div>'

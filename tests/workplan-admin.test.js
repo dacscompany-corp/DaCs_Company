@@ -367,7 +367,7 @@ test('admin.html: view hosts, WP_VIEWS in switchView, titles, init, scripts in o
   }
   ok(/const WP_VIEWS\s+= \['wpBoard','wpMeetings','wpMeeting','wpTask'\];/.test(h), 'WP_VIEWS');
   ok(/if \(WP_VIEWS\.includes\(view\)\s+&& typeof initWorkPlanModule === 'function'\) initWorkPlanModule\(view\);/.test(h), 'init dispatch');
-  ok(h.includes('<link rel="stylesheet" href="css/workplan-admin.css?v=20261014a">'), 'stylesheet');
+  ok(h.includes('<link rel="stylesheet" href="css/workplan-admin.css?v=20261116b">'), 'stylesheet');
   const order = ['js/requests-admin-core.js', 'js/workplan-admin-core.js', 'js/workplan-admin-form.js', 'js/workplan-admin-board.js',
                  'js/workplan-admin-task.js', 'js/workplan-admin-meetings.js'].map(s => h.indexOf('<script src="' + s));
   ok(order.every(i => i > 0) && order.every((i, k) => k === 0 || i > order[k - 1]), 'scripts present and in order: ' + order);
@@ -375,6 +375,86 @@ test('admin.html: view hosts, WP_VIEWS in switchView, titles, init, scripts in o
 
 test('ARCHITECTURE.md module map names the Work Plan files', () => {
   ok(/\| Work Plan \| `workplan-admin-core\.js`/.test(src('docs/ARCHITECTURE.md')), 'module map row');
+});
+
+console.log('\nworkplan admin: office v5 (Board on cards, a task in the pop-up)');
+
+test('taskNextStep: one button only for the decision the office is there to make', () => {
+  const s1 = wp.taskNextStep({ status: 'leader_checked' });
+  eq(s1.label, 'Approve — completed'); eq(s1.act, 'approve');
+  ok(s1.text.includes('Checked by the team leader, waiting for your approval') && s1.text.includes('A leader\'s check never replaces the office approval.'), 'leader wording kept');
+  const s2 = wp.taskNextStep({ status: 'reported_done' });
+  ok(s2.text.includes('Reported done, waiting for your approval') && !s2.text.includes('leader\'s check'), 'reported done wording');
+  eq(s2.act, 'approve');
+  const s3 = wp.taskNextStep({ status: 'draft', proposed_by: 'x' });
+  eq(s3.act, 'publish'); ok(s3.text.includes('Publish it to make it a task, or decline it with a reason the leader will see.'), 'proposal wording');
+  const s4 = wp.taskNextStep({ status: 'draft' });
+  eq(s4.act, 'publish'); eq(s4.label, 'Publish');
+  for (const st of ['not_started', 'in_progress', 'completed', 'cancelled']) eq(wp.taskNextStep({ status: st }), null, st);
+});
+
+test('boardTab: Needs you = the lists that ask something of the office', () => {
+  const T = o => Object.assign({ status: 'in_progress' }, o);
+  ok(wp.boardTab(T({ status: 'reported_done' }), 'needs') && wp.boardTab(T({ blocked: true }), 'needs'), 'check and blocked');
+  ok(wp.boardTab(T({ not_acknowledged_24h: true }), 'needs') && wp.boardTab(T({ overdue: true }), 'needs'), 'unacked and overdue');
+  ok(!wp.boardTab(T({}), 'needs'), 'plain in progress is not');
+  ok(wp.boardTab(T({ blocked: true }), 'prog') && wp.boardTab(T({ status: 'not_started' }), 'prog'), 'In progress = not started and in progress');
+  ok(wp.boardTab(T({ status: 'draft' }), 'drafts') && wp.boardTab(T({ status: 'completed' }), 'done') && wp.boardTab(T({}), 'all'), 'drafts, completed, all');
+  eq(wp.BOARD_TABS.map(t => t[0]), ['needs', 'prog', 'drafts', 'done', 'all']);
+});
+
+test('the Board is cards; a task opens in the pop-up; the old page routes to the Board', () => {
+  const b = src('js/workplan-admin-board.js'), t = src('js/workplan-admin-task.js'), c = src('js/workplan-admin-core.js');
+  ok(b.includes('SplitView.render(') && !/<table/.test(b), 'drawn by the shared frame, no table');
+  ok(/WP\.taskNextStep\(t\)/.test(b) && /nextLabel:/.test(b), 'cards carry the next step');
+  ok(/onClose: \(\) => \{[^}]*ui\.selectedId = null/.test(b), 'closing forgets the task');
+  ok(/WP\.renderTaskPanel = /.test(t) && /SV\.page\(panel, \{/.test(t), 'the task page renders into the pop-up shell');
+  ok(!/data-back/.test(t), 'no "← Work Plan" back link (✕ replaces it)');
+  ok(/function openTask\(id\) \{ state\.taskId = id; root\.switchView\('wpBoard'\); \}/.test(c), 'openTask → the Board');
+  ok(/views\.wpTask = \(\) => root\.switchView\('wpBoard'\)/.test(c), 'the old route lands on the Board');
+  for (const r of ['wp_office_board', 'wp_office_destinations']) ok(b.includes("WP.rpc('" + r + "'"), 'board RPC ' + r);
+  for (const r of ['wp_office_task', 'wp_office_clear_blocker', 'wp_office_publish', 'wp_office_approve', 'wp_office_send_back', 'wp_office_reopen', 'wp_office_cancel'])
+    ok(t.includes("WP.rpc('" + r + "'"), 'task RPC ' + r);
+  ok(/panel\.isConnected && panel\.dataset\.svId === id/.test(t), 'a closed or replaced pop-up never draws a late answer');
+  ok(/want\.act === go\.dataset\.act/.test(t), 'a card button only starts the step it showed');
+});
+
+test('v5 Board (owner check 17 Nov): an empty board keeps the header, How box and filter; a short empty message', () => {
+  const b = src('js/workplan-admin-board.js');
+  ok(/primary: \{ label: 'New task', onClick: newTask \},/.test(b), 'New task is always the main button');
+  ok(/how: HOW,/.test(b), 'How a task moves always shows (folded)');
+  ok(/toolbar: folderSelect\(\),/.test(b), 'All projects always shows');
+  ok(!/wp-ways|wp-steps/.test(b), 'no big two-box empty panel (the How box carries the steps)');
+  ok(/data-meetings[^\n]*Open Meetings/.test(b) && /data-new[^\n]*New task/.test(b), 'the empty message still offers both ways to start');
+});
+
+test('v5 pop-ups (owner check 17 Nov): one column of the frame\'s sections, not the old two-column cards', () => {
+  const t = src('js/workplan-admin-task.js'), m = src('js/workplan-admin-meetings.js'), sv = src('js/split-view.js');
+  for (const [name, s] of [['task', t], ['meeting', m]]) {
+    ok(!/wp-layout|wp-side|wp-main/.test(s), name + ': no side column');
+    ok(!/class="att-card/.test(s), name + ': no old boxed cards');
+  }
+  ok(/SV\.section\('Problems and waiting'/.test(t) && /SV\.section\('Instructions'/.test(t) && /SV\.section\('People'/.test(t), 'task sections in v5 order');
+  ok(/SV\.facts\(\[\s*\['Task', /.test(t), 'the task facts start with the task');
+  ok(/SV\.history\(/.test(t), 'the task history is the frame\'s');
+  ok(/actions: actionsHtml\(t\)/.test(t), 'the task\'s buttons sit in the footer beside Next');
+  ok(/SV\.notice\(/.test(t), 'blocked / to-check notes are the frame\'s notices');
+  ok(/sec\('Notes'/.test(m) && /sec\('AI drafts'/.test(m) && /sec\('Tasks from this meeting'/.test(m) && /sec\('Publish'/.test(m), 'meeting sections, one column');
+  ok(/\(p\.actions \|\| p\.nextLabel\) \? '<footer class="sv-panel-foot"><div class="sv-panel-actions">' \+ \(p\.actions \|\| ''\)/.test(sv),
+     'the page shell carries footer actions like panelHtml');
+});
+
+test('Meetings are cards; a meeting (and New meeting) opens in the pop-up; the old page routes to Meetings', () => {
+  const m = src('js/workplan-admin-meetings.js'), c = src('js/workplan-admin-core.js');
+  ok(m.includes('SplitView.render(') && !/<table/.test(m), 'drawn by the shared frame, no table');
+  ok(/WP\.renderMeetingPanel = /.test(m) && /SV\.page\(panel, \{/.test(m), 'a meeting renders into the pop-up shell');
+  ok(!/data-back/.test(m), 'no "← Meetings" back link (✕ replaces it)');
+  ok(/onClose: \(\) => \{[^}]*ui\.selectedId = null/.test(m), 'closing forgets the meeting');
+  ok(/function openMeeting\(id\) \{ state\.meetingId = id \|\| NEW_MEETING; root\.switchView\('wpMeetings'\); \}/.test(c), 'openMeeting → Meetings');
+  ok(/views\.wpMeeting = \(\) => root\.switchView\('wpMeetings'\)/.test(c), 'the old route lands on Meetings');
+  for (const r of ['wp_office_meetings', 'wp_office_meeting', 'wp_office_save_meeting', 'wp_office_publish'])
+    ok(m.includes("WP.rpc('" + r + "'"), 'meeting RPC ' + r);
+  ok(/panel\.isConnected && panel\.dataset\.svId === /.test(m), 'a closed or replaced pop-up never draws a late answer');
 });
 
 // ── Task 4 appends its tests above this line ──

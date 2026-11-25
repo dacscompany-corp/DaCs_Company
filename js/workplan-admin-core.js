@@ -88,6 +88,46 @@
         };
     }
 
+    // ── Office v5: the Board's tabs and "What to do now" ───────────
+
+    // Needs you = the lists that ask something of the office (the first
+    // four of GROUPS); In progress = every task not started or in progress.
+    const BOARD_TABS = [['needs', 'Needs you'], ['prog', 'In progress'], ['drafts', 'Drafts'], ['done', 'Completed'], ['all', 'All']];
+    const NEEDS_KEYS = ['check', 'blocked', 'unacked', 'overdue'];
+    function boardTab(t, tab) {
+        switch (tab) {
+            case 'needs': { const g = GROUPS.find(x => x.test(t)); return !!g && NEEDS_KEYS.includes(g.key); }
+            case 'prog': return t.status === 'not_started' || t.status === 'in_progress';
+            case 'drafts': return t.status === 'draft';
+            case 'done': return t.status === 'completed';
+            default: return true;
+        }
+    }
+
+    // The one decision the office is there to make on a task, if any:
+    // approve reported work, or publish a draft / a leader's proposal. The
+    // button is the task page's own (same data-act), so it runs the same
+    // form and the same RPC.
+    function taskNextStep(t) {
+        if (t.status === 'reported_done' || t.status === 'leader_checked') {
+            const leader = t.status === 'leader_checked';
+            return {
+                text: (leader ? 'Checked by the team leader, waiting for your approval.' : 'Reported done, waiting for your approval.') +
+                      ' Approve it as completed, or send it back with what needs fixing.' +
+                      (leader ? " A leader's check never replaces the office approval." : ''),
+                label: 'Approve — completed', act: 'approve',
+            };
+        }
+        if (t.status === 'draft' && t.proposed_by) {
+            return { text: 'Proposed by a team leader. Publish it to make it a task, or decline it with a reason the leader will see.',
+                     label: 'Publish', act: 'publish' };
+        }
+        if (t.status === 'draft') {
+            return { text: 'This is a draft. Only the office sees it. Publish it when it is ready for the workers.', label: 'Publish', act: 'publish' };
+        }
+        return null;
+    }
+
     function norm(s) {
         return String(s === null || s === undefined ? '' : s).trim().toLowerCase().replace(/\s+/g, ' ');
     }
@@ -438,6 +478,7 @@
     }
 
     const pure = { STATUS_LABEL, statusLabel, statusPill, plannedLabel, boardGroups, alertCounts, filterBoard,
+                   BOARD_TABS, boardTab, taskNextStep,
                    CHOOSE, taskProblem, buildTaskPayload, docToForm, revisionChanges, keepSelections,
                    meetingFields, meetingUnsaved, settlePending, loadTickets, blockerKind, eventText, ERRORS, errorMessage,
                    NOTES_MAX, draftMessages, parseDraft, resolveDraft, todayManila,
@@ -492,12 +533,19 @@
     const state = { taskId: null, meetingId: null };
     const views = {};
 
-    function openTask(id) { state.taskId = id; root.switchView('wpTask'); }
-    function openMeeting(id) { state.meetingId = id; root.switchView('wpMeeting'); }
+    // Office v5: one task opens in the Board's pop-up; the old page id
+    // still routes (focused accounts keep it), landing on the Board.
+    function openTask(id) { state.taskId = id; root.switchView('wpBoard'); }
+    views.wpTask = () => root.switchView('wpBoard');
+    // One meeting (or a new one) opens in the Meetings screen's pop-up; the
+    // old page id still routes there.
+    const NEW_MEETING = '__new';
+    function openMeeting(id) { state.meetingId = id || NEW_MEETING; root.switchView('wpMeetings'); }
+    views.wpMeeting = () => root.switchView('wpMeetings');
 
     root.WorkPlanAdmin = Object.assign({}, pure, {
         esc: RAP.esc, icons: RAP.icons, rpc: RAP.rpc, head: RAP.head, signImages: RAP.signImages,
-        fail, modal, aiDraft, AI_WORKER_URL, state, views, openTask, openMeeting,
+        fail, modal, aiDraft, AI_WORKER_URL, state, views, openTask, openMeeting, NEW_MEETING,
     });
 
     root.initWorkPlanModule = function (view) {

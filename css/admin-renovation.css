@@ -1706,54 +1706,64 @@ button.btn-primary:hover,
   .dacs-portal-scope .pc-sm-hero-margin { padding-left: 14px; }
 }
 
-/* Contract + Actual Cost live at the far right of the hero (2026-09-24), past
-   the profit rate and behind their own divider, so the banner carries the whole
-   equation instead of repeating it in a white row underneath. Scoped to
-   .pc-ledger-hero — the other .pc-sm-contract banners have no stats block. */
-.dacs-portal-scope .pc-ledger-hero .pc-sm-hero-stats {
+/* Profit ledger hero — design "Profit ledger redesign" 1b (14 Nov 2026). The
+   headline and what it rests on at the left, then Profit · Margin · Cost
+   behind thin dividers, then the eye. When the row runs out of room the
+   figures and the eye wrap together onto a second line. Scoped to
+   .pc-ledger-hero — the other .pc-sm-contract banners keep their own layout. */
+.dacs-portal-scope .pc-ledger-hero { gap: 14px 26px; }
+.dacs-portal-scope .pc-ledger-hero .pc-sm-contract-text { flex: 1 1 240px; min-width: 0; }
+.dacs-portal-scope .pc-ledger-hero .pc-ledger-basis {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 22px;
+  gap: 4px 6px;
+  margin-top: 5px;
+  opacity: 1;
+}
+.dacs-portal-scope .pc-ledger-hero .pc-ledger-badge { font-size: 11px; white-space: nowrap; }
+.dacs-portal-scope .pc-ledger-hero-stats { display: flex; align-items: flex-start; }
+.dacs-portal-scope .pc-ledger-hero-stat { min-width: 0; }
+.dacs-portal-scope .pc-ledger-hero-stat + .pc-ledger-hero-stat {
+  margin-left: 26px;
   padding-left: 26px;
   border-left: 1px solid rgba(255, 255, 255, 0.28);
 }
-.dacs-portal-scope .pc-ledger-hero .pc-sm-hero-stat { min-width: 0; }
-.dacs-portal-scope .pc-ledger-hero .pc-sm-hero-stat .lbl {
+.dacs-portal-scope .pc-ledger-hero-stat .lbl {
   display: block;
   font-size: 11px;
-  font-weight: 650;
+  font-weight: 600;
   letter-spacing: 0.05em;
   text-transform: uppercase;
-  opacity: 0.85;
+  opacity: 0.9;
 }
-.dacs-portal-scope .pc-ledger-hero .pc-sm-hero-stat .val {
+.dacs-portal-scope .pc-ledger-hero-stat .val {
   display: block;
   margin-top: 3px;
-  font-size: 17px;
+  font-size: 26px;
   font-weight: 700;
-  line-height: 1.15;
+  line-height: 1.1;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
-.dacs-portal-scope .pc-ledger-hero .pc-sm-hero-stat .note {
-  display: block;
-  margin-top: 2px;
-  font-size: 11px;
-  line-height: 1.35;
-  opacity: 0.78;
-}
-/* Narrow: the pair drops to its own full-width line under the profit figure. */
-@media (max-width: 980px) {
-  .dacs-portal-scope .pc-ledger-hero .pc-sm-hero-figures { flex-wrap: wrap; gap: 16px 20px; }
-  .dacs-portal-scope .pc-ledger-hero .pc-sm-hero-stats {
+/* Phones: the figures get their own full-width block under the headline and
+   wrap without dividers, so a wrapped figure never starts with a stray rule. */
+@media (max-width: 720px) {
+  /* The hero stacks into a column here, so a flex-basis would become a
+     height: the text block takes its natural size instead. */
+  .dacs-portal-scope .pc-ledger-hero .pc-sm-contract-text { flex: none; width: 100%; }
+  /* The eye sits after the figures, right above the bars it folds. */
+  .dacs-portal-scope .pc-ledger-hero .pc-eye-toggle { order: 4; }
+  .dacs-portal-scope .pc-ledger-hero-stats {
     order: 3;
     width: 100%;
-    justify-content: space-between;
-    padding-left: 0;
+    flex-wrap: wrap;
+    gap: 12px 24px;
     padding-top: 12px;
-    border-left: 0;
     border-top: 1px solid rgba(255, 255, 255, 0.28);
   }
+  .dacs-portal-scope .pc-ledger-hero-stat + .pc-ledger-hero-stat { margin-left: 0; padding-left: 0; border-left: 0; }
+  .dacs-portal-scope .pc-ledger-hero-stat .val { font-size: 20px; }
 }
 .dacs-portal-scope .pc-summarize-stacked .pc-sm-equation {
   display: flex;

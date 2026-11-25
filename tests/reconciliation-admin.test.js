@@ -282,8 +282,9 @@ function printed(kind, owner = true) {
     _pcReportTable: () => '', _pcAllocationReportHtml: () => '<!--allocation-->', _pcReportDetails: () => '', _pcReportCategories: () => [],
     _pcPrintFundingSummary: () => '', _pcFundingLabel: () => '', _pcPrintPeriodLabel: () => '', showExpNotif: () => {},
     window: { dacsPrintHeader: () => '', open: () => win },
+    _rptState: { period: 'monthly' }, PF_LABELS: require('../js/project-finance.js').PF_LABELS,
   };
-  const f = load(['_pcReportFolderIds', '_pcLateCostMoveNotes', '_pcLateCostMoveHtml', '_pcPrintReport'], ctx);
+  const f = load(['_pcReportFolderIds', '_pcReportBalanceLabel', '_pcLateCostMoveNotes', '_pcLateCostMoveHtml', '_pcPrintReport'], ctx);
   const t = { cover: 0, budget: 0, mats: 0, labor: 0, overhead: 0, totalSpent: 0, remaining: 0, usedPct: 0, txCount: 0, workerCount: 0 };
   f._pcPrintReport('Barlin · 2026', { rows: [], totals: t, expenses: [] }, [], { kind, folderId: 'f1', dateLabel: '2026', periodLabel: 'Monthly' });
   return html;

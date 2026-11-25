@@ -1977,3 +1977,10 @@ button.att-day:hover { filter: brightness(0.95); }
     .au-live { grid-template-columns: 1fr; }
     .au-step { gap: 12px; }
 }
+/* Office v5 (cards): one worker's Monday-to-Friday in the bonus pop-up —
+   five columns, each the day name, its cell (a button when it has a
+   record) and the word for it. */
+.att-rw-pdays { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
+.att-rw-pday { display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; }
+.att-rw-pday .att-rw-dayth { font-size: 12.5px; font-weight: 600; color: #6C6C70; }
+.att-rw-pday .att-meta { font-size: 12px; line-height: 1.3; }

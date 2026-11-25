@@ -32,92 +32,75 @@
         const d = new Date();
         return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
     }
-    const ui = { from: null, to: null, status: 'recorded', folder: '', search: '', projects: null };
+    const ui = { from: null, to: null, status: 'recorded', folder: '', search: '', projects: null, sel: null };
+    const SV = root.SplitView;
+    const TONE = { done: 'done', working: 'gold', abandoned: 'red', pc: 'check', pm: 'pm', none: 'none', hidden: 'none' };
 
-    // One row of the Purchases list.
-    function purchaseRow(p) {
-        return '<tr class="req-row" tabindex="0" data-id="' + esc(p.id) + '">' +
-            '<td>' + esc(RA.formatDay(p.purchase_date)) + '</td>' +
-            '<td>' + esc(p.supplier || '—') + '</td>' +
-            '<td>' + esc((p.projects || []).join(', ') + (p.warehouse ? ((p.projects || []).length ? ' · ' : '') + 'Warehouse' : '')) +
-              '<div class="req-muted">' + esc(p.lines + (p.lines === 1 ? ' line' : ' lines') + (p.linked ? ' · ' + p.linked + ' from requests' : '')) + '</div></td>' +
-            '<td>' + esc(PA.sourceLabel(p.source)) + '</td>' +
-            '<td><strong>' + esc(PA.peso(p.receipt_total)) + '</strong></td>' +
-            // 0102: how it was paid — never part of Spent.
-            '<td>' + (PA.payPill ? PA.payPill(p.pay) : '') + '</td>' +
-            '<td>' + esc(p.bought_by_name) + (p.bought_by_name !== p.recorded_by_name ? '<div class="req-muted">recorded by ' + esc(p.recorded_by_name) + '</div>' : '') + '</td>' +
-            '<td>' + PA.purchaseFlags(p).map(f => PA.pill(f.text, f.tone)).join(' ') + '</td>' +
-          '</tr>';
+    // One card of the Purchases list (office v5). Buyers only reach this
+    // tab, so the total and how it was paid show here.
+    function purchaseCard(p) {
+        const pay = PA.payLabel(p.pay);
+        const forText = (p.projects || []).join(', ') + (p.warehouse ? ((p.projects || []).length ? ' · ' : '') + 'Warehouse' : '');
+        return {
+            id: p.id,
+            title: p.supplier || 'No supplier',
+            sub: (forText || '—') + ' · ' + p.lines + (p.lines === 1 ? ' line' : ' lines') + (p.linked ? ' · ' + p.linked + ' from requests' : ''),
+            meta: RA.formatDay(p.purchase_date) + ' · ' + PA.sourceLabel(p.source) + ' · bought by ' + p.bought_by_name +
+                (p.bought_by_name !== p.recorded_by_name ? ', recorded by ' + p.recorded_by_name : ''),
+            right: PA.peso(p.receipt_total),
+            pill: pay ? { text: pay.text, tone: TONE[pay.tone] || 'none' } : null,
+            chips: PA.purchaseFlags(p).map(x => ({ text: x.text, tone: TONE[x.tone] || 'none' })),
+            dim: p.status === 'void',
+        };
     }
 
-    async function renderPurchases(body, me) {
+    async function renderPurchases(host, me, opts) {
         if (ui.from === null) { ui.from = monthStart(); ui.to = todayKey(); }
+        // A purchase opened from elsewhere (PA.openPurchase).
+        if (PA.state.purchaseId) { ui.sel = PA.state.purchaseId; PA.state.purchaseId = null; }
         let rows;
         try {
             // Every project, completed ones too (an old purchase may need finding).
             if (!ui.projects) ui.projects = (await RA.rpc('pr_office_projects')) || [];
             rows = await RA.rpc('pur_purchases', { p_from: ui.from || null, p_to: ui.to || null, p_folder: ui.folder || null, p_status: ui.status });
-        } catch (e) { RA.fail(body, e); return; }
+        } catch (e) { RA.fail(host, e); return; }
+        if (PA.ui.tab !== 'purchases') return;   // another tab was chosen while this loaded
         rows = rows || [];
-        // Newest first from the server; one heading per day, with that day's total.
-        const days = [];
-        rows.forEach(p => {
-            let g = days[days.length - 1];
-            if (!g || g.date !== p.purchase_date) { g = { date: p.purchase_date, rows: [] }; days.push(g); }
-            g.rows.push(p);
-        });
-        const sum = list => list.filter(p => p.status !== 'void').reduce((t, p) => t + (Number(p.receipt_total) || 0), 0);
-        const COLS = 6;
-        const rowHtml = p => '<tr class="req-row" tabindex="0" data-id="' + esc(p.id) + '">' +
-            '<td><strong>' + esc((p.projects || []).join(', ') + (p.warehouse ? ((p.projects || []).length ? ' · ' : '') + 'Warehouse' : '') || '—') + '</strong>' +
-              '<div class="req-muted">' + esc(p.lines + (p.lines === 1 ? ' line' : ' lines') + (p.linked ? ' · ' + p.linked + ' from requests' : '')) + '</div></td>' +
-            '<td>' + (p.supplier ? esc(p.supplier) : '<span class="req-muted">No supplier</span>') + '</td>' +
-            '<td>' + esc(p.bought_by_name) + (p.bought_by_name !== p.recorded_by_name ? '<div class="req-muted">recorded by ' + esc(p.recorded_by_name) + '</div>' : '') + '</td>' +
-            '<td class="pur-num"><strong>' + esc(PA.peso(p.receipt_total)) + '</strong></td>' +
-            '<td>' + PA.purchaseFlags(p).map(f => PA.pill(f.text, f.tone)).join(' ') + '</td>' +
-            '<td class="req-go"><i data-lucide="chevron-right"></i></td></tr>';
-        const total = sum(rows);
-        body.innerHTML =
-            '<div class="att-toolbar">' +
-              '<label class="att-label">From<input class="att-input" type="date" data-from value="' + esc(ui.from) + '"></label>' +
-              '<label class="att-label">To<input class="att-input" type="date" data-to value="' + esc(ui.to) + '"></label>' +
-              '<select class="att-filter" data-status aria-label="Status">' +
-                [['recorded', 'Recorded'], ['void', 'Voided'], ['all', 'All']].map(s => '<option value="' + s[0] + '"' + (s[0] === ui.status ? ' selected' : '') + '>' + s[1] + '</option>').join('') +
-              '</select>' +
-              '<select class="att-filter" data-folder aria-label="Project">' +
-                '<option value="">All projects</option>' +
-                ui.projects.map(f => '<option value="' + esc(f.folder_id) + '"' + (f.folder_id === ui.folder ? ' selected' : '') + '>' +
-                  esc(f.name + (f.completed ? ' (completed)' : '')) + '</option>').join('') +
-              '</select>' +
-              '<input class="att-input" type="search" data-search placeholder="Search supplier, project, person, source…" aria-label="Search" value="' + esc(ui.search) + '">' +
-              (rows.length >= 300 ? '<span class="req-muted">Showing the newest 300 — narrow the dates.</span>' : '') +
-            '</div>' +
-            '<p class="req-muted">Project Control purchases are listed here too — check the Source and the project before you void anything.</p>' +
-            (rows.length
-              ? '<div class="att-card"><div class="att-card-body" style="padding:0"><div class="req-table-wrap"><table class="att-table req-table">' +
-                  '<thead><tr><th>Date</th><th>Supplier</th><th>For</th><th>Source</th><th>Total</th><th>Payment</th><th>Bought by</th><th>Status</th></tr></thead><tbody data-rows></tbody>' +
-                '</table></div></div></div><div class="att-empty" data-none hidden>Nothing matches the search.</div>'
-              : '<div class="att-empty">No purchases in these dates.</div>');
-        const reload = () => renderPurchases(body, me);
-        // The search filters what the server sent, without a reload (the box keeps its focus).
-        const draw = () => {
-            const tb = body.querySelector('[data-rows]');
-            if (!tb) return;
+        const reload = () => renderPurchases(host, me, { refreshPanel: true });
+        const toolbar =
+            '<label class="att-label">From<input class="att-input" type="date" data-from value="' + esc(ui.from) + '"></label>' +
+            '<label class="att-label">To<input class="att-input" type="date" data-to value="' + esc(ui.to) + '"></label>' +
+            '<select class="sv-select" data-status aria-label="Status">' +
+              [['recorded', 'Recorded'], ['void', 'Voided'], ['all', 'All']].map(s => '<option value="' + s[0] + '"' + (s[0] === ui.status ? ' selected' : '') + '>' + s[1] + '</option>').join('') +
+            '</select>' +
+            '<select class="sv-select" data-folder aria-label="Project">' +
+              '<option value="">All projects</option>' +
+              ui.projects.map(f => '<option value="' + esc(f.folder_id) + '"' + (f.folder_id === ui.folder ? ' selected' : '') + '>' +
+                esc(f.name + (f.completed ? ' (completed)' : '')) + '</option>').join('') +
+            '</select>';
+        // The search filters what the server sent, without a reload.
+        const draw = (o) => {
             const shown = PA.searchPurchases(rows, ui.search);
-            tb.innerHTML = shown.map(purchaseRow).join('');
-            body.querySelector('[data-none]').hidden = shown.length > 0;
-            tb.querySelectorAll('tr[data-id]').forEach(tr => {
-                tr.addEventListener('click', () => PA.openPurchase(tr.dataset.id));
-                tr.addEventListener('keydown', e => { if (e.key === 'Enter') PA.openPurchase(tr.dataset.id); });
-            });
+            if (o && o.leaveSelection && ui.sel && !shown.some(p => p.id === ui.sel)) ui.sel = null;
+            root.SplitView.render(host, PA.frame(host, me, {
+                search: { placeholder: 'Search supplier, project, person, source…', value: ui.search, onInput: t => { ui.search = t; draw({ leaveSelection: true }); } },
+                toolbar: toolbar,
+                onToolbar: el => {
+                    el.querySelector('[data-from]').addEventListener('change', e => { ui.from = e.target.value; renderPurchases(host, me); });
+                    el.querySelector('[data-to]').addEventListener('change', e => { ui.to = e.target.value; renderPurchases(host, me); });
+                    el.querySelector('[data-status]').addEventListener('change', e => { ui.status = e.target.value; renderPurchases(host, me); });
+                    el.querySelector('[data-folder]').addEventListener('change', e => { ui.folder = e.target.value; renderPurchases(host, me); });
+                },
+                showing: rows.length >= 300 ? 'Showing the newest 300 — narrow the dates.' : (shown.length !== rows.length ? 'Showing ' + shown.length + ' of ' + rows.length : ''),
+                groups: [{ title: '', rows: shown.map(purchaseCard) }],
+                empty: rows.length ? 'Nothing matches the search.' : 'No purchases in these dates.',
+                selectedId: ui.sel,
+                refreshPanel: !!(o && o.refreshPanel),
+                onSelect: (id, panel) => { ui.sel = id; renderPurchasePanel(panel, id, { onChanged: reload, nextLabel: 'Next purchase' }); },
+                onClose: () => { ui.sel = null; },
+            }));
         };
-        body.querySelector('[data-from]').addEventListener('change', e => { ui.from = e.target.value; reload(); });
-        body.querySelector('[data-to]').addEventListener('change', e => { ui.to = e.target.value; reload(); });
-        body.querySelector('[data-status]').addEventListener('change', e => { ui.status = e.target.value; reload(); });
-        body.querySelector('[data-folder]').addEventListener('change', e => { ui.folder = e.target.value; reload(); });
-        body.querySelector('[data-search]').addEventListener('input', e => { ui.search = e.target.value; draw(); });
-        draw();
-        RA.icons();
+        draw(opts);
     }
 
     function lineRow(l, doc) {
@@ -143,14 +126,18 @@
               (l.substitute ? 'Check substitute…' : 'Check unit…') + '</button>' : '') + '</td></tr>';
     }
 
-    async function renderPurchase(host) {
-        host.innerHTML = '<div class="att-stack"><div class="att-empty">Loading…</div></div>';
+    // One purchase in the Purchasing pop-up (office v5), through the page
+    // shell, wide (the lines table). hooks: { onChanged(): reload the list and
+    // this purchase, nextLabel }.
+    async function renderPurchasePanel(panel, id, hooks) {
+        const showing = () => panel.isConnected && panel.dataset.svId === id;
+        if (!panel.dataset.svRestore) panel.innerHTML = '<div class="sv-panel-empty">Loading…</div>';
         let me, doc, replaces = null;
         try {
             me = await PA.me();
-            if (!PA.state.purchaseId) { root.switchView('reqPurchasing'); return; }
-            doc = await RA.rpc('pur_purchase', { p_purchase: PA.state.purchaseId });
-        } catch (e) { RA.fail(host, e); return; }
+            doc = await RA.rpc('pur_purchase', { p_purchase: id });
+        } catch (e) { if (showing()) SV.error(panel, PA.errorMessage(e)); return; }
+        if (!showing()) return;   // the pop-up closed or moved on while this loaded
         // The earlier version this purchase replaced, if any (the server keeps
         // only the forward link). This tab is buyers-only, and buyers may read
         // purchase rows; for anyone else it finds nothing and nothing is shown.
@@ -163,14 +150,24 @@
         const docs = Object.entries(doc.docs || {}).filter(([, v]) => v);
         // R6: the word typed before a void (the one project's first word, else VOID).
         const word = PA.voidWord(PA.placesOf(doc));
-        host.innerHTML =
-            '<div class="att-stack pur-tab">' +
-              RA.head('Purchase · ' + RA.formatDay(doc.purchase_date), (doc.supplier || 'No supplier') + ' · ' + PA.peso(doc.receipt_total) +
+        if (!showing()) return;
+        const pay = PA.payLabel(doc.pay);
+        const host = SV.page(panel, {
+            kicker: 'Purchase · ' + RA.formatDay(doc.purchase_date),
+            title: doc.supplier || 'No supplier',
+            pills: [doc.status === 'void' ? { text: 'Void', tone: 'red' } : { text: 'Recorded', tone: 'done' }]
+                .concat(pay ? [{ text: pay.text, tone: TONE[pay.tone] || 'none' }] : []),
+            sub: (doc.supplier || 'No supplier') + ' · ' + PA.peso(doc.receipt_total) +
                 ' · bought by ' + doc.bought_by_name + (doc.bought_by_name !== doc.recorded_by_name ? ', recorded by ' + doc.recorded_by_name : '') +
                 ' · entered in ' + PA.sourceLabel(doc.source),
-                '<button type="button" class="att-btn" data-back>← Purchases</button>' +
+            wide: true,
+            nextLabel: hooks.nextLabel,
+        });
+        host.innerHTML =
+            '<div class="att-stack pur-tab">' +
+              ((open && !pending) || PA.canRecordAgain(doc) ? '<div class="pur-actions">' +
                 (open && !pending ? '<button type="button" class="att-btn" data-correct>Correct…</button><button type="button" class="att-btn att-btn--warn" data-void>Void…</button>' : '') +
-                (PA.canRecordAgain(doc) ? '<button type="button" class="att-btn" data-again>Record again…</button>' : '')) +
+                (PA.canRecordAgain(doc) ? '<button type="button" class="att-btn" data-again>Record again…</button>' : '') + '</div>' : '') +
               (doc.status === 'void' ? '<div class="att-info att-info--warn"><i data-lucide="ban"></i><div>Voided — it counts for nothing in Spent or Bought. ' +
                   (doc.replaced_by ? 'It was replaced by a newer version. <a class="att-link" href="#" data-open-purchase="' + esc(doc.replaced_by) + '">Open the newer version</a>'
                                    : 'Its receipt and history are kept.') + '</div></div>' : '') +
@@ -201,9 +198,8 @@
               '</ul></div></div>' +
             '</div>';
 
-        const reload = () => renderPurchase(host);
+        const reload = hooks.onChanged;
         if (PA.renderPayments) PA.renderPayments(host.querySelector('[data-payments]'), doc);
-        host.querySelector('[data-back]').addEventListener('click', () => { PA.ui.tab = 'purchases'; root.switchView('reqPurchasing'); });
         host.querySelectorAll('[data-open-purchase]').forEach(a => a.addEventListener('click', (e) => {
             e.preventDefault();
             PA.openPurchase(a.dataset.openPurchase);
@@ -305,6 +301,8 @@
         try { list = await RA.rpc('pur_change_requests', { p_scope: 'all' }); } catch (e) { RA.fail(body, e); return; }
         list = list || [];
         const pending = list.filter(r => r.status === 'pending');
+        // The badge follows what the screen just loaded (D5: gone at zero).
+        if (root.NavCounts && me.isOwner) root.NavCounts.set('purchasing', pending.length);
         const decided = list.filter(r => r.status !== 'pending').slice(0, 30);
         const KIND = { void: 'Void', replace: 'Replace' };
         const card = (r) => {
@@ -387,6 +385,20 @@
     }
 
     PA.renderPurchases = renderPurchases;
+
+    // D5: the red count on Purchasing — changes waiting for the owner's
+    // approval, for owner accounts (who can approve); nobody else counts it.
+    if (root.NavCounts) {
+        root.NavCounts.register('purchasing', async () => {
+            const me = await PA.me();
+            if (!me.isOwner) return null;
+            const list = (await RA.rpc('pur_change_requests', { p_scope: 'pending' })) || [];
+            return list.filter(r => r.status === 'pending').length;
+        });
+    }
     PA.renderApprovals = renderApprovals;
-    RA.views.reqPurchase = renderPurchase;
+    PA.renderPurchasePanel = renderPurchasePanel;
+    // The old one-purchase page lands on Purchasing (PA.openPurchase opens
+    // the purchase there); focused accounts keep the id.
+    RA.views.reqPurchase = () => root.switchView('reqPurchasing');
 })(typeof window !== 'undefined' ? window : globalThis);

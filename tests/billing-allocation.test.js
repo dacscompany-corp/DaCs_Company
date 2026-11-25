@@ -4,6 +4,7 @@ const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
 const A = require('../js/billing-allocation.js');
+const PF = require('../js/project-finance.js');
 
 const eq = (actual, expected, message) => assert.deepStrictEqual(actual, expected, message);
 const close = (actual, expected, message) => assert.ok(Math.abs(actual - expected) < 0.000001, message || `${actual} !== ${expected}`);
@@ -573,9 +574,10 @@ function testOverheadCsvFormulas() {
 function dashboardHarness() {
   const state = [], edits = [];
   let cursor = 0;
-  const context = vm.createContext({ ...A, console, Date, Set,
+  const context = vm.createContext({ ...A, ...PF, console, Date, Set,
     React: { Fragment: 'fragment', createElement: (type, props, ...children) => ({ type, props: props || {}, children: children.flat(Infinity) }),
-      useState: initial => { const i = cursor++; if (!(i in state)) state[i] = initial; return [state[i], next => { state[i] = next; }]; },
+      // A function update is applied to the current value, as React does.
+      useState: initial => { const i = cursor++; if (!(i in state)) state[i] = initial; return [state[i], next => { state[i] = typeof next === 'function' ? next(state[i]) : next; }]; },
       useRef: () => ({ current: null }), useEffect() {} },
     window: { currentUserRole: 'owner', openEditProjectModal: id => edits.push(id) },
     peso: n => Number(n).toFixed(2), Ico: {}, COVER_LIMIT: 50000,
@@ -602,7 +604,8 @@ function dashboardHarness() {
 
 function testAllocationDashboard() {
   const h = dashboardHarness();
-  const project = { id:'f1', name:'Job One', revenue:200000, labor:72000, material:0, overhead:24000, completion:{ hasData:true, pct:0.6 } };
+  const project = { id:'f1', name:'Job One', revenue:200000, labor:72000, material:0, overhead:24000,
+    completion:{ hasData:true, pct:0.6, status:'approved', savedAt:new Date().toISOString() } };
   const childMonths = [
     { id:'a', folderId:'f1', month:'September', year:2026, monthlyBudget:100000 },
     { id:'legacy', folderId:'f1', month:'August', year:2026, monthlyBudget:50000 },
@@ -683,7 +686,8 @@ function testAllocationDashboard() {
   assert.match(costText, /Budget/, 'allocation envelopes use the plain-language budget label');
   assert.doesNotMatch(costText, /Set aside/i, 'allocation envelopes must not use set-aside jargon');
   assert.match(costText, /One budget covers Labor and Material/, 'one direct envelope covers both rows and is never split between them');
-  assert.match(costText, /Earned so far/);
+  assert.match(costText, /BOQ-based profit estimate/);
+  assert.doesNotMatch(costText, /Earned so far|Forecast profit/);
   assert.match(costText, /Target margin reserve/i);
   assert.doesNotMatch(costText, /Profit kept[\s\S]{0,120}?Planned/, 'the 10% reserve is never labelled merely "Planned" profit');
   assert.match(costText, /Ahead of plan/);
@@ -709,13 +713,29 @@ function testAllocationDashboard() {
   assert.match(needsText, /isn’t attached to any billing/, 'unallocated overhead must still be called out');
   assert.match(needsText, /5000\.00/, 'unallocated overhead amount is shown');
   assert.doesNotMatch(costText, /isn’t attached to any billing/, 'the warning is not repeated inside the cost card');
+  // A DRAFT (or stale) BOQ: the estimate shows with its warning and is never
+  // compared against the reserve.
+  project.completion = { hasData:true, pct:0.6, status:'draft', savedAt:new Date().toISOString() };
+  const draft = h.context._pcAllocationSummary(project, childMonths, props.payrollRaw, [], props.overheadRaw, props.allocationMap);
+  eq([draft.targetMarginVariance, draft.profitBasis, draft.boqBadges], [null, 'unconfirmed', ['Draft']]);
+  costText = h.text(h.render('CostBudget', { ...costProps, summary:draft }));
+  assert.match(costText, /BOQ-based profit estimate/);
+  assert.match(costText, /⚠ Draft/);
+  assert.match(costText, /No comparison — BOQ is draft or stale/);
+  assert.doesNotMatch(costText, /Ahead of plan|Short of plan/);
   project.completion = null;
   const forecast = h.context._pcAllocationSummary(project, childMonths, props.payrollRaw, [], props.overheadRaw, props.allocationMap);
-  eq(forecast.targetMarginVariance, null);
+  eq([forecast.targetMarginVariance, forecast.profitBasis], [null, 'none']);
   costText = h.text(h.render('CostBudget', { ...costProps, summary:forecast }));
-  assert.match(costText, /Forecast profit/);
-  assert.match(costText, /No comparison yet/, 'a forecast is never compared against the reserve');
-  assert.doesNotMatch(costText, /Earned so far|Ahead of plan|Short of plan/);
+  assert.match(costText, /No BOQ progress recorded/);
+  assert.match(costText, /No comparison yet/, 'no estimate is never compared against the reserve');
+  assert.doesNotMatch(costText, /Earned so far|Forecast profit|Ahead of plan|Short of plan|104000\.00/);
+  // Under a date filter the comparison is cumulative and reads All Time only.
+  project.completion = { hasData:true, pct:0.6, status:'approved', savedAt:new Date().toISOString() };
+  const monthly = h.context._pcFinance(project, { period:'This Month', periods:childMonths, allocationMap:props.allocationMap });
+  costText = h.text(h.render('CostBudget', { ...costProps, finance:monthly }));
+  assert.match(costText, /All Time only/);
+  assert.doesNotMatch(costText, /Ahead of plan|Short of plan/);
   props.payrollRaw[0].totalSalary = 56000;
   assert.match(h.text(h.render('BillingPeriodsDrill', props)), /Advisory/);
   for (const role of ['staff', 'client', undefined]) {
@@ -751,34 +771,118 @@ function testProjectLedger() {
   // cost and profit, full stop.
   assert.doesNotMatch(text, /Billed to date|Left to bill|Not linked|connect the Accomplishment/,
     'the ledger never reports billing progress');
-  assert.match(text, /175000\.00/, 'actual cost = Labor + Material + Overhead');
-  // No accomplishment data => the profit assumes the job runs to completion and
-  // is never presented as earned.
-  assert.match(text, /Net Profit · Forecast/);
-  assert.match(text, /Forecast profit rate/, 'forecast percentage is named as profit, not margin jargon');
-  assert.doesNotMatch(text, /Forecast margin|Net Profit · Earned/);
-  // The profit belongs to the hero banner alone — the strip below must not
-  // reprint it, which is the duplication the redesign removed.
-  eq((text.match(/825000\.00/g) || []).length, 1, 'the profit is printed once, in the banner');
-  // The funding figures live behind the banner's eye, as they did before.
-  assert.doesNotMatch(text, /Fund Allocated|Budget Remaining|325000\.00/, 'funding figures stay hidden until the eye is opened');
-  h.nodes(tree).find(n => n.type === 'button' && h.text(n).includes('Show figures')).props.onClick({ stopPropagation() {} });
-  text = h.text(h.render('ProjectLedger', props));
-  for (const label of ['Fund Allocated', 'Budget Remaining', 'Cover Expenses']) {
-    assert.match(text, new RegExp(label), 'opening the eye must reveal ' + label);
+  assert.match(text, /175,000\.00/, 'actual cost = Labor + Material + Overhead');
+  // No BOQ progress => there is NO profit estimate; contract − cost is only
+  // "Contract value minus costs" (spec 2026-11-14 §3.2). Never Net Profit,
+  // never Earned, never Forecast.
+  for (const label of ['Profit not confirmed', 'No BOQ progress recorded', 'Recognized Project Profit', 'Unavailable',
+    'Contract value minus costs', '₱ 825,000.00']) assert.ok(text.includes(label), 'no-BOQ ledger missing ' + label);
+  assert.doesNotMatch(text, /Net Profit|Net Loss|· Earned|· Forecast|profit rate|Budget Remaining/);
+  eq((text.match(/825,000\.00/g) || []).length, 1, 'contract less cost is printed once');
+  // Design 1b: Actual Cost is printed ONCE (in the hero); the bars measure it.
+  eq((text.match(/175,000\.00/g) || []).length, 1, 'actual cost is printed once');
+  // The funding figures sit in the bars and the footer line, under the eye —
+  // which starts OPEN (design 1b) and folds them away.
+  const periods = [{ id:'p1', folderId:'f1', fundingType:'progress', monthlyBudget:500000 }];
+  const finance = period => h.context._pcFinance(props.project, { period, today:new Date('2026-11-12T04:16:15Z'),
+    periods, allocationMap:{ p1:policy } });
+  const withFinance = { ...props, finance:finance('All Time') };
+  tree = h.render('ProjectLedger', withFinance);
+  text = h.text(tree);
+  for (const label of ['Fund Allocated', 'Total Allocation Remaining', 'Operating allocation remaining', 'Cover Expenses']) {
+    assert.ok(text.includes(label), 'the open ledger must show ' + label);
   }
-  assert.match(text, /325000\.00/, 'budget remaining = allocated funds minus spent');
-  assert.match(text, /Hide figures/, 'the eye flips to hide once open');
-  const earned = h.text(h.render('ProjectLedger', { ...props, project:{ ...props.project, completion:{ hasData:true, pct:0.4 } } }));
-  assert.match(earned, /Net Profit · Earned/);
-  assert.match(earned, /Earned profit rate/);
-  assert.match(earned, /40\.0% complete/, 'the earned banner says how much is accomplished');
-  assert.doesNotMatch(earned, /Forecast/);
+  assert.match(text, /₱ 325,000\.00/, 'total allocation remaining = allocated funds minus spent');
+  assert.match(text, /₱ 275,000\.00/, 'operating allocation remaining = direct + indirect budget minus spent');
+  assert.doesNotMatch(text, /Budget Remaining/);
+  // The eye reads "Hide" / "Show" (design 1b); its accessible name says what.
+  const eye = t => h.nodes(t).find(n => n.type === 'button' && n.props.className === 'pc-eye-toggle');
+  eq(h.text(eye(tree)).trim(), 'Hide', 'the eye starts open');
+  eq(eye(tree).props['aria-label'], 'Hide figures');
+  // The bars: Actual Cost against the contract (17.5%) and against the fund (35.0%).
+  const meters = h.nodes(tree).filter(n => n.props && n.props.role === 'meter');
+  eq(meters.map(m => m.props['aria-valuetext']), ['17.5% of contract used', '35.0% of the fund used'], 'one bar per base');
+  assert.match(text, /Actual Cost 17\.5%[\s\S]*Actual Cost 35\.0%/);
+  eye(tree).props.onClick({ stopPropagation() {} });
+  tree = h.render('ProjectLedger', withFinance);
+  text = h.text(tree);
+  assert.doesNotMatch(text, /Fund Allocated|[Aa]llocation [Rr]emaining|325,000\.00|Contract value minus costs/, 'the eye folds the bars and the footer');
+  eq(h.text(eye(tree)).trim(), 'Show', 'the eye flips to show once folded');
+  eq(eye(tree).props['aria-label'], 'Show figures');
+  assert.match(text, /175,000\.00/, 'the hero keeps the cost when folded');
+  eye(tree).props.onClick({ stopPropagation() {} });
+  assert.match(h.text(h.render('ProjectLedger', withFinance)), /Hide[\s\S]*Fund Allocated/, 'and opens them again');
+  // A fund already overspent: the bar is full and red, the remaining figure negative.
+  const overspent = { ...props.project, allocated:100000 };
+  tree = h.render('ProjectLedger', { ...props, project:overspent, finance:h.context._pcFinance(overspent, { period:'All Time',
+    periods:[{ id:'p1', folderId:'f1', fundingType:'progress', monthlyBudget:100000 }], allocationMap:{ p1:policy } }) });
+  const fills = h.nodes(tree).filter(n => n.props && /pc-ledger-fill/.test(n.props.className || ''));
+  eq(fills[1].props.style.width, '100%', 'an overspent fund bar is full, never past the end');
+  assert.match(fills[1].props.className, /pc-ledger-fill--over/);
+  assert.match(h.text(tree), /Actual Cost 175\.0%[\s\S]*−₱ 75,000\.00/);
+  // One funded billing with no split: operating is Incomplete; the total still shows.
+  const incomplete = h.context._pcFinance(props.project, { period:'All Time', periods:[...periods,
+    { id:'p2', folderId:'f1', fundingType:'progress', monthlyBudget:1000 }], allocationMap:{ p1:policy } });
+  text = h.text(h.render('ProjectLedger', { ...props, finance:incomplete }));
+  assert.match(text, /Incomplete — 1 billing period has no allocation/);
+  assert.match(text, /₱ 326,000\.00/);
+  // testLedgerAllTimeOnly — cumulative figures never mix all-time revenue or
+  // allocation with filtered cost, under EVERY other date filter.
+  for (const period of ['This Month', 'Last 30 days', 'Quarter to Date', 'Year to Date']) {
+    text = h.text(h.render('ProjectLedger', { ...props, finance:finance(period) }));
+    assert.match(text, /All Time only/, period + ' must read All Time only');
+    assert.doesNotMatch(text, /825,000\.00|325,000\.00|275,000\.00|Profit not confirmed/, period + ' must not show a cumulative figure');
+    // No bar either: a share of the all-time contract or fund against filtered
+    // cost would mix the two.
+    tree = h.render('ProjectLedger', { ...props, finance:finance(period) });
+    eq(h.nodes(tree).filter(n => n.props && n.props.role === 'meter').length, 0, period + ' draws no bar');
+    assert.doesNotMatch(h.text(tree), /Actual Cost \d/, period + ' prints no share of the contract or fund');
+  }
+  // An approved BOQ saved within 30 days: the estimate IS the headline.
+  const current = { ...props.project, completion:{ hasData:true, pct:0.4, status:'approved', savedAt:'2026-11-01T02:00:00Z' } };
+  tree = h.render('ProjectLedger', { ...props, project:current,
+    finance:h.context._pcFinance(current, { period:'All Time', today:new Date('2026-11-12T04:16:15Z'), periods, allocationMap:{ p1:policy } }) });
+  text = h.text(tree);
+  // Design 1b's short hero labels (owner decision, 14 Nov 2026); the full
+  // names and the save note stay on hover.
+  assert.match(text, /Profit Estimate[\s\S]*BOQ 40\.0% done · saved 1 Nov 2026[\s\S]*Profit ₱ 225,000\.00[\s\S]*Margin 56\.25%[\s\S]*Cost ₱ 175,000\.00/,
+    'the current estimate leads the banner, with its BOQ % and save date');
+  const basisNode = h.nodes(tree).find(n => /pc-ledger-basis/.test(n.props.className || ''));
+  eq(basisNode.props.title, "BOQ last saved 1 Nov 2026. Saving a BOQ refreshes this date even when progress hasn't changed.", 'the save note is one hover away');
+  const statTitles = h.nodes(tree).filter(n => n.props.className === 'pc-ledger-hero-stat').map(n => n.props.title);
+  eq(statTitles, ['BOQ-based profit estimate: BOQ-earned revenue − Actual Cost', 'Of BOQ-earned revenue', 'Actual Cost: Labor + Material + Overhead'], 'and so are the full names');
+  assert.doesNotMatch(text, /Profit not confirmed|Earned profit|Net Profit|not confirmed|⚠/, 'a confirmed estimate has no warning row');
+  // A figure is printed ONCE: the headline estimate is not repeated in the breakdown.
+  eq((text.match(/225,000\.00/g) || []).length, 1, 'the estimate is printed once when it is the headline');
+  eq((text.match(/Profit Estimate/g) || []).length, 1, 'its label too');
+  eq((text.match(/56\.25%/g) || []).length, 1, 'and its margin');
+  // A confirmed loss: red hero, the figure labelled Loss.
+  const loss = { ...props.project, completion:{ hasData:true, pct:0.1, status:'approved', savedAt:'2026-11-01T02:00:00Z' } };
+  tree = h.render('ProjectLedger', { ...props, project:loss,
+    finance:h.context._pcFinance(loss, { period:'All Time', today:new Date('2026-11-12T04:16:15Z'), periods, allocationMap:{ p1:policy } }) });
+  assert.match(h.text(tree), /Loss −₱ 75,000\.00[\s\S]*Margin -75\.00%/);
+  assert.match(h.nodes(tree).find(n => /pc-ledger-hero/.test(n.props.className || '')).props.style.background, /#b00020/);
+  // The 74,267 case (frozen 12 Nov snapshot): demoted, with every warning.
+  const sampleFx = require('./fixtures/sample-residence-2026-11-12.json');
+  const sample = require('./helpers/portal-money.js').projectFromFixture(sampleFx);
+  tree = h.render('ProjectLedger', { ...props, project:sample, finance:h.context._pcFinance(sample,
+    { period:'All Time', today:new Date(sampleFx.today), periods:sampleFx.periods, allocationMap:Object.fromEntries(sampleFx.periods.map(q => [q.id, policy])) }) });
+  text = h.text(tree);
+  for (const label of ['Profit not confirmed', 'BOQ-based profit estimate', '₱ 74,266.77', 'BOQ 70.0% done · saved 7 Sep 2026',
+    '⚠ Draft', '⚠ Stale · 66 days', '1.61% of BOQ-earned revenue', 'Estimate —', 'Margin —',
+    'Contract value minus costs', '₱ 2,054,266.77']) assert.ok(text.includes(label), 'Sample ledger missing ' + label);
+  assert.match(h.nodes(tree).find(n => /pc-ledger-basis/.test(n.props.className || '')).props.title,
+    /^BOQ last saved 7 Sep 2026\. Saving a BOQ refreshes this date even when progress hasn't changed\.$/);
+  assert.doesNotMatch(text, /Net Profit|· Earned|74,267/);
+  // Design 1b's grey hero shows no figure; the estimate sits in the warning row, once.
+  eq((text.match(/74,266\.77/g) || []).length, 1, 'the unconfirmed estimate is printed once');
+  assert.match(text, /⚠ BOQ-based profit estimate ₱ 74,266\.77 1\.61% of BOQ-earned revenue · not confirmed/);
+  eq((text.match(/⚠ Draft/g) || []).length, 1, 'each warning is printed once');
   // Cover money is a SUBSET of Actual Cost — reported, never added on top.
   const cover = h.text(h.render('ProjectLedger', { ...props, project:{ ...props.project, coverCost:60000 } }));
   assert.match(cover, /already counted in Actual Cost/);
   assert.match(cover, /Over ₱[\d,]+/, 'cover spend past the limit keeps its badge');
-  assert.match(cover, /175000\.00/, 'cover money must not inflate Actual Cost');
+  assert.match(cover, /175,000\.00/, 'cover money must not inflate Actual Cost');
   const needsProps = { billing:props.billing, inboxPending:props.inboxPending, onOpen:() => {},
     allocationSummary:{ directBudget:200000, indirectBudget:50000, directActual:150000, indirectActual:25000,
       legacyCount:1, configuredCount:1, unallocatedIndirect:5000 } };
@@ -835,7 +939,7 @@ function testProjectLedger() {
   h.context.window.currentUserRole = 'staff';
   text = h.text(h.render('ProjectLedger', props));
   assert.doesNotMatch(text, /175000|325000|600000|400000|₱/, 'staff ledger must not expose peso amounts');
-  assert.doesNotMatch(text, /Net Profit|Net Loss|profit rate|Show figures/, 'staff never see the profit banner or its eye');
+  assert.doesNotMatch(text, /Profit|profit|[Aa]llocation [Rr]emaining|Contract value|\bShow\b|\bHide\b|Margin/, 'staff never see the profit banner, its breakdown or its eye');
   assert.match(text, /17\.5% of contract spent/);
   assert.doesNotMatch(text, /left to bill|Billed to date/, 'staff see no billing progress either');
   assert.match(text, /3 receipts need encoding/, 'staff action count only uses the receipt queue available to staff');
@@ -845,20 +949,45 @@ function testProjectLedger() {
 function testAllocationPrint() {
   const h = dashboardHarness();
   let payload, printed = '';
-  const summary = { directBudget:123, indirectBudget:456, targetMarginReserve:789, unallocatedIndirect:12, actualProfit:321, targetMarginVariance:-468, legacyCount:2, configuredCount:1, isForecast:false };
+  const summary = { directBudget:123, indirectBudget:456, targetMarginReserve:789, unallocatedIndirect:12, actualProfit:321, targetMarginVariance:-468, legacyCount:2, configuredCount:1, isForecast:false, profitBasis:'current' };
   h.context.window.dacsPrintProjectCostSummary = d => { payload = d; };
-  const props = { project:{ name:'Job', revenue:1000, labor:100, material:200, overhead:300 }, projects:[], period:'All Time', allocationSummary:summary };
+  // An approved BOQ saved within 30 days: the estimate is the headline.
+  const project = { name:'Job', revenue:1000, labor:100, material:200, overhead:300,
+    completion:{ hasData:true, pct:0.921, status:'approved', savedAt:new Date().toISOString() } };
+  const periods = [{ id:'p1', folderId:'f1', fundingType:'progress', monthlyBudget:950 }];
+  const finance = period => h.context._pcFinance(project, { period, periods, allocationMap:{ p1:policy } });
+  const props = { project, projects:[], period:'All Time', allocationSummary:summary, finance:finance('All Time') };
   const tree = h.render('PageHead', props);
   h.nodes(tree).find(n => n.type === 'button' && h.text(n).includes('Print Summary')).props.onClick();
   eq(payload.allocationSummary, summary, 'print must receive the same precomputed rollup');
   const ctx = vm.createContext({ window:{ currentUserRole:'owner', location:{ origin:'https://example.test' }, open:() => ({ document:{ write: html => { printed = html; }, close() {} } }) } });
   vm.runInContext(sourceSlice(read('js/print-utils.js'), 'window.dacsPrintProjectCostSummary =', '/**\n * ONE shared', 'cost print'), ctx);
+  eq(payload.finance, props.finance, 'print must receive the same finance view as the screen');
+  Object.assign(ctx.window, PF);   // the labelling layer is a global in admin.html, loaded before print-utils.js
   ctx.window.dacsPrintProjectCostSummary(payload);
-  for (const value of ['Target Margin Reserve', '123.00', '456.00', '789.00', 'Unallocated Indirect Cost', '12.00', 'Actual Earned Profit', '321.00', '-468.00', 'Allocation not configured']) assert.ok(printed.includes(value), 'print missing ' + value);
-  payload.allocationSummary = { ...summary, isForecast:true, targetMarginVariance:null };
-  ctx.window.dacsPrintProjectCostSummary(payload);
-  assert.match(printed, /Forecast Profit/);
-  assert.doesNotMatch(printed, /Actual Earned Profit|Target Variance/);
+  for (const value of ['Target Margin Reserve', '123.00', '456.00', '789.00', 'Unallocated Indirect Cost', '12.00',
+    'BOQ-based profit estimate', '321.00', 'Target Variance', '-468.00', 'Allocation not configured', 'Profit figures',
+    'Recognized Project Profit', 'Unavailable', 'Contract value minus costs', '₱400.00',
+    'Operating allocation remaining', '₱255.00', 'Total Allocation Remaining', '₱350.00',
+    'BOQ last saved', "Saving a BOQ refreshes this date even when progress hasn't changed."]) assert.ok(printed.includes(value), 'print missing ' + value);
+  assert.doesNotMatch(printed, /Actual Earned Profit|Forecast Profit|Net profit|Net loss|Earned against accomplishment/);
+  // The headline estimate is not repeated in the Profit figures block.
+  const figuresBlock = printed.slice(printed.indexOf('Profit figures'), printed.indexOf('What was the money spent on'));
+  assert.ok(figuresBlock.includes('Recognized Project Profit') && !figuresBlock.includes('BOQ-based profit estimate'),
+    'the print states the headline estimate once');
+  // A DRAFT BOQ: Profit not confirmed, the estimate with its warning, no variance.
+  project.completion = { hasData:true, pct:0.921, status:'draft', savedAt:new Date().toISOString() };
+  ctx.window.dacsPrintProjectCostSummary({ ...payload, finance:finance('All Time'), allocationSummary:{ ...summary, profitBasis:'unconfirmed', targetMarginVariance:null } });
+  assert.match(printed, /Profit not confirmed/);
+  assert.match(printed, /BOQ-based profit estimate \(Draft\)/);
+  assert.doesNotMatch(printed, /Target Variance|Actual Earned Profit|Forecast Profit/);
+  // Print under a date filter: cumulative figures read All Time only, like the screen.
+  for (const period of ['This Month', 'Last 30 days', 'Quarter to Date', 'Year to Date']) {
+    ctx.window.dacsPrintProjectCostSummary({ ...payload, periodLabel:period, finance:finance(period) });
+    assert.match(printed, /All Time only/, period);
+    assert.ok(printed.includes('Costs: ' + period), period + ' names the date range');
+    assert.doesNotMatch(printed, /₱400\.00|₱255\.00|₱350\.00|Target Variance/, period + ' prints a cumulative figure');
+  }
   h.context.window.currentUserRole = 'client';
   h.nodes(h.render('PageHead', props)).find(n => n.type === 'button' && h.text(n).includes('Print Summary')).props.onClick();
   assert.ok(!payload.allocationSummary, 'non-owner print must omit stale allocation data');
@@ -947,7 +1076,7 @@ function expenseReportHarness() {
     classList:{ add(){}, remove(){}, toggle(){} }, setAttribute(){}, getContext(){ return this; },
     querySelector(){ return null; }, querySelectorAll(){ return []; }, closest(){ return null; }, appendChild(){}, dataset:{} });
   let printed = '', csv = '';
-  const context = vm.createContext({ console:{ log(){}, error:console.error }, ...A,
+  const context = vm.createContext({ console:{ log(){}, error:console.error }, ...A, ...PF,
     window:{ currentUserRole:'owner', location:{ href:'https://example.test/admin.html', origin:'https://example.test' },
       open:() => ({ document:{ write:html => { printed = html; }, close(){} }, focus(){}, print(){}, addEventListener(){} }) },
     document:{ getElementById:el, querySelector:() => null, querySelectorAll:() => [], addEventListener(){},
@@ -1207,14 +1336,29 @@ function testPublicPrintContracts() {
   for (const [fn,arg,contracts] of [
     ['printFullBillingSummary','f',[/DACS-TRANSPARENT\.png/,/Professional Building Design/,/Renovation &lt;unsafe&gt;/,/Progress Billing #7/,/Subtotal.*Progress Billing/i,/Grand Total Balance/,/Total Contract/]],
     ['printBillingSummaryReceipt','p',[/DACS-TRANSPARENT\.png/,/Billing Period Summary/,/SUMMARY NO\./,/SUM-[A-Z0-9]+/,/Progress Billing #7/,/Renovation &lt;unsafe&gt;/,/Lump Sum/,/Expenses Subtotal/,/Payroll Subtotal/]],
-    ['printReportsDashboard',null, [/DACS-TRANSPARENT\.png/,/Monthly Report/,/Category Breakdown/,/Concrete/,/Lump Sum/,/Expenses Subtotal/,/Payroll Subtotal/,/Receivable Balance/,/Funds Available/]]
+    ['printReportsDashboard',null, [/DACS-TRANSPARENT\.png/,/Monthly Report/,/Category Breakdown/,/Concrete/,/Lump Sum/,/Expenses Subtotal/,/Payroll Subtotal/,/Contract less allocated funds/,/Allocated less cost \(by date\)/,/Period Breakdown · Costs by date/]]
   ]) {
     c[fn](arg);
     const out = h.output().printed;
     contracts.forEach(pattern => { if (!pattern.test(out)) missing.push(fn + ': ' + pattern); });
     assert.doesNotMatch(out, /Renovation <unsafe>/);
+    // Contract − Fund Allocated is never a receivable; the dashboard balance is named by its basis.
+    assert.doesNotMatch(out, /Receivable Balance|Funds Available|Unbilled contract value|Total Billed \(Received\)/, fn + ' keeps an old label');
   }
   assert.deepStrictEqual(missing, [], 'public print contracts missing');
+  // A windowed (by-date) report never wears a cumulative label: its per-billing
+  // balance is "Allocated less cost (by date)" and contract − allocated is
+  // All Time only. The all-time billing summary keeps Fund balance.
+  c.printReportsDashboard();
+  const dash = h.output().printed;
+  assert.match(dash, /Billing Allocation Performance[\s\S]*Allocated less cost \(by date\)/);
+  const projectSummary = reportTableRows(dash, 'Project Summary')[0];
+  eq(projectSummary[1], 'All Time only', 'contract less allocated funds is cumulative');
+  assert.doesNotMatch(dash.slice(dash.indexOf('Billing Allocation Performance')), /<th scope="col">Fund balance<\/th>/);
+  c.printFullBillingSummary('f');
+  const fullAll = h.output().printed;
+  assert.match(fullAll, /<th scope="col">Fund balance<\/th>/, 'an all-time report keeps Fund balance');
+  assert.doesNotMatch(reportTableRows(fullAll, 'Project Summary')[0][1], /All Time only/);
 }
 
 function reportTableRows(html, caption) {
@@ -1241,7 +1385,7 @@ function testPrintMetadataAndTotals() {
   assert.match(progress[0].join(' '), /Foundation draw/);
   eq(progress.at(-1).slice(-6), ['₱1,000.00','₱100.00','₱55.00','₱30.00','₱185.00','₱815.00']);
   eq(reportTableRows(full, 'Grand Total Balance')[0], ['₱200.00','₱55.00','₱52.00','₱1,493.00']);
-  assert.match(full, /Total Billed \(Received\)/); assert.match(full, /Net Balance/);
+  assert.match(full, /Total Billed \(Fund Allocated\)/); assert.match(full, /Net Balance/);
 
   c.printBillingSummaryReceipt('p');
   const receipt = h.output().printed;
@@ -1265,7 +1409,7 @@ function testPrintMetadataAndTotals() {
 
   c.printReportsDashboard();
   const dashboard = h.output().printed;
-  const monthly = reportTableRows(dashboard, 'Monthly Period Breakdown');
+  const monthly = reportTableRows(dashboard, 'Monthly Period Breakdown · Costs by date');
   assert.match(dashboard, /Transactions/); assert.match(dashboard, /Workers/);
   eq(monthly[0].slice(-3), ['Healthy','4','4']);
   eq(monthly.at(-1).slice(-3), ['Healthy','4','4']);
@@ -1475,7 +1619,7 @@ async function testReportsFreshForStaffShowsNoMoney() {
 
 async function testReportLabelNamesTheChosenFolder() {
   // Found in the browser check on 4 Nov: with the read failed, the label still
-  // named the last folder (J. Apo) beside an error about the one chosen (Sulit).
+  // named the last folder (J. Apo) beside an error about the one chosen (Sample).
   const { h, c, server, tick, gate } = reportServerHarness();
   const chip = () => h.el('rptScopeChip').textContent;
   const sub = () => h.el('rptCompanySub').textContent;

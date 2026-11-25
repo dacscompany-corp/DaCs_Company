@@ -2287,7 +2287,8 @@ const PRIMARY_NAV = [
         // Plain-language labels, matching the redesign: an owner reads
         // "Sites & schedule", not "Projects". The VIEW ids are unchanged —
         // ATT_VIEWS, _FOCUS_SUBVIEWS and switchView all key off those.
-        { view: 'attToday',    label: 'Today on site',    icon: 'calendar-check' },
+        // count: the D5 "needs you" counts (NavCounts, js/split-view.js).
+        { view: 'attToday',    label: 'Today on site',    icon: 'calendar-check', count: 'attToday' },
         { view: 'attWorkers',  label: 'Workers',          icon: 'user-round' },
         { view: 'attProjects', label: 'Sites & schedule', icon: 'hard-hat' },
         { view: 'attReports',  label: 'Hours report',     icon: 'file-bar-chart' },
@@ -2306,15 +2307,21 @@ const PRIMARY_NAV = [
     // same accounts, no money at all, once switched on (window.currentToolsOn).
     { id: 'requests', label: 'Requests', sub: 'Materials & Tools', defaultView: 'reqQueue',
       modules: [
-        { view: 'reqQueue',    label: 'Queue',          icon: 'inbox' },
-        { view: 'reqPurchasing', label: 'Purchasing',   icon: 'shopping-cart' },
-        { view: 'reqStock',    label: 'Stock',          icon: 'warehouse' },
-        { view: 'reqTools',    label: 'Tools',          icon: 'wrench' },
-        { view: 'reqBatches',  label: 'Weekly batches', icon: 'calendar-days' },
-        { view: 'reqTeams',    label: 'Teams',          icon: 'users' },
-        { view: 'reqCatalog',  label: 'Catalogue',      icon: 'package-search' },
-        { view: 'reqHistory',  label: 'Item history',   icon: 'images' },
-        { view: 'reqProjects', label: 'Projects',       icon: 'hard-hat' },
+        // count: the red "needs you" badge (NavCounts in js/split-view.js)
+        // on this module and on the Requests tab — requests still to
+        // arrange or resolve, the Queue's "Needs action" tab.
+        { view: 'reqQueue',    label: 'Queue',          icon: 'inbox', count: 'requests' },
+        { view: 'reqPurchasing', label: 'Purchasing',   icon: 'shopping-cart', count: 'purchasing' },
+        { view: 'reqStock',    label: 'Stock',          icon: 'warehouse', count: 'stock' },
+        { view: 'reqTools',    label: 'Tools',          icon: 'wrench', count: 'tools' },
+        // group: 'setup' — drawn together under one "Setup ▾" menu in the
+        // modules row (office split-view redesign). Drawing only: the
+        // views, _visibleNav() and every role rule are unchanged.
+        { view: 'reqBatches',  label: 'Weekly batches', icon: 'calendar-days', group: 'setup' },
+        { view: 'reqTeams',    label: 'Teams',          icon: 'users',         group: 'setup' },
+        { view: 'reqCatalog',  label: 'Catalogue',      icon: 'package-search', group: 'setup' },
+        { view: 'reqHistory',  label: 'Item history',   icon: 'images',        group: 'setup', count: 'history' },
+        { view: 'reqProjects', label: 'Projects',       icon: 'hard-hat',      group: 'setup' },
         // One request's detail: routable, highlighted under Requests, but
         // not a button in the secondary row (like Appointments' dashboard).
         { view: 'reqDetail',   label: 'Request',        icon: 'file-text', hidden: true },
@@ -2328,8 +2335,8 @@ const PRIMARY_NAV = [
     // account gets it only with 'workplan' in allowed_modules.
     { id: 'workplan', label: 'Work Plan', sub: 'Meetings & Tasks', defaultView: 'wpBoard',
       modules: [
-        { view: 'wpBoard',    label: 'Board',    icon: 'clipboard-list' },
-        { view: 'wpMeetings', label: 'Meetings', icon: 'book-open' },
+        { view: 'wpBoard',    label: 'Board',    icon: 'clipboard-list', count: 'board' },
+        { view: 'wpMeetings', label: 'Meetings', icon: 'book-open', count: 'meetings' },
         // Drill-downs: routable and highlighted under Work Plan, but not
         // buttons in the secondary row (like reqDetail).
         { view: 'wpMeeting',  label: 'Meeting',  icon: 'book-open', hidden: true },
@@ -2576,7 +2583,10 @@ function _buildTabsBar(activePrimaryId) {
     // the sliding pill from nothing, so the markup is only rewritten when the
     // set of sections actually changed (role or module-focus). Otherwise we
     // just move the active class — and the pill glides.
-    const sig = nav.map(p => p.id).join('|');
+    // A section that gains or loses its counted module (module focus) also
+    // needs new markup, so the count marker is part of the signature.
+    const countKeys = p => p.modules.filter(m => m.count && !m.hidden).map(m => m.count);
+    const sig = nav.map(p => p.id + ':' + countKeys(p).join(',')).join('|');
     const rebuilt = tabs.dataset.navSig !== sig;
 
     if (rebuilt) {
@@ -2590,7 +2600,14 @@ function _buildTabsBar(activePrimaryId) {
                 const badge = (p.id === 'expenses' || p.id === 'pm')
                     ? `<span class="rm rm-count rm-sm" data-ptab-badge="${p.id}" style="margin-left:6px;" hidden></span>`
                     : '';
-                return `<button class="portal-ptab" data-primary="${p.id}">${p.label}${badge}</button>`;
+                // The tab's "needs you" count (D5, NavCounts in
+                // js/split-view.js): the sum of the counts of the links this
+                // account sees under it, so the numbers always add up.
+                const keys = p.modules.filter(m => m.count && !m.hidden).map(m => m.count);
+                const count = keys.length
+                    ? `<span class="sv-count sv-count--tab" data-nav-total="${keys.join(' ')}" hidden></span>`
+                    : '';
+                return `<button class="portal-ptab" data-primary="${p.id}">${p.label}${badge}${count}</button>`;
             }).join('');
 
         tabs.querySelectorAll('.portal-ptab').forEach(btn => {
@@ -2609,6 +2626,7 @@ function _buildTabsBar(activePrimaryId) {
     });
 
     if (typeof window.eiSyncTabBadges === 'function') window.eiSyncTabBadges();
+    if (window.NavCounts) window.NavCounts.paint();
 
     // A fresh bar has nowhere to slide from — park the pill; otherwise glide.
     _movePtabPill(!rebuilt);
@@ -2625,11 +2643,80 @@ function renderPortalChrome() {
             if (modal) modal.style.display = 'flex';
         });
     }
+
+    // "Needs you" counts (NavCounts, js/split-view.js), fetched in the
+    // background once the role is known — and only for the counted links
+    // this account can see (a Purchasing-only or admin-pm@ account has no
+    // Queue, so it loads nothing extra). A loader returns null when this
+    // account cannot act on its count (D5): no badge, adds nothing.
+    if (window.NavCounts && currentUserRole) {
+        window.NavCounts.refresh(_visibleNav().flatMap(p => p.modules.filter(m => m.count && !m.hidden).map(m => m.count)));
+    }
 }
 
+// ── Setup ▾ menu (office split-view redesign) ──────────────────────
+// Modules marked group: 'setup' are drawn as one menu. The menu lives on
+// <body>, position: fixed: the modules row hides its overflow (desktop)
+// and scrolls sideways (phones), either of which would cut it off.
+function _setupMenuClose() {
+    const menu = document.getElementById('svSetupMenu');
+    if (menu) menu.remove();
+    document.querySelectorAll('.sv-setup[aria-expanded="true"]').forEach(b => b.setAttribute('aria-expanded', 'false'));
+    document.removeEventListener('click', _setupMenuOutside, true);
+    document.removeEventListener('keydown', _setupMenuKey, true);
+    window.removeEventListener('scroll', _setupMenuClose, true);
+    window.removeEventListener('resize', _setupMenuClose);
+}
+function _setupMenuOutside(e) {
+    if (!e.target.closest('#svSetupMenu, .sv-setup')) _setupMenuClose();
+}
+function _setupMenuKey(e) {
+    if (e.key !== 'Escape') return;
+    const btn = document.querySelector('.sv-setup');
+    _setupMenuClose();
+    if (btn) btn.focus();
+}
+function _setupMenuOpen(btn, items, view) {
+    _setupMenuClose();
+    const r = btn.getBoundingClientRect();
+    const menu = document.createElement('div');
+    menu.id = 'svSetupMenu';
+    menu.className = 'sv-setup-menu';
+    menu.setAttribute('role', 'menu');
+    menu.style.top = Math.round(r.bottom + 4) + 'px';
+    menu.style.left = Math.round(r.left) + 'px';
+    menu.innerHTML = items.map(m =>
+        `<button type="button" role="menuitem" class="sv-menu-item${m.view === view ? ' is-on' : ''}" data-view="${m.view}">` +
+        `<i data-lucide="${m.icon}"></i>${m.label}` +
+        (m.count ? `<span class="sv-count" data-nav-count="${m.count}" hidden></span>` : '') + `</button>`).join('');
+    document.body.appendChild(menu);
+    if (window.NavCounts) window.NavCounts.paint();
+    btn.setAttribute('aria-expanded', 'true');
+    menu.querySelectorAll('[data-view]').forEach(b => b.addEventListener('click', () => {
+        _setupMenuClose();
+        switchView(b.dataset.view);
+    }));
+    document.addEventListener('click', _setupMenuOutside, true);
+    document.addEventListener('keydown', _setupMenuKey, true);
+    window.addEventListener('scroll', _setupMenuClose, true);
+    window.addEventListener('resize', _setupMenuClose);
+    if (typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons();
+    const first = menu.querySelector('.is-on') || menu.querySelector('button');
+    if (first) first.focus({ preventScroll: true });
+}
+
+// The office v5 sections (spec 2026-11-14-office-split-view-redesign-design):
+// they get v5's light grey page and underlined module row (css/split-view.css,
+// body.sv-v5); every other section keeps the portal's white page.
+const V5_SECTIONS = ['attendance', 'requests', 'workplan'];
+
 function syncPortalChrome(view) {
+    // An item open in the office pop-up belongs to the screen being left.
+    if (window.SplitView && window.SplitView.closePop) window.SplitView.closePop();
     const primary = findPrimaryForView(view);
     if (!primary) return;
+    document.body.classList.toggle('sv-v5', V5_SECTIONS.indexOf(primary.id) >= 0);
+    _setupMenuClose();
 
     // Rebuild tabs bar with correct active state
     _buildTabsBar(primary.id);
@@ -2638,22 +2725,46 @@ function syncPortalChrome(view) {
     if (!row) return;
 
     const visibleModules = primary.modules.filter(m => !m.hidden);
+    // Two or more Setup modules become one "Setup ▾" menu, at the place of
+    // the first; a lone one stays a plain link.
+    const setup = visibleModules.filter(m => m.group === 'setup');
+    const useMenu = setup.length >= 2;
+    const activeSetup = setup.find(m => m.view === view);
+    let setupDrawn = false;
 
     // Always show every module — no collapse/expand toggle.
     row.innerHTML =
         '<div class="portal-modules-track">' +
         visibleModules.map((m) => {
+            if (useMenu && m.group === 'setup') {
+                if (setupDrawn) return '';
+                setupDrawn = true;
+                return `<button type="button" class="portal-module-link sv-setup${activeSetup ? ' active-link' : ''}" aria-haspopup="menu" aria-expanded="false">
+                <i data-lucide="settings-2" style="width:14px;height:14px;"></i>
+                <span>${activeSetup ? activeSetup.label : 'Setup'}</span>${setup.some(x => x.count) ? `<span class="sv-count" data-nav-total="${setup.filter(x => x.count).map(x => x.count).join(' ')}" hidden></span>` : ''}
+                <i data-lucide="chevron-down" style="width:14px;height:14px;"></i>
+            </button>`;
+            }
             const isActive = m.view === view;
+            const count = m.count ? `<span class="sv-count" data-nav-count="${m.count}" hidden></span>` : '';
             return `<button class="portal-module-link${isActive ? ' active-link' : ''}" data-view="${m.view}">
                 <i data-lucide="${m.icon}" style="width:14px;height:14px;"></i>
-                <span>${m.label}</span>
+                <span>${m.label}</span>${count}
             </button>`;
         }).join('') +
         '</div>';
 
-    row.querySelectorAll('.portal-module-link').forEach(btn => {
+    row.querySelectorAll('.portal-module-link[data-view]').forEach(btn => {
         btn.addEventListener('click', () => switchView(btn.dataset.view));
     });
+    const setupBtn = row.querySelector('.sv-setup');
+    if (setupBtn) {
+        setupBtn.addEventListener('click', () => {
+            if (setupBtn.getAttribute('aria-expanded') === 'true') _setupMenuClose();
+            else _setupMenuOpen(setupBtn, setup, view);
+        });
+    }
+    if (window.NavCounts) window.NavCounts.paint();
 
     if (typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons();
 

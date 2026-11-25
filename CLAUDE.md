@@ -44,8 +44,17 @@ Profit   = Earned − Spent
 - Indirect labor is **Overhead, not Labor** — counted once, never both.
 - Statutory burden follows its worker: a coordinator's SSS is Overhead, a mason's is Labor.
 - **Overhead pay never draws down a pakyaw contract.**
-- Profit uses **earned** revenue. With no accomplishment data it falls back to the contract and
-  must be labelled **"Forecast"**, never "Earned".
+- Earned − Spent is the **BOQ-based profit estimate**. `_projMargin` keeps the arithmetic;
+  `js/project-finance.js` labels it. It always shows the BOQ %, **BOQ last saved** and Draft / For
+  review / Stale (> 30 Manila days) / BOQ date unavailable. Unless the BOQ is approved and current it
+  is not the headline, which then reads **"Profit not confirmed"**. With no BOQ progress there is no
+  estimate, and contract − cost is **Contract value minus costs**, never profit. **Recognized Project
+  Profit** is Unavailable (there is no accounting source). Cumulative figures read "All Time only"
+  under a date filter. Sample Residence's ₱74,267 case is frozen in `tests/fixtures/` (spec
+  `docs/superpowers/specs/2026-11-14-financial-management-mvp-design.md`). **One exception (owner
+  decision 2026-11-14, design 1b):** the Project Control *hero* uses short labels — **Profit
+  Estimate**, "BOQ 90.1% done · saved 14 Nov 2026", Profit / Loss · Margin · Cost, Hide / Show —
+  with the full names and the save note on hover. Everything else keeps the full names.
 - Company overhead (G&A) is never charged to a job.
 - **Cover money is Spent, and the Cover figure is a *subset* — never a fourth bucket.** A
   president-funded period, or a row flagged `coverExpense`, is the same work paid from the
@@ -82,8 +91,12 @@ Profit   = Earned − Spent
   spend against, like OCM: never revenue, cost, payment or profit. `_projSpent` / `_projEarned` /
   `_projMargin` / `_recognisedProfit` must stay free of every allocation symbol (§R of
   `money-math.test.js` reads their source and fails otherwise). **Target Margin Reserve is never
-  labelled "Profit"**; the plan-vs-actual variance is shown only when profit is *earned*, never
-  against a Forecast. A snapshot is inserted with a **true INSERT** (`.set()` is an upsert and
+  labelled "Profit"**; the plan-vs-actual variance is shown only against a **current** BOQ-based
+  estimate. Fund Allocated − Spent is **Total Allocation Remaining** (the reserve is included); direct +
+  indirect − Spent is **Operating allocation remaining** (owner-only, **Incomplete** while a funded
+  client period has no snapshot); contract − Fund Allocated is **Contract less allocated funds**
+  ("unbilled" waits for verified billings). Billing periods are matched by id; duplicate billing
+  numbers are flagged, never renumbered. A snapshot is inserted with a **true INSERT** (`.set()` is an upsert and
   would rewrite history) and afterwards changes only through
   `update_project_control_billing_allocation()`, which demands a reason and writes an append-only
   audit row — those rows have no UPDATE or DELETE policy. A **cover/president period has no
@@ -221,8 +234,9 @@ Profit   = Earned − Spent
   `labor_contracts.worker_id` is set, changed or cleared **only by the main owner** (`lc_link`, or the account picker
   on New Labor Contract) — never by name, never in bulk, never by payroll names or a contract's leader. The linked
   worker sees only their own agreements on the phone (`ll_my_agreements`): progress from that project's own BOQ
-  (Additional Works never borrows the main project's figure), agreed / paid / balance under `lcPaid`'s rule, and
-  payments as date · amount · method. **Online only: nothing about money is saved on the phone.** Every Project Control
+  (Additional Works never borrows the main project's figure) and agreed / paid / balance under `lcPaid`'s rule —
+  **never the list of payments** (`0115`, owner decision 2026-11-17: no date, amount or method of any payment reaches the
+  phone). **Online only: nothing about money is saved on the phone.** Every Project Control
   labor contract keeps an append-only history (`lc_events`, owner accounts only): once **signed or paid**, its terms
   change only with a reason, daily↔fixed is locked, and `capHistory` only grows. A linked contract is never deleted;
   **ending one marks nothing paid and moves no payment** (it can still be paid to settle it). Worker cards, statements,
@@ -243,6 +257,15 @@ Profit   = Earned − Spent
   no spending, and leaving Cover off that page changes nothing about Spent elsewhere. Owner accounts only; Cover periods get
   none of the three. Only `js/billing-receipts.js` calls the `bar_*` functions. Spec:
   `docs/superpowers/specs/2026-11-09-billing-acknowledgement-receipts-mvp-terms.md`.
+
+- **PM Acknowledgement Receipts (0116) are a record of a document, outside the money model.** Each paid Project
+  Management payment (Money → Payment) can have one live receipt, whose amount is **the payment's paid amount, read by
+  the server** (the Total cash receipt rule): no `pmar_*` function accepts an amount. Numbers share 0114's
+  `AR-YYYYMM-NNN` series and are never reused; a change is void-with-reason and re-issue. The PM **Billing Request** is a
+  printout (a percentage of the Project Budget, every payment received, Total Received) and records nothing. The
+  Friday payment request no longer exists in the office screens (owner, 18 Nov 2026). A payment's photo
+  (`payment_requests.proof_url`, `paymentReceipts/`) is office-only. Owner accounts only for both documents. Only
+  `js/pm-billing-docs.js` calls the `pmar_*` functions. Spec: `docs/superpowers/specs/2026-11-18-pm-billing-documents-design.md`.
 
 Full reasoning: [docs/OVERHEAD_MODULE.md](docs/OVERHEAD_MODULE.md).
 

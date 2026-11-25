@@ -178,5 +178,28 @@ test('admin.html loads linked-labor.js before the expenses module, and the form 
   ok(/LinkedLabor\.formOpened\(null\)/.test(EXP) && /LinkedLabor\.formOpened\(c, expPayroll\)/.test(EXP), 'New and Edit tell the module');
 });
 
+test('0115: the phone gets no payment list (owner decision 17 Nov 2026)', () => {
+  const M = read('supabase/migrations/0115_agreements_no_payment_list.sql');
+  ok(/create or replace function ll_my_agreements\(\)/.test(M), 'redefines ll_my_agreements()');
+  const body = M.slice(M.indexOf('create or replace function ll_my_agreements()'));
+  for (const k of ["'agreed'", "'paid'", "'balance'"]) ok(body.includes(k), 'still returns ' + k);
+  ok(!/'payments'/.test(body), 'no payments key');
+  ok(!/jsonb_agg\(/.test(body.slice(body.indexOf("'balance'"))) && !/as payments/.test(body), 'no payment list is built');
+  ok(!/\b(create|alter|drop)\s+table\b/i.test(M), 'no table is created, altered or dropped');
+  ok(/grant execute on function ll_my_agreements\(\) to authenticated/.test(M), 'the grant is repeated');
+});
+
+test('0115: the linking notes tell the owner the worker sees no payment list', () => {
+  // Read by the main owner at the moment they link a worker's account (link dialog and New Contract).
+  const promises = LLSRC.match(/will see this agreement’s[^;]*?in WorkMate[^;]*?;/g) || [];
+  eq(promises.length, 2, 'both linking notes found');
+  for (const p of promises) {
+    const shown = p.slice(0, p.indexOf('in WorkMate'));
+    ok(!/payments/.test(shown), 'promises payments: ' + shown);
+    ok(/paid so far/.test(shown) && /balance/.test(shown), 'names paid so far and balance: ' + shown);
+    ok(/not the list of payments/.test(p), 'says the list is not shown: ' + p);
+  }
+});
+
 console.log('\n' + passed + ' passed, ' + failed + ' failed');
 if (failed) { console.log('\nFAILURES:\n  ' + failures.join('\n  ')); process.exit(1); }

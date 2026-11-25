@@ -118,10 +118,11 @@ enforces that by reading the source of `_projSpent`, `_projEarned`, `_projMargin
 `_recognisedProfit` and failing if any allocation symbol appears in them.
 
 **Target Margin Reserve is not Profit.** It is the 10% the plan set aside; actual profit is still
-`earned − spent` under the rules above. The UI must always spell out *Target Margin Reserve*. The
-dashboard reports the variance between plan and actual **only when profit is earned** — on a
-Forecast project `targetMarginVariance` is `null`, because a plan measured against a placeholder
-is not a finding.
+`earned − spent` under the rules above — the **BOQ-based profit estimate**. The UI must always spell
+out *Target Margin Reserve*. The dashboard reports the variance between plan and actual **only
+against a current BOQ-based estimate** (approved BOQ, saved within 30 days) — for a draft, stale or
+missing estimate `targetMarginVariance` is `null`, because a plan measured against a placeholder is
+not a finding.
 
 ### Actuals, and where each peso is counted
 
@@ -174,8 +175,11 @@ already burned 56% of its contract showed **+44%** margin when the truth was **�
 
 `_projMargin()` in `js/portal-app.compiled.js` is the single place this is computed. It sets
 `isForecast: true` when there is no usable accomplishment data — **no BOQ, or a BOQ whose
-`percentCompletion` values are all zero.** In that case it falls back to the full contract,
-and the UI must label the number *Forecast*, never *Earned*. That guard exists for a reason:
+`percentCompletion` values are all zero.** In that case there is no profit estimate at all: the
+UI shows contract − cost only as *Contract value minus costs*, never as profit (since the
+Financial MVP, 2026-11-14; `js/project-finance.js` names every figure — Earned − Spent is the
+*BOQ-based profit estimate*, shown with its BOQ %, *BOQ last saved* and Draft / Stale warnings, and
+*Recognized Project Profit* is Unavailable). That guard exists for a reason:
 without it, a project whose accomplishment report simply hasn't been filled in yet would
 compute 0% earned against real spend and scream "losing money" on every young job.
 
@@ -186,9 +190,14 @@ subtracted once, at company level, on the Project Control overview (owner only, 
 `_staff()`):
 
 ```
-gross profit = Σ recognised profit across all projects
-net profit   = gross profit − company overhead (G&A)
+BOQ-based estimate · all projects = Σ recognised project estimate across all projects
+After company overhead            = that estimate − company overhead (G&A)
 ```
+
+Labelled "Company profit estimate · BOQ-based" (Financial MVP, 2026-11-14): it sums BOQ-based
+estimates, so it is never "Net Profit" or recognized profit. Note that this strip sits after the
+folder picker's `return` in `FoldersGrid` and does not render today; its labels are kept correct so
+it cannot come back wrong.
 
 `_recognisedProfit()` decides what each project contributes:
 

@@ -1118,12 +1118,13 @@
 .dacs-portal-scope .pc-period-card .pc-allocation-bands { margin-top: 4px; }
 .dacs-portal-scope .pc-period-card .pc-allocation-legacy { margin-top: 2px; }
 
-/* ── Project ledger (redesign 2026-09-22, design 1A) ────────────────────────
-   One story, top to bottom. Three numbers answer "what is this job worth, what
-   did it cost, what is left", the billed line says how much of it has been
-   signed off, and the funding line carries the client's allocation and the
-   cover money that is already inside Actual Cost. Staff never reach the billed
-   or funding lines — every figure on them is a peso. */
+/* ── Project ledger (design "Profit ledger redesign" 1b, 14 Nov 2026) ───────
+   The hero states the headline, the estimate's margin and Actual Cost once.
+   Under it: a warning row while the estimate is not confirmed, two bars
+   (contract used, fund used) and one footer line (operating allocation, the
+   cover money already inside Actual Cost, Recognized Project Profit). Staff
+   never reach any of it — every figure on it is a peso; they keep the white
+   .pc-ledger-grid row. */
 .pc-ledger {
   margin: 14px 0 22px;
   overflow: hidden;
@@ -1175,39 +1176,128 @@
 .pc-ledger-cell--warn .val { color: #825900; }
 .pc-ledger-cell--danger .val { color: #a02d2d; }
 
-.pc-ledger-funding {
+/* A Draft / For review / Stale / undated BOQ-based estimate is not the
+   headline (the hero reads "Profit not confirmed"), but it is still shown —
+   in this warning row under the hero, named, with its margin. */
+.pc-ledger-estimate {
   display: flex;
-  gap: 14px;
-  padding: 13px 22px;
-  border-top: 1px solid #f1efea;
-  background: #fcfcfb;
   flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  padding: 11px 28px;
+  border-bottom: 1px solid #f3e7c6;
+  background: #fffaf0;
+  color: #7a5200;
+  font-size: 13px;
 }
-.pc-ledger-fund { flex: 1 1 190px; min-width: 0; }
-.pc-ledger-fund .lbl {
-  display: block;
-  color: #6c6c70;
-  font-size: .72rem;
-  font-weight: 650;
-}
-.pc-ledger-fund .val {
-  font-size: 1rem;
+.pc-ledger-estimate .lbl { font-weight: 700; }
+.pc-ledger-estimate .val {
+  color: #1c1c1e;
+  font-size: 15px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
-.pc-ledger-fund .note {
-  display: block;
-  margin-top: 2px;
-  color: #6c6c70;
-  font-size: .68rem;
-  line-height: 1.4;
+.pc-ledger-estimate--danger .val { color: #a02d2d; }
+.pc-ledger-estimate .meta { color: #6c6c70; font-weight: 600; }
+
+/* Two bars (design 1b): how much of the contract, and of the client's fund,
+   Actual Cost has used — and what is left of each, under its approved name. */
+.pc-ledger-bars { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.pc-ledger-bar { min-width: 0; padding: 18px 28px 20px; }
+.pc-ledger-bar + .pc-ledger-bar { border-inline-start: 1px solid #e5e5e5; }
+.pc-ledger-bar-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 12px;
+  color: #1c1c1e;
 }
-.pc-ledger-fund--ok .val { color: #1a5c3a; }
-.pc-ledger-fund--danger .val { color: #a02d2d; }
-.dacs-portal-scope .pc-ledger-fund .pc-over-badge {
+.pc-ledger-bar-top .lbl { font-size: 13px; font-weight: 700; }
+.pc-ledger-bar-top .val { font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.pc-ledger-track {
+  height: 10px;
+  margin-top: 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e3efe8;
+}
+.pc-ledger-fill { height: 100%; border-radius: 999px; background: #1a5c3a; }
+.pc-ledger-fill--over { background: #c0392b; }
+.pc-ledger-bar-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 6px 16px;
+  margin-top: 8px;
+  font-size: 13px;
+}
+.pc-ledger-bar-foot .used { color: #3a3a3c; font-weight: 600; white-space: nowrap; }
+.pc-ledger-bar-foot .used--over { color: #a02d2d; }
+.pc-ledger-bar-foot .left {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  min-width: 0;
+  margin-left: auto;
+  text-align: right;
+}
+.pc-ledger-bar-foot .left-lbl { color: #6c6c70; font-size: 12px; font-weight: 600; line-height: 1.3; }
+.pc-ledger-bar-foot .left strong {
+  color: #1c1c1e;
+  font-size: 15px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.pc-ledger-bar-foot .left--ok strong { color: #1a5c3a; }
+.pc-ledger-bar-foot .left--danger strong { color: #a02d2d; }
+
+/* One footer line: operating allocation (owner-only), the cover money that
+   is already inside Actual Cost, and Recognized Project Profit. */
+.pc-ledger-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 28px;
+  padding: 11px 28px;
+  border-top: 1px solid #f1efea;
+  background: #fcfcfb;
+  font-size: 13px;
+}
+.pc-ledger-foot-item {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 6px;
+  min-width: 0;
+  color: #6c6c70;
+  font-weight: 600;
+}
+.pc-ledger-foot-item strong {
+  color: #1c1c1e;
+  font-size: 15px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.pc-ledger-foot-item--ok strong { color: #1a5c3a; }
+.pc-ledger-foot-item--danger strong { color: #a02d2d; }
+.pc-ledger-foot-item--end { margin-left: auto; }
+.pc-ledger-foot-item .sub { font-size: 12px; font-weight: 500; }
+.pc-ledger-badges { display: flex; flex-wrap: wrap; gap: 5px; }
+.pc-ledger-badge {
   display: inline-block;
-  margin: 0 0 0 7px;
-  align-self: auto;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: #fff4d6;
+  color: #7a5200;
+  font-size: .66rem;
+  font-weight: 700;
+}
+.dacs-portal-scope .pc-ledger-foot-item .pc-over-badge {
+  display: inline-block;
+  margin: 0;
+  align-self: center;
 }
 
 /* ── Needs action ───────────────────────────────────────────────────────────
@@ -1427,7 +1517,7 @@
   background: #d5ecdd;
   /* Shaped like DIRECT COSTS above — the same small uppercase label, so the
      four groups are named the same way — but set in the display face the
-     project title ("Sulit Residence") uses. The tracking leaves a gap after the
+     project title ("Sample Residence") uses. The tracking leaves a gap after the
      last letter, so the right padding is trimmed to keep the word centred. */
   font-family: var(--display);
   font-size: .76rem;
@@ -1517,7 +1607,7 @@
 .pc-money-row-id { min-width: 0; }
 .pc-money-row-id .t {
   display: block;
-  /* Same face as the project title ("Sulit Residence") — the display font,
+  /* Same face as the project title ("Sample Residence") — the display font,
      not the serif fallback the cost cards used before. */
   font-family: var(--display);
   font-size: 1.06rem;
@@ -1744,6 +1834,8 @@
   .pc-ledger-grid { grid-template-columns: 1fr; }
   .pc-ledger-cell { border-inline-start: 0; border-top: 1px solid #e5e5e5; }
   .pc-ledger-cell:first-child { border-top: 0; }
+  .pc-ledger-bars { grid-template-columns: 1fr; }
+  .pc-ledger-bar + .pc-ledger-bar { border-inline-start: 0; border-top: 1px solid #e5e5e5; }
   .pc-alloc-figs, .pc-money-figs, .pc-money-budget-figs {
     width: 100%;
     margin-inline-start: 0;
@@ -1751,7 +1843,8 @@
   }
 }
 @media (max-width: 520px) {
-  .pc-ledger-funding { gap: 10px; }
+  .pc-ledger-bar, .pc-ledger-foot, .pc-ledger-estimate { padding-left: 18px; padding-right: 18px; }
+  .pc-ledger-foot-item--end { margin-left: 0; }
   .pc-needs-row, .pc-money-budget { align-items: flex-start; }
   .pc-money-row-head { gap: 10px; }
 }

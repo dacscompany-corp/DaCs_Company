@@ -317,5 +317,12 @@
         return ui.itemId ? renderItem(host) : renderSearch(host);
     }
 
-    RA.views.reqHistory = render;
+    // Office redesign v5: Item history (its two tabs, search tool and item
+    // page) keeps its content inside the frame (custom body); the frame draws
+    // the header, the page's own first title line is hidden there.
+    RA.views.reqHistory = host => root.SplitView.render(host, {
+        key: 'reqHistory', title: 'Item history',
+        sub: 'Items the company asked for before, with their dated history and reviewed photos. Workers see a project\x27s history only when Item history is on for it (Projects tab). No prices are ever shown.',
+        search: false, custom: true, onCustom: el => render(el),
+    });
 })(typeof window !== 'undefined' ? window : globalThis);
