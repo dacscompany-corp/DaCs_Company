@@ -86,7 +86,6 @@
             pill: statusPill(state),
             chips: chip ? [chip] : [],
             stripe: s.urgent ? 'red' : '',
-            tint: RA.isOverdue(r, today),
             dim: state === 'arranged',
             nextLabel: (step && step.label) || '',
         };
@@ -137,15 +136,18 @@
         return buckets.map(x => Object.assign(heading(x.g), { rows: x.rows.map(r => rowOf(r, data.today)) }));
     }
 
-    function weekHtml(current) {
-        if (!current) return '';
-        return '<div class="sv-week"><i data-lucide="calendar-clock"></i>' +
+    // v5: the "This week" box right under the tabs, the tab's sentence
+    // and the cutoff rule on one line under it.
+    function weekHtml(current, help) {
+        if (!current) return '';   // the frame shows the tab's sentence itself
+        return '<div class="sv-week sv-week--v5">' +
                 '<span class="sv-week-k">This week</span>' +
-                '<span><strong>Cutoff</strong> ' + esc(RA.cutoffLabel(current.cutoff_at)) + '</span><span class="sv-week-arrow">→</span>' +
-                '<span><strong>Buy</strong> ' + esc(RA.formatDay(current.purchase_on)) + '</span><span class="sv-week-arrow">→</span>' +
-                '<span><strong>Deliver</strong> ' + esc(RA.formatDay(current.delivery_on)) + '</span>' +
-                '<button class="att-link" type="button" data-go-batches>Change batch dates</button></div>' +
-            '<div class="sv-week-note">Requests received after the cutoff go to the next week.</div>';
+                '<span>Cutoff <b class="sv-week-v">' + esc(RA.cutoffLabel(current.cutoff_at)) + '</b></span>' +
+                '<span>Buy <b class="sv-week-v">' + esc(RA.formatDay(current.purchase_on)) + '</b></span>' +
+                '<span>Deliver <b class="sv-week-v">' + esc(RA.formatDay(current.delivery_on)) + '</b></span>' +
+                '<button class="att-link sv-week-link" type="button" data-go-batches>Change batch dates</button></div>' +
+            '<div class="sv-tab-help">' + (help ? esc(help) + ' ' : '') +
+              '<span class="sv-week-note">Requests received after the cutoff go to the next week.</span></div>';
     }
 
     function batchSelect() {
@@ -185,7 +187,8 @@
         if (!host || !data) return;
         const closed = ui.scope === 'closed';
         const tabs = RA.QUEUE_TABS.map(([id, label]) => ({
-            id, label, count: data.openCounts ? data.openCounts[id] : null, needs: id === 'attn', help: TAB_HELP[id] || '',
+            id, label, count: data.openCounts ? data.openCounts[id] : null, needs: id === 'attn',
+            help: data.current ? '' : (TAB_HELP[id] || ''),
         }));
         tabs.push({ id: 'closed', label: 'Closed', count: closed ? data.all.length : null, help: TAB_HELP.closed });
         // The user's pick wins; otherwise this visit's automatic tab, chosen
@@ -217,7 +220,7 @@
             tab: tab,
             onTab: onTab,
             how: HOW,
-            aside: closed ? '' : weekHtml(data.current),
+            aside: closed ? '' : weekHtml(data.current, TAB_HELP[tab] || ''),
             notice: data.capped ? SV.notice('gold', 'list-filter', 'Showing the newest 300 requests.',
                 'Requests with a reduction or an offline edit to resolve are always included.') : '',
             search: { placeholder: 'Search worker, project, item…', value: ui.text, onInput: text => { ui.text = text; draw({ leaveSelection: true }); } },
@@ -225,7 +228,7 @@
             onToolbar: el => {
                 el.querySelector('[data-batch]').addEventListener('change', e => { ui.batchId = e.target.value; draw({ leaveSelection: true }); });
             },
-            showing: filtered && list.length ? 'Showing ' + list.length + ' of ' + inTab.length : '',
+            showing: list.length ? 'Showing ' + list.length + ' of ' + inTab.length : '',
             groups: groupsOf(list),
             empty: empty,
             onEmpty: el => {

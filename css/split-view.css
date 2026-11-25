@@ -531,3 +531,9 @@ body.sv-v5 .portal-module-link.active-link {
     border-bottom-color: #1A5C3A; color: #1A5C3A; font-weight: 700; background: none; box-shadow: none;
 }
 body.sv-v5 .portal-module-link svg { width: 16px; height: 16px; }
+
+/* Requests → Queue, v5: the "This week" box with mono dates, no icon. */
+.sv-week--v5 { gap: 6px 14px; }
+.sv-week--v5 .sv-week-v { font-family: var(--mono, 'IBM Plex Mono', monospace); font-weight: 500; color: #1C1C1E; white-space: nowrap; }
+.sv-week--v5 .sv-week-link { text-decoration: underline; font-weight: 600; color: #1A5C3A; }
+.sv-tab-help .sv-week-note { font-size: inherit; }

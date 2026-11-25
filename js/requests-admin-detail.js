@@ -26,64 +26,69 @@
 
     function kindLabel(kind) { return kind === 'tool' ? 'Tool' : 'Material'; }
 
-    // One row per weekly batch the item is split across: which batch (with
-    // its buy and deliver days), how much, whether it is arranged, and
-    // what the office can do about it. The label above each value takes
-    // the place of a column header.
+    // v5 "lines": every item is a small card (title, kind · unit ·
+    // category, its pills, a red note for an offline edit, facts and small
+    // buttons), followed by one card per weekly portion it is split across
+    // (which batch, buy → deliver, quantity, arranged, its buttons).
+    function lineBtn(label, attrs, kind) {
+        return '<button class="req-lbtn' + (kind ? ' req-lbtn--' + kind : '') + '" type="button" ' + attrs + '>' + label + '</button>';
+    }
+
     function portionList(line) {
         const open = line.status === 'open';
         return (line.portions || []).map(p => {
             const pending = Number(p.pending_reduction) > 0;
             const actions = [];
+            if (pending) {
+                actions.push(lineBtn('Resolve reduction…', 'data-act="reduction" data-portion="' + esc(p.id) + '" data-line="' + esc(line.id) + '"', 'warn'));
+            }
             if (open && !p.arranged) {
-                actions.push('<button class="att-btn att-btn--primary" type="button" data-act="arrange" data-portion="' + esc(p.id) + '">Mark arranged</button>');
-                actions.push('<button class="att-btn" type="button" data-act="move" data-portion="' + esc(p.id) + '" data-line="' + esc(line.id) + '">Move…</button>');
+                actions.push(lineBtn('Mark arranged', 'data-act="arrange" data-portion="' + esc(p.id) + '"', 'primary'));
+                actions.push(lineBtn('Move…', 'data-act="move" data-portion="' + esc(p.id) + '" data-line="' + esc(line.id) + '"'));
             }
             if (p.arranged && !pending) {
-                actions.push('<button class="att-btn" type="button" data-act="unarrange" data-portion="' + esc(p.id) + '">Undo arranged</button>');
+                actions.push(lineBtn('Undo arranged', 'data-act="unarrange" data-portion="' + esc(p.id) + '"'));
             }
-            if (pending) {
-                actions.push('<button class="att-btn att-btn--warn" type="button" data-act="reduction" data-portion="' + esc(p.id) + '" data-line="' + esc(line.id) + '">Resolve reduction…</button>');
-            }
-            return '<div class="req-portion">' +
-                '<div class="req-pcell">' +
-                  '<div class="req-plabel">Weekly batch</div>' +
-                  '<div class="req-pval"><strong>' + esc(RA.cutoffLabel(p.cutoff_at)) + '</strong></div>' +
-                  '<div class="req-steps"><span class="req-step"><em>Buy</em><strong>' + esc(RA.formatDay(p.purchase_on)) + '</strong></span>' +
-                    '<span class="req-arrow">→</span>' +
-                    '<span class="req-step"><em>Deliver</em><strong>' + esc(RA.formatDay(p.delivery_on)) + '</strong></span></div>' +
+            const tags = (p.arranged
+                    ? '<span class="att-pill att-pill--done">Arranged</span>'
+                    : '<span class="att-pill att-pill--working">Not yet</span>') +
+                (pending ? '<span class="att-pill att-pill--abandoned">Reduction −' + esc(RA.formatQty(p.pending_reduction)) + ' ' + esc(line.unit) + '</span>' : '');
+            const facts = p.arranged
+                ? '<dl class="req-line-facts"><div><dt>Arranged</dt><dd>Arranged by ' + esc(p.arranged_by_name || '—') + ' · ' + esc(RA.formatManila(p.arranged_at)) + '</dd></div></dl>'
+                : '';
+            return '<div class="req-line req-line--portion">' +
+                '<div class="req-line-head">' +
+                  '<div class="req-line-title">' +
+                    '<div class="req-line-t">Weekly portion · Cutoff ' + esc(RA.cutoffLabel(p.cutoff_at)) + '</div>' +
+                    '<div class="req-line-s">Buy ' + esc(RA.formatDay(p.purchase_on)) + ' → Deliver ' + esc(RA.formatDay(p.delivery_on)) +
+                      ' · Quantity ' + esc(RA.formatQty(p.quantity)) + ' ' + esc(line.unit) + '</div>' +
+                  '</div>' +
+                  '<div class="req-line-tags">' + tags + '</div>' +
                 '</div>' +
-                '<div class="req-pcell">' +
-                  '<div class="req-plabel">Quantity</div>' +
-                  '<div class="req-pval req-pqty">' + esc(RA.formatQty(p.quantity)) + ' ' + esc(line.unit) + '</div>' +
-                '</div>' +
-                '<div class="req-pcell">' +
-                  '<div class="req-plabel">Arranged</div>' +
-                  (p.arranged
-                    ? '<div><span class="att-pill att-pill--done">Arranged</span></div><div class="req-muted">' +
-                      esc(p.arranged_by_name || '') + ' · ' + esc(RA.formatManila(p.arranged_at)) + '</div>'
-                    : '<div><span class="att-pill att-pill--none">Not yet</span></div>') +
-                  (pending ? '<div class="req-red">Reduction −' + esc(RA.formatQty(p.pending_reduction)) + ' ' + esc(line.unit) + '</div>' : '') +
-                '</div>' +
-                '<div class="req-pcell req-pcell--act"><div class="req-actions">' + actions.join('') + '</div></div>' +
+                facts +
+                (actions.length ? '<div class="req-line-acts">' + actions.join('') + '</div>' : '') +
                 '</div>';
         }).join('');
     }
 
-    function conflictBlocks(line) {
+    // An offline edit: the red note, and its Apply / Keep buttons first in
+    // the item's buttons.
+    function conflictNotes(line) {
         return (line.open_conflicts || []).map(k =>
-            '<div class="att-info att-info--warn"><i data-lucide="git-compare"></i><div>' +
-              '<strong>Offline edit needs a decision.</strong> ' + esc(k.proposed_by_name) + ' changed this to <strong>' +
+            '<div class="req-line-note"><strong>Offline edit needs a decision.</strong> ' + esc(k.proposed_by_name) + ' changed this to <strong>' +
               esc(RA.formatQty(k.proposed_quantity)) + ' ' + esc(line.unit) + '</strong> on a phone that had not seen the change to ' +
-              esc(RA.formatQty(k.current_quantity)) + ' (' + esc(RA.formatManila(k.created_at)) + '). Nothing was overwritten.' +
-              '<div class="req-actions" style="margin-top:8px">' +
-                '<button class="att-btn att-btn--primary" type="button" data-act="conflict" data-conflict="' + esc(k.id) + '" data-apply="1"' +
-                  (line.status === 'open' && Number(k.proposed_quantity) > 0 ? '' : ' disabled') + '>Apply ' +
-                  esc(RA.formatQty(k.proposed_quantity)) + '</button>' +
-                '<button class="att-btn" type="button" data-act="conflict" data-conflict="' + esc(k.id) + '" data-apply="0">Keep ' +
-                  esc(RA.formatQty(line.needed)) + '</button>' +
-              '</div>' +
-            '</div></div>').join('');
+              esc(RA.formatQty(k.current_quantity)) + ' (' + esc(RA.formatManila(k.created_at)) + '). Nothing was overwritten.</div>').join('');
+    }
+    function conflictButtons(line) {
+        const out = [];
+        (line.open_conflicts || []).forEach(k => {
+            out.push(lineBtn('Apply ' + esc(RA.formatQty(k.proposed_quantity)) + ' ' + esc(line.unit),
+                'data-act="conflict" data-conflict="' + esc(k.id) + '" data-apply="1"' +
+                (line.status === 'open' && Number(k.proposed_quantity) > 0 ? '' : ' disabled'), 'primary'));
+            out.push(lineBtn('Keep ' + esc(RA.formatQty(line.needed)) + ' ' + esc(line.unit),
+                'data-act="conflict" data-conflict="' + esc(k.id) + '" data-apply="0"'));
+        });
+        return out;
     }
 
     function lineCard(line, photos) {
@@ -95,36 +100,37 @@
         const linePhotos = photos.filter(ph => ph.line_id === line.id);
         const fact = (label, value, cls) =>
             '<div><dt>' + label + '</dt><dd' + (cls ? ' class="' + cls + '"' : '') + '>' + value + '</dd></div>';
-        return '<section class="req-item' + (st === 'cancelled' ? ' is-cancelled' : '') + '">' +
-            '<header class="req-item-head">' +
-              '<span class="req-item-no">' + (line.position + 1) + '</span>' +
-              '<div class="req-item-title">' +
-                '<h3>' + esc(line.description) + '</h3>' +
-                '<div class="req-item-meta">' + esc(kindLabel(line.kind)) + (line.spec ? ' · ' + esc(line.spec) : '') + ' · ' + esc(line.unit) +
+        const acts = conflictButtons(line)
+            .concat([lineBtn(line.catalog_item_id ? 'Change' : 'Match', 'data-act="match" data-line="' + esc(line.id) + '"')])
+            .concat(open ? [
+                lineBtn('Change quantity…', 'data-act="qty" data-line="' + esc(line.id) + '"'),
+                lineBtn('Cancel item…', 'data-act="cancel" data-line="' + esc(line.id) + '"', 'warn'),
+            ] : []);
+        return '<div class="req-line' + (st === 'cancelled' ? ' is-cancelled' : '') + '">' +
+            '<div class="req-line-head">' +
+              '<div class="req-line-title">' +
+                '<div class="req-line-t">' + (line.position + 1) + ' · ' + esc(line.description) + '</div>' +
+                '<div class="req-line-s">' + esc(kindLabel(line.kind)) + (line.spec ? ' · ' + esc(line.spec) : '') + ' · ' + esc(line.unit) +
                   (line.category ? ' · ' + esc(line.category) : '') + '</div>' +
               '</div>' +
-              '<div class="req-item-tags">' +
-                (line.urgent ? '<span class="req-urgent">URGENT · by ' + esc(RA.formatDay(line.needed_by)) + '</span>' : '') +
+              '<div class="req-line-tags">' +
                 '<span class="att-pill ' + RA.STATE_PILL[st] + '">' + esc(RA.STATE_LABEL[st]) + '</span>' +
+                (line.urgent ? '<span class="att-pill att-pill--abandoned">URGENT · by ' + esc(RA.formatDay(line.needed_by)) + '</span>' : '') +
               '</div>' +
-            '</header>' +
-            '<dl class="req-facts">' +
-              fact('Still needed', esc(RA.formatQty(line.needed)) + ' ' + esc(line.unit), 'req-fact-big') +
-              fact('Catalogue', catalog + ' <button class="att-link" type="button" data-act="match" data-line="' + esc(line.id) + '">' +
-                (line.catalog_item_id ? 'Change' : 'Match') + '</button>') +
+            '</div>' +
+            conflictNotes(line) +
+            '<dl class="req-line-facts">' +
+              fact('Still needed', esc(RA.formatQty(line.needed)) + ' ' + esc(line.unit)) +
+              fact('Catalogue', catalog) +
               (line.ref_label ? fact('Requested again from', esc(line.ref_label)) : '') +
               (line.intended_member_name ? fact('For', esc(line.intended_member_name)) : '') +
               (line.urgent ? fact('Why urgent', esc(line.urgent_reason)) : '') +
               (line.notes ? fact('Notes', esc(line.notes)) : '') +
             '</dl>' +
-            conflictBlocks(line) +
-            ((line.portions || []).length ? '<div class="req-portions">' + portionList(line) + '</div>' : '') +
-            (linePhotos.length ? '<div class="req-item-photos"><div class="req-photos">' + linePhotos.map(photoImg).join('') + '</div></div>' : '') +
-            (open ? '<footer class="req-item-foot">' +
-                '<button class="att-btn" type="button" data-act="qty" data-line="' + esc(line.id) + '">Change quantity…</button>' +
-                '<button class="att-btn att-btn--warn" type="button" data-act="cancel" data-line="' + esc(line.id) + '">Cancel item…</button>' +
-              '</footer>' : '') +
-            '</section>';
+            (linePhotos.length ? '<div class="req-photos">' + linePhotos.map(photoImg).join('') + '</div>' : '') +
+            '<div class="req-line-acts">' + acts.join('') + '</div>' +
+            '</div>' +
+            portionList(line);
     }
 
     function photoImg(ph) {
@@ -349,8 +355,6 @@
         const state = RA.requestState(req);
         const states = lines.map(RA.lineState);
         const count = (...keys) => states.filter(x => keys.includes(x)).length;
-        const chip = (n, text, tone) => n
-            ? '<span class="req-sum req-sum--' + tone + '"><strong>' + n + '</strong> ' + text + '</span>' : '';
         const overdue = RA.isOverdue(req, today);
         // "Team Team test" read like a typo: say "Team" only if the name does not.
         const teamLabel = req.team_name
@@ -379,32 +383,40 @@
         }
 
         const sections = [];
+        // Overdue shows in the pills and the Summary; a notice only when
+        // "What to do now" is about something else and does not say it.
         if (overdue && state !== 'arranged' && state !== 'cancelled') {
             const late = Math.round((Date.parse(today + 'T00:00:00Z') - Date.parse(sum.neededBy + 'T00:00:00Z')) / DAY_MS);
             const sentence = 'Needed ' + RA.formatDay(sum.neededBy) + '. Arrange it now or tell the worker when it will arrive.';
-            // The step box already says the sentence: the notice keeps its title.
-            sections.push(SV.notice('red', 'alarm-clock', 'Overdue ' + late + (late === 1 ? ' day' : ' days'),
-                step && step.text === sentence ? '' : esc(sentence)));
+            if (!(step && step.text === sentence)) {
+                sections.push(SV.notice('red', 'alarm-clock', 'Overdue ' + late + (late === 1 ? ' day' : ' days'), esc(sentence)));
+            }
         }
+        // Summary (v5 facts table): how many items, and how many in each state.
+        const needing = lines.filter((l, i) => l.urgent && l.needed_by && ['unarranged', 'partly', 'conflict', 'reduction'].includes(states[i]));
+        const lateLines = needing.filter(l => l.needed_by < today).length;
+        const num = n => n ? String(n) : '';
+        sections.push(SV.section('Summary', SV.facts([
+            ['Items', String(lines.length)],
+            ['Overdue', num(lateLines)],
+            ['Urgent', num(needing.length - lateLines)],
+            ['To resolve', num(count('conflict', 'reduction'))],
+            ['To arrange', num(count('unarranged', 'partly'))],
+            ['Arranged', num(count('arranged'))],
+            ['Cancelled', num(count('cancelled'))],
+        ])));
         if (req.note) sections.push(SV.section('Note from the worker', '<p class="sv-text">' + esc(req.note) + '</p>'));
         sections.push(SV.section('Items (' + lines.length + ')',
-            '<div class="req-summary">' +
-              '<span class="req-sum req-sum--plain"><strong>' + lines.length + '</strong> item' + (lines.length === 1 ? '' : 's') + '</span>' +
-              chip(count('conflict', 'reduction'), 'to resolve', 'red') +
-              chip(count('unarranged', 'partly'), 'to arrange', 'gold') +
-              chip(count('arranged'), 'arranged', 'green') +
-              chip(count('cancelled'), 'cancelled', 'plain') +
-            '</div>' +
-            lines.map(l => lineCard(l, photos)).join('')));
-        if (requestPhotos.length) sections.push(SV.section('Photos', '<div class="req-photos">' + requestPhotos.map(photoImg).join('') + '</div>'));
-        sections.push(SV.facts([
+            '<div class="req-lines">' + lines.map(l => lineCard(l, photos)).join('') + '</div>'));
+        sections.push(SV.section('Facts', SV.facts([
             ['Requested by', '<strong>' + esc(req.requester_name) + '</strong>'],
             ['Project', esc(req.project_name)],
             ['Work', esc(req.work_name)],
             ['Team', esc(teamLabel)],
             ['Received', esc(when(req.received_at))],
             ['Drafted on phone', req.drafted_at ? esc(when(req.drafted_at)) : ''],
-        ]));
+        ])));
+        if (requestPhotos.length) sections.push(SV.section('Photos', '<div class="req-photos">' + requestPhotos.map(photoImg).join('') + '</div>'));
         sections.push(historySection(req));
 
         SV.fill(panel, SV.panelHtml({
