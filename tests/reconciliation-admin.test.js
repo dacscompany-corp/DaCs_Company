@@ -164,7 +164,7 @@ test('"Paid with" alone never records a payment — whatever it says', () => {
   const add = EXP.slice(EXP.indexOf('async function handleAddExpense('), EXP.indexOf('\nasync function deleteExpense('))
     .replace(/\/\/[^\n]*/g, '');   // the code, not its comments
   ok(/const paidNow  = window\.currentCanBuy \? \(document\.getElementById\('expPaidNow'\)\?\.value \|\| 'none'\) : 'none';/.test(add), 'the choice');
-  ok(/const payments = _expPaidNowPayments\(paidNow, totalAmt, paidPart, document\.getElementById\('expPaidFrom'\)\?\.value,\s+document\.getElementById\('expPaidHow'\)\?\.value, purchaseDate\);/.test(add), 'payments from the choice');
+  ok(/const payments = _expPaidNowPayments\(paidNow, totalAmt, paidPart, document\.getElementById\('expPaidFrom'\)\?\.value,\s+document\.getElementById\('expPaidHow'\)\?\.value, purchaseDate,\s+document\.getElementById\('expPaidPerson'\)\?\.value\);/.test(add), 'payments from the choice');
   ok(/if \(payments\.length\) body\.payments = payments;/.test(add), 'sent only when chosen');
   eq((add.match(/payments/g) || []).length, 4, 'no other payment in the save');
   ok(!/paymentMethod[^\n]*payments|payments[^\n]*paymentMethod/.test(add), '"Paid with" never feeds a payment');
@@ -177,6 +177,13 @@ test('Paid in full / Paid part: the amount, the day bought, where the money came
      [{ amount: '120.5', paid_on: '2026-10-24', method: 'gcash', source: 'petty_cash', note: '' }]);
   eq(pay._expPaidNowPayments('full', 80, '', 'credit', 'zelle', '2026-10-24')[0].source, 'company', 'only company / petty cash / own money');
   eq(pay._expPaidNowPayments('full', 80, '', 'company', 'zelle', '2026-10-24')[0].method, 'other');
+  // Whose petty cash / own money (the main owner's pick) goes with those two sources only.
+  eq(pay._expPaidNowPayments('full', 300, '', 'petty_cash', 'cash', '2026-11-25', 'b-1'),
+     [{ amount: '300', paid_on: '2026-11-25', method: 'cash', source: 'petty_cash', note: '', person_id: 'b-1' }]);
+  eq(pay._expPaidNowPayments('part', 300, '100', 'own_money', 'gcash', '2026-11-25', 'b-1')[0].person_id, 'b-1');
+  ok(!('person_id' in pay._expPaidNowPayments('full', 300, '', 'company', 'cash', '2026-11-25', 'b-1')[0]), 'company: no person sent');
+  ok(!('person_id' in pay._expPaidNowPayments('full', 300, '', 'petty_cash', 'cash', '2026-11-25', '')[0]), 'staff buyer: the server fills in who');
+  eq(pay._expPaidNowPayments('none', 300, '', 'petty_cash', 'cash', '2026-11-25', 'b-1'), [], 'Not paid yet: nothing, whoever is picked');
   eq(pay._expPaidNowProblem('none', 0, ''), '');
   eq(pay._expPaidNowProblem('full', 0, ''), 'Enter the total first.');
   eq(pay._expPaidNowProblem('part', 500, ''), 'Enter the amount paid.');
@@ -200,6 +207,24 @@ test('only accounts that may record payments see it; every opening starts at "No
   const sel = HTML.slice(HTML.indexOf('<select id="expPaidNow"'), HTML.indexOf('</select>', HTML.indexOf('<select id="expPaidNow"')));
   ok(/^<select id="expPaidNow" onchange="expTogglePaidNow\(\)">\s+<option value="none">Not paid yet \/ record later<\/option>/.test(sel), 'first and default: Not paid yet');
   ok(/<div id="expPaidNowWrap" style="display:none;">/.test(HTML), 'hidden until set up');
+});
+
+test('the main owner may pay from a staff buyer\'s petty cash or own money, choosing whose', () => {
+  const setup = EXP.slice(EXP.indexOf('async function _expSetupPaidNow('), EXP.indexOf('\n}\n', EXP.indexOf('async function _expSetupPaidNow(')));
+  ok(/if \(people\) people\.innerHTML = '';/.test(setup), 'every opening starts with nobody listed');
+  ok(/if \(window\.currentUserRole === 'staff' \|\| !window\.currentStockMainOwner \|\| !from \|\| !people\) return;/.test(setup),
+     'main owner only (pur_is_main_owner via stk_status); staff keep "My petty cash"');
+  ok(/rpc\('pur_cash_tracker'\)/.test(setup) && /\.filter\(b => b\.can_buy \|\| Number\(b\.recorded\) !== 0\)/.test(setup),
+     'the same buyers as Record payment');
+  ok(/if \(seq !== _expPaidNowSeq\) return;/.test(setup), 'a later opening wins');
+  ok(/if \(!buyers\.length\) return;/.test(setup), 'no buyers: company only');
+  ok(/_mvpEsc\(b\.buyer_id\)/.test(setup) && /_mvpEsc\(b\.name\)/.test(setup), 'names escaped');
+  ok(/<select id="expPaidFrom" onchange="expTogglePaidNow\(\)">/.test(HTML), 'Paid from re-checks the form');
+  ok(/<div class="aer-fg" id="expPaidPersonRow" style="display:none;">[\s\S]*?<select id="expPaidPerson"><\/select>/.test(HTML), '"Whose money", hidden until needed');
+  const toggle = EXP.slice(EXP.indexOf('window.expTogglePaidNow = function'), EXP.indexOf('\n};\n', EXP.indexOf('window.expTogglePaidNow = function')));
+  ok(/show\('expPaidPersonRow', paying && \(src === 'petty_cash' \|\| src === 'own_money'\) && !!\(people && people\.options\.length\)\);/.test(toggle),
+     'shown only for petty cash / own money, and only when someone is listed');
+  ok(/PERSON_NOT_ALLOWED:/.test(EXP), 'a refusal from the server reads plainly');
 });
 
 test('the supplier: one from the list by its id (any case), else the typed name', () => {

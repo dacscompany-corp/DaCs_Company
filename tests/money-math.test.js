@@ -94,6 +94,25 @@ test('allocation planning never enters Spent, Earned or recognised Profit', () =
   eq(portal._recognisedProfit(project), 0);
 });
 
+// 0122: labor and overhead paid from a staff buyer's petty cash count exactly
+// once, like any other row — petty cash only says how they were paid.
+test('labor and overhead paid from petty cash count once, like any other (0122)', () => {
+  for (const name of ['buildProject', '_projSpent', '_projOverhead', '_companyOverhead', '_projEarned', '_projMargin', '_recognisedProfit']) {
+    ok(!/pettyCashBy|petty_cash_by|pur_cash_spends|DacsPettyCash/.test(portal[name].toString()), name + ' must not read petty cash');
+  }
+  eq(portal.mapPayrollDoc({ id: 'x', laborType: 'direct', totalSalary: 1, pettyCashBy: 'b-1' }).pettyCashBy, 'b-1', 'carried for display');
+  eq(portal.mapPayrollDoc({ id: 'x', laborType: 'direct', totalSalary: 1 }).pettyCashBy, null);
+  const folder = { id: 'f1', totalBudget: 100000 };
+  const months = [{ id: 'm1', monthlyBudget: 50000, fundingType: 'progress' }];
+  const labor = [{ projectId: 'm1', type: 'direct', liabilityFor: 'direct', amount: 1500 },
+                 { projectId: 'm1', type: 'indirect', liabilityFor: 'direct', amount: 700 }];
+  const ovhd = [{ folderId: 'f1', amount: 800 }];
+  const a = portal.buildProject(folder, months, labor, [], ovhd);
+  const b = portal.buildProject(folder, months, labor.map(r => ({ ...r, pettyCashBy: 'b-1' })), [], ovhd.map(r => ({ ...r, pettyCashBy: 'b-1' })));
+  for (const k of ['labor', 'overhead', 'spent', 'coverCost']) eq(b[k], a[k], k + ' unchanged by petty cash');
+  eq(b.spent, 1500 + 700 + 800, 'each peso once');
+});
+
 // 2A-4a (0102): supplier payments, petty cash, refunds, supplier credit and a
 // buyer's own money are tracked against the purchase, never as expense rows.
 // No Spent / Earned / Profit function may read them, and a payment state on

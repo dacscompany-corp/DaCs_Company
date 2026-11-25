@@ -2276,6 +2276,7 @@ ${window.dacsStatementHead({
         <div class="ws-lbl">Detalye</div>
         <div class="ws-kv">
           <span class="k">Naitala</span><span class="v">${esc(window.dacsPayMethodLabel(p.paymentMethod))}</span>
+          ${p.pettyCashBy ? '<span class="k">Galing sa / Paid from</span><span class="v">' + esc(window.DacsPettyCash ? window.DacsPettyCash.tag(p.pettyCashBy) : 'Petty cash') + '</span>' : ''}
           <span class="k">Tatanggap</span><span class="v">${esc(p.workerName||'—')}</span>
         </div>
       </div>

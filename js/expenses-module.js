@@ -3003,7 +3003,8 @@ function _purErrorText(err) {
         BUYER_REQUIRED:        'This needs an account that may buy (the owner, or staff with the Buyer switch).',
         // "Paid now?" (0102): the payment is saved with the purchase — both or neither.
         BAD_PAY_SOURCE:        'Choose where the money came from.',
-        PERSON_REQUIRED:       'Petty cash and own money belong to a staff buyer — choose "Company (paid directly)", or record it in Requests → Purchasing.',
+        PERSON_REQUIRED:       'Petty cash and own money belong to a staff buyer — choose whose money paid, or "Company (paid directly)".',
+        PERSON_NOT_ALLOWED:    'Only the main owner can record another buyer\'s petty cash or own money.',
         NOT_A_BUYER:           'Only a staff buyer holds petty cash or own money.',
         BAD_METHOD:            'Choose how it was paid.',
         BAD_SUPPLIER:          'That supplier is no longer on the list — type the name again.',
@@ -3296,7 +3297,8 @@ async function handleAddExpense(e, opts = {}) {
                 charges: [],
             };
             const payments = _expPaidNowPayments(paidNow, totalAmt, paidPart, document.getElementById('expPaidFrom')?.value,
-                                                 document.getElementById('expPaidHow')?.value, purchaseDate);
+                                                 document.getElementById('expPaidHow')?.value, purchaseDate,
+                                                 document.getElementById('expPaidPerson')?.value);
             if (payments.length) body.payments = payments;
             return body;
         };
@@ -3455,12 +3457,15 @@ function _expPayHowOf(paidWith) {
     return 'other';
 }
 // The payments to send with the purchase: none unless the person chose
-// "Paid in full" or "Paid part".
-function _expPaidNowPayments(choice, total, partAmount, source, how, paidOn) {
+// "Paid in full" or "Paid part". personId: whose petty cash or own money —
+// picked by the main owner; a staff buyer's own is filled in by the server.
+function _expPaidNowPayments(choice, total, partAmount, source, how, paidOn, personId) {
     if (choice !== 'full' && choice !== 'part') return [];
     const amount = choice === 'full' ? total : Math.round((parseFloat(String(partAmount || '').replace(/,/g, '')) || 0) * 100) / 100;
-    return [{ amount: String(amount), paid_on: paidOn, method: _EXP_PAY_HOW[how] ? how : 'other',
-              source: ['company', 'petty_cash', 'own_money'].includes(source) ? source : 'company', note: '' }];
+    const src = ['company', 'petty_cash', 'own_money'].includes(source) ? source : 'company';
+    const pay = { amount: String(amount), paid_on: paidOn, method: _EXP_PAY_HOW[how] ? how : 'other', source: src, note: '' };
+    if ((src === 'petty_cash' || src === 'own_money') && personId) pay.person_id = String(personId);
+    return [pay];
 }
 // What the form refuses before sending (the server checks again).
 function _expPaidNowProblem(choice, total, partAmount) {
@@ -3485,22 +3490,31 @@ window.expTogglePaidNow = function () {
     const choice = document.getElementById('expPaidNow')?.value || 'none';
     const show = (id, on) => { const el = document.getElementById(id); if (el) el.style.display = on ? '' : 'none'; };
     show('expPaidAmountWrap', choice === 'part');
-    show('expPaidFromRow', choice === 'full' || choice === 'part');
+    const paying = choice === 'full' || choice === 'part';
+    show('expPaidFromRow', paying);
+    // "Whose money": only when the main owner chose a buyer's petty cash or own money.
+    const src = document.getElementById('expPaidFrom')?.value;
+    const people = document.getElementById('expPaidPerson');
+    show('expPaidPersonRow', paying && (src === 'petty_cash' || src === 'own_money') && !!(people && people.options.length));
     const how = document.getElementById('expPaidHow');
     if (how && !how.dataset.touched) how.value = _expPayHowOf(document.getElementById('expPaymentMethod')?.value);
 };
+let _expPaidNowSeq = 0;
 // Each time Add Expense opens: shown only to accounts that may record payments, set back to "Not paid yet".
 async function _expSetupPaidNow() {
     const wrap = document.getElementById('expPaidNowWrap');
     if (!wrap) return;
+    const seq = ++_expPaidNowSeq;   // a later opening wins over this one's slow answers
     const can = !!window.currentCanBuy;
     wrap.style.display = can ? '' : 'none';
     const choice = document.getElementById('expPaidNow'); if (choice) choice.value = 'none';
     const part = document.getElementById('expPaidAmount'); if (part) part.value = '';
     const how = document.getElementById('expPaidHow'); if (how) delete how.dataset.touched;
     const from = document.getElementById('expPaidFrom');
+    const people = document.getElementById('expPaidPerson'); if (people) people.innerHTML = '';
     // A staff buyer may pay from their own petty cash or own money (the server fills in who);
-    // an owner account pays as the company.
+    // an owner account pays as the company — and the main owner may also enter a staff
+    // buyer's petty cash or own money, choosing whose (as Record payment does; 0102).
     if (from) from.innerHTML = '<option value="company">Company (paid directly)</option>' + (window.currentUserRole === 'staff'
         ? '<option value="petty_cash">My petty cash</option><option value="own_money">My own money</option>' : '');
     const sup = document.getElementById('expSupplier'); if (sup) sup.value = '';
@@ -3513,6 +3527,76 @@ async function _expSetupPaidNow() {
         const list = document.getElementById('expSupplierList');
         if (list) list.innerHTML = _expSuppliers.map(s => '<option value="' + _mvpEsc(_expSupplierLabel(s)) + '"></option>').join('');
     } catch (err) { _expSuppliers = []; console.warn('suppliers:', err); }
+    // The main owner: the staff buyers whose petty cash or own money may have paid
+    // (the same list as Record payment). The server checks it again on save.
+    if (window.currentUserRole === 'staff' || !window.currentStockMainOwner || !from || !people) return;
+    try {
+        const { data, error } = await window.sbClient.rpc('pur_cash_tracker');
+        if (error) throw error;
+        if (seq !== _expPaidNowSeq) return;
+        const buyers = ((data && data.buyers) || []).filter(b => b.can_buy || Number(b.recorded) !== 0);
+        if (!buyers.length) return;
+        from.insertAdjacentHTML('beforeend', '<option value="petty_cash">Petty cash</option><option value="own_money">Own money</option>');
+        people.innerHTML = buyers.map(b => '<option value="' + _mvpEsc(b.buyer_id) + '">' + _mvpEsc(b.name) + '</option>').join('');
+        window.expTogglePaidNow();
+    } catch (err) { console.warn('petty cash buyers:', err); }
+}
+
+// ════════════════════════════════════════════════════════════
+// "PAID FROM" ON PAYROLL (0122): Labor paid from a staff buyer's petty cash
+// A staff buyer may pick their own ("My petty cash"); the main owner picks
+// whose. Everyone else sees nothing here — and an Edit by someone who cannot
+// choose it shows a note and never sends pettyCashBy, so it cannot clear it.
+// The server's triggers check it all again; the row still counts once in
+// Labor and Spent — petty cash only says how it was paid.
+// ════════════════════════════════════════════════════════════
+let _paySetupSeq = {};
+window.payTogglePettyCash = function (prefix) {
+    const sel = document.getElementById(prefix + 'PaidFrom');
+    const wrap = document.getElementById(prefix + 'PaidPersonRow');
+    if (wrap) wrap.style.display = sel && sel.value === 'petty_cash' ? '' : 'none';
+};
+// Each time a payroll form opens. current: the row's pettyCashBy (Edit), else null.
+async function _paySetupPettyCash(prefix, current) {
+    const row = document.getElementById(prefix + 'PaidFromRow');
+    const sel = document.getElementById(prefix + 'PaidFrom');
+    const who = document.getElementById(prefix + 'PaidPerson');
+    const note = document.getElementById(prefix + 'PettyNote');
+    if (!row || !sel || !who || !sel.dataset) return;
+    const seq = _paySetupSeq[prefix] = (_paySetupSeq[prefix] || 0) + 1;   // a later opening wins
+    row.style.display = 'none'; delete sel.dataset.shown; delete sel.dataset.current; sel.innerHTML = ''; who.innerHTML = '';
+    if (note) { note.style.display = 'none'; note.textContent = ''; }
+    const P = window.DacsPettyCash;
+    if (!P) return;
+    const me = _expActor();
+    const buyers = await P.loadBuyers();
+    if (seq !== _paySetupSeq[prefix]) return;
+    const opts = P.choices({ role: window.currentUserRole, mainOwner: !!window.currentStockMainOwner,
+                             canBuy: !!window.currentCanBuy, buyers });
+    const isMine = !!current && current === me && opts.some(o => o.value === 'mine');
+    const canPick = !current || isMine || (opts.some(o => o.value === 'petty_cash') && buyers.some(b => b.buyer_id === current));
+    if (!canPick) {
+        if (note) { note.textContent = 'Paid from ' + P.tag(current) + ' — only the main owner can change this.'; note.style.display = ''; }
+        return;
+    }
+    if (opts.length < 2) return;   // Company only: nothing to choose
+    sel.innerHTML = opts.map(o => '<option value="' + o.value + '">' + _mvpEsc(o.label) + '</option>').join('');
+    who.innerHTML = buyers.map(b => '<option value="' + _mvpEsc(b.buyer_id) + '">' + _mvpEsc(b.name) + '</option>').join('');
+    sel.value = !current ? 'company' : isMine ? 'mine' : 'petty_cash';
+    if (current && !isMine) who.value = current;
+    sel.dataset.current = current || '';   // what the form opened with: an unchanged save sends nothing
+    sel.dataset.shown = '1';
+    row.style.display = '';
+    window.payTogglePettyCash(prefix);
+}
+// What the save sends: shown (the choice was offered), whose petty cash, what to refuse first,
+// and changed — pettyCashBy goes only when it differs from what the form opened with.
+function _payPettyChoice(prefix, dayText) {
+    const sel = document.getElementById(prefix + 'PaidFrom');
+    if (!sel || !sel.dataset || sel.dataset.shown !== '1' || !window.DacsPettyCash) return { shown: false, holder: null, problem: '', changed: false };
+    const choice = sel.value || 'company';
+    const holder = window.DacsPettyCash.holderFor(choice, (document.getElementById(prefix + 'PaidPerson') || {}).value, _expActor());
+    return { shown: true, holder, problem: window.DacsPettyCash.problem(choice, holder, dayText), changed: holder !== (sel.dataset.current || null) };
 }
 
 // ════════════════════════════════════════════════════════════
@@ -3737,6 +3821,9 @@ async function handleAddPayroll(e) {
     const paymentDate = document.getElementById('payDate').value;   // optional
     const paymentMethod = (document.getElementById('payMethod') || {}).value || null;
     const notes       = document.getElementById('payNotes').value.trim();
+    // "Paid from" (0122): petty cash needs whose and a day — the server checks again.
+    const _pc = _payPettyChoice('pay', paymentDate);
+    if (_pc.problem) { showExpNotif(_pc.problem, 'error'); return; }
     const laborType   = (document.querySelector('input[name="payLaborType"]:checked') || {}).value || 'direct';
     // Statutory burden follows the worker class it was paid for (see payToggleContractForType).
     const liabilityFor = laborType === 'liability'
@@ -3793,6 +3880,7 @@ async function handleAddPayroll(e) {
             totalSalary: sp.amount,
             paymentDate, notes,
             ...(paymentMethod && { paymentMethod }),
+            ...(_pc.holder && { pettyCashBy: _pc.holder }),
             receiptImages: idx === 0 ? receiptImages : [],
             createdAt: firebase.firestore.FieldValue.serverTimestamp(),
             clientSubmissionId: _paySubmissionId,
@@ -3830,7 +3918,7 @@ async function handleAddPayroll(e) {
         clearPayReceiptPreview();
         closeExpModal('addPayrollModal');
     } catch (err) {
-        showExpNotif('Error: ' + err.message, 'error');
+        showExpNotif('Error: ' + (window.DacsPettyCash && window.DacsPettyCash.errorText(err) || err.message), 'error');
     } finally {
         showExpLoading('addPayrollBtn', false);
     }
@@ -5013,6 +5101,7 @@ async function openEditPayrollModal(id) {
     const _payDt = p.paymentDate || '';
     document.getElementById('editPayDate').value = _payDt.includes('T') ? _payDt : (_payDt ? _payDt + 'T00:00' : '');
     const _eMethod = document.getElementById('editPayMethod'); if (_eMethod) _eMethod.value = p.paymentMethod || '';
+    _paySetupPettyCash('editPay', p.pettyCashBy || null);
     document.getElementById('editPayNotes').value      = p.notes       || '';
     if (typeof lcPopulatePayrollPicker === 'function') lcPopulatePayrollPicker();
     const _ecSel = document.getElementById('editPayContract');
@@ -5083,6 +5172,11 @@ async function handleEditPayroll(ev) {
     if (!_editingPayrollId) return;
     try {
         showExpLoading('editPayrollBtn', true);
+        // "Paid from" (0122): sent only when this account was offered the choice and
+        // changed it — an edit by anyone else never clears a row's petty cash, and an
+        // unchanged save sends no new field.
+        const _ePc = _payPettyChoice('editPay', document.getElementById('editPayDate').value);
+        if (_ePc.problem) { showExpNotif(_ePc.problem, 'error'); return; }
         const _eLamsam = _editPayIsLamsam();
         const d = parseFloat((document.getElementById('editPayDays') || {}).value) || 0;
         const r = _eLamsam ? 0 : (parseFloat(((document.getElementById('editPayDailyRate') || {}).value||'').replace(/,/g,'')) || 0);
@@ -5111,6 +5205,7 @@ async function handleEditPayroll(ev) {
             daysWorked:    d, dailyRate: r, totalSalary: eTotal,
             paymentDate:   document.getElementById('editPayDate').value,   // optional
             paymentMethod: (document.getElementById('editPayMethod') || {}).value || null,
+            ...(_ePc.changed && { pettyCashBy: _ePc.holder }),
             notes:         document.getElementById('editPayNotes').value.trim(),
             receiptImages: finalImages,
             contractId:    editContractId,
@@ -5120,7 +5215,7 @@ async function handleEditPayroll(ev) {
         refreshOvAllData();
         closeExpModal('editPayrollModal');
         _editingPayrollId = null; _editPayStaged = []; _editPayKept = [];
-    } catch (err) { showExpNotif('Error: ' + err.message, 'error'); console.error(err); }
+    } catch (err) { showExpNotif('Error: ' + (window.DacsPettyCash && window.DacsPettyCash.errorText(err) || err.message), 'error'); console.error(err); }
     finally { showExpLoading('editPayrollBtn', false); }
 }
 
@@ -5167,6 +5262,7 @@ function openExpModal(id)  {
         _expCheckPending();
     }
     if (id === 'addPayrollModal' && typeof payToggleMode === 'function') payToggleMode(); // sync Daily/Lamsam UI
+    if (id === 'addPayrollModal') _paySetupPettyCash('pay', null);
     if (id === 'addPayrollModal' && typeof lcPopulatePayrollPicker === 'function') {
         lcPopulatePayrollPicker();
         lcResetContractPicks();   // a fresh entry never inherits the last one's ticks
@@ -6487,6 +6583,7 @@ function printTransactionReceipt(type, id) {
             <tr><td class="rc-label">Daily Rate</td><td class="rc-value">₱${formatNum(record.dailyRate)}</td></tr>
             <tr><td class="rc-label">Payment Date</td><td class="rc-value">${payDate}</td></tr>
             <tr><td class="rc-label">Mode of Payment</td><td class="rc-value">${payMethodLabel(record.paymentMethod)}</td></tr>
+            ${record.pettyCashBy ? `<tr><td class="rc-label">Paid from</td><td class="rc-value">${_mvpEsc(window.DacsPettyCash ? window.DacsPettyCash.tag(record.pettyCashBy) : 'Petty cash')}</td></tr>` : ''}
             ${record.notes ? `<tr><td class="rc-label">Notes</td><td class="rc-value">${record.notes}</td></tr>` : ''}`;
         amountLabel = 'Total Salary';
         amountValue = '₱' + formatNum(record.totalSalary);

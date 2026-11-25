@@ -134,8 +134,10 @@ Profit   = Earned − Spent
   Earned and Profit.** Issuing, returning or repaying that money never creates an expense.
   Project purchase costs enter Material/Spent once, after server acceptance through the shared
   recording operation. Warehouse purchases stay outside project Spent until owner-approved cost
-  assignment; approved cost transfers follow their separate rules. Payroll and overhead remain
-  unchanged.
+  assignment; approved cost transfers follow their separate rules. **Labor and overhead may be
+  paid from a staff buyer's petty cash (0122):** `petty_cash_by` on the payroll / overhead row, and
+  triggers keep one `pur_cash_spends` row per entry (voided on edit or delete, never deleted). The entry
+  still counts once in Labor / Overhead and Spent; only that buyer or the main owner may choose it.
 - **PM profit sharing (0098) is an internal allocation outside the money model.** Sharing balance =
   PM remaining cash (paid - direct cost) - warranty reserve (recorded at closeout for completed
   projects; `max(0, 5%)` estimate otherwise), split per project by `pm_sharing_agreements.partner_pct`

@@ -312,6 +312,15 @@
         });
     }
 
+    // One labor / overhead payment from petty cash (0122), as a line (t and s are
+    // escaped by SV.lines). A spend is voided by editing or deleting its entry in
+    // Project Control — never from here, so it carries no button.
+    function spendLine(x) {
+        return { t: PA.peso(x.amount) + ' · ' + (PA.SPEND_LABEL[x.kind] || x.kind),
+                 s: x.spent_on + ' — ' + [x.label, x.place].filter(Boolean).join(' · ') + (x.voided_at ? ' — voided: ' + x.void_reason : ''),
+                 dim: !!x.voided_at, pills: x.voided_at ? [{ text: 'Voided', tone: 'red' }] : [] };
+    }
+
     // One buyer's details in the pop-up (90 days), with counts and
     // repayments — voids live here; "May use own money" is its switch.
     async function buyerPanel(panel, b, today, reload, o) {
@@ -361,6 +370,7 @@
                     pills: [{ text: r.voided_at ? 'voided' : (RET[r.status] || r.status), tone: r.voided_at ? 'red' : r.status === 'reported' ? 'gold' : r.status === 'confirmed' ? 'done' : 'none' }],
                     note: '', facts: r.photo_url ? [['Photo', photoLink(r.photo_url).trim()]] : [],
                     acts: !r.voided_at && r.status === 'confirmed' ? voidBtn('data-void-return', r.id) : '' })), 'None.')),
+                SV.section('Paid labor and overhead (90 days)', SV.lines(PA.groupSpends(d.spends || []).map(spendLine), 'None.')),
                 SV.section('Cash counts', SV.lines((d.counts || []).map(k => ({
                     t: 'Counted ' + PA.peso(k.counted), s: k.counted_on + ' — counted ' + PA.peso(k.counted) + ', recorded ' + PA.peso(Math.max(0, Number(k.recorded))) +
                         (k.note ? ' — ' + k.note : '') + ' · A record only',
@@ -544,6 +554,8 @@
                             pills: !i.voided_at && i.disputed_at && !i.dispute_cleared_at ? [{ text: 'You said not received', tone: 'gold' }] : [],
                             acts: !i.voided_at && !(i.disputed_at && !i.dispute_cleared_at) ? SV.lbtn('I did not receive this…', 'data-dispute="' + esc(i.id) + '"') : '',
                           })), 'Nothing here.')),
+                        SV.section('Paid labor and overhead (90 days)', SV.note(esc('Labor and overhead you paid from your petty cash. Edited or deleted in Project Control, never here.')) +
+                          SV.lines(PA.groupSpends(d.spends || []).map(spendLine), 'Nothing here.')),
                         SV.section('Returns', SV.note(esc('Reported returns wait for the owner.')) + SV.lines((d.returns || []).map(r => ({
                             t: PA.peso(r.amount), s: 'Handed over ' + r.handed_on + (r.decision_note ? ' · ' + r.decision_note : '') + (r.voided_at ? ' — voided by the owner' : ''),
                             pills: [{ text: { reported: 'waiting for the owner', withdrawn: 'withdrawn', confirmed: 'confirmed', rejected: 'rejected' }[r.status] || r.status,

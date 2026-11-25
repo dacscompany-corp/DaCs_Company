@@ -517,7 +517,7 @@ function _ovhdRenderTable(filtered) {
             <td>${_esc(_ovhdFolderName(ex.folderId))}</td>
             <td>${_esc(_ovhdBillingPeriodName(ex))}</td>
             <td><span class="ovhd-cat-badge" style="--ovhd-dot:${_ovhdCatColor(ex.category || 'Uncategorized')}">${_esc(ex.category || 'Uncategorized')}</span></td>
-            <td>${_esc(ex.expenseName || ex.description || '—')}${ex.fromPayroll ? ' <span class="ovhd-src-badge" title="Recorded in Expenses → Payroll as Overhead / Indirect Labor">Payroll</span>' : ''}</td>
+            <td>${_esc(ex.expenseName || ex.description || '—')}${ex.fromPayroll ? ' <span class="ovhd-src-badge" title="Recorded in Expenses → Payroll as Overhead / Indirect Labor">Payroll</span>' : ''}${ex.pettyCashBy ? ' <span class="ovhd-src-badge" title="Paid from a staff buyer\'s petty cash">' + _esc(window.DacsPettyCash ? window.DacsPettyCash.tag(ex.pettyCashBy) : 'Petty cash') + '</span>' : ''}</td>
             <td class="ovhd-amt-cell">${_fmtAmt(parseFloat(ex.amount || 0))}</td>
             <td><span class="ovhd-cat-badge" style="--ovhd-dot:${status === 'paid' ? '#157a52' : '#c8a45a'}">${status === 'paid' ? 'Paid' : 'Pending'}</span></td>
             <td style="white-space:nowrap;">
@@ -645,6 +645,55 @@ function onOverheadScopeFieldChange() {
     _ovhdPopulateBillingPeriodSelect(scope === 'project' && sel ? sel.value : '', document.getElementById('ovhdExpBillingPeriod')?.value);
 }
 
+// ── Paid from (0122): the main owner may say a staff buyer's petty cash paid it ──
+// Only the main owner is offered it here (staff buyers never pick it on overhead).
+// Nothing is sent unless the choice was shown, so an edit by anyone else never
+// clears it; the server's triggers check it again. The expense still counts once
+// in Overhead and Spent — petty cash only says how it was paid.
+let _ovhdPcSeq = 0;
+function ovhdTogglePettyCash() {
+    const sel = document.getElementById('ovhdPaidFrom');
+    const wrap = document.getElementById('ovhdPaidPersonRow');
+    const status = document.getElementById('ovhdExpStatus');
+    const petty = !!sel && !!sel.dataset && sel.dataset.shown === '1' && sel.value === 'petty_cash';
+    if (wrap) wrap.style.display = petty ? '' : 'none';
+    if (petty && status) status.value = 'paid';   // paid from petty cash = paid
+}
+// Each time the form opens. current: the expense's pettyCashBy (Edit), else null.
+async function _ovhdSetupPettyCash(current) {
+    const row = document.getElementById('ovhdPaidFromRow');
+    const sel = document.getElementById('ovhdPaidFrom');
+    const who = document.getElementById('ovhdPaidPerson');
+    if (!row || !sel || !who || !sel.dataset) return;
+    const seq = ++_ovhdPcSeq;   // a later opening wins
+    row.style.display = 'none'; delete sel.dataset.shown; delete sel.dataset.current; sel.innerHTML = ''; who.innerHTML = '';
+    const P = window.DacsPettyCash;
+    if (!P) return;
+    const buyers = await P.loadBuyers();
+    if (seq !== _ovhdPcSeq) return;
+    const opts = P.choices({ role: window.currentUserRole, mainOwner: !!window.currentStockMainOwner,
+                             canBuy: !!window.currentCanBuy, buyers, overhead: true });
+    if (opts.length < 2) return;
+    if (current && !buyers.some(b => b.buyer_id === current)) return;   // never switch the person silently
+    sel.innerHTML = opts.map(o => '<option value="' + o.value + '">' + _esc(o.label) + '</option>').join('');
+    who.innerHTML = buyers.map(b => '<option value="' + _esc(b.buyer_id) + '">' + _esc(b.name) + '</option>').join('');
+    sel.value = current ? 'petty_cash' : 'company';
+    if (current) who.value = current;
+    sel.dataset.current = current || '';   // what the form opened with: an unchanged save sends nothing
+    sel.dataset.shown = '1';
+    row.style.display = '';
+    ovhdTogglePettyCash();
+}
+// What the save sends: shown (the choice was offered), whose petty cash, what to refuse first,
+// and changed — pettyCashBy goes only when it differs from what the form opened with.
+function _ovhdPettyChoice(dayText) {
+    const sel = document.getElementById('ovhdPaidFrom');
+    if (!sel || !sel.dataset || sel.dataset.shown !== '1' || !window.DacsPettyCash) return { shown: false, holder: null, problem: '', changed: false };
+    const choice = sel.value || 'company';
+    const holder = window.DacsPettyCash.holderFor(choice, (document.getElementById('ovhdPaidPerson') || {}).value, null);
+    return { shown: true, holder, problem: window.DacsPettyCash.problem(choice, holder, dayText), changed: holder !== (sel.dataset.current || null) };
+}
+
 function openOverheadModal() {
     const modal = document.getElementById('overheadAddModal');
     if (!modal) return;
@@ -662,6 +711,7 @@ function openOverheadModal() {
         dateEl.value = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
     }
     _ovhdPopulateProjectSelects();
+    _ovhdSetupPettyCash(null);
     modal.classList.add('active');
 }
 
@@ -697,6 +747,7 @@ function openOverheadEditModal(id) {
     document.getElementById('ovhdReceiptUrl').value = ex.receiptUrl || '';
     document.getElementById('ovhdReceiptBtnLabel').textContent = ex.receiptUrl ? 'Replace receipt' : 'Attach receipt';
     _ovhdReceiptPending = null;
+    _ovhdSetupPettyCash(ex.pettyCashBy || null);
     modal.classList.add('active');
 }
 
@@ -778,6 +829,9 @@ async function handleSaveOverheadExpense(e) {
     const today = new Date(); today.setHours(23, 59, 59, 999);
     if (new Date(date) > today) { _ovhdToast('Date cannot be in the future.', 'error'); return; }
     if (!description) { _ovhdToast('Please enter a description.', 'error'); return; }
+    // Paid from (0122): petty cash needs whose — the server checks again.
+    const _opc = _ovhdPettyChoice(date);
+    if (_opc.problem) { _ovhdToast(_opc.problem, 'error'); return; }
 
     const btn = document.getElementById('ovhdSaveBtn');
     if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
@@ -798,7 +852,10 @@ async function handleSaveOverheadExpense(e) {
             userId: _ovhdUid(), scope, folderId: folderId || null,
             billingPeriodId: _ovhdBillingPeriodId(folderId, document.getElementById('ovhdExpBillingPeriod')?.value),
             expenseName, category, amount, date, description,
-            supplier, invoiceNumber, receiptUrl, status, notes,
+            supplier, invoiceNumber, receiptUrl,
+            status: _opc.holder ? 'paid' : status,
+            ...(_opc.changed && { pettyCashBy: _opc.holder }),
+            notes,
             updatedAt: firebase.firestore.FieldValue.serverTimestamp()
         };
 
@@ -839,7 +896,7 @@ async function handleSaveOverheadExpense(e) {
         _ovhdRender();
     } catch(err) {
         console.error('handleSaveOverheadExpense:', err);
-        _ovhdToast('Error saving expense: ' + err.message, 'error');
+        _ovhdToast('Error saving expense: ' + (window.DacsPettyCash && window.DacsPettyCash.errorText(err) || err.message), 'error');
     } finally {
         if (btn) { btn.disabled = false; btn.textContent = 'Save Expense'; }
     }

@@ -209,6 +209,7 @@ no envelope.
 | `paymentDate`, `notes` | string | |
 | `receiptImages` | base64 data URL[] (older rows) or stored-file URL `…/object/public/uploads/payrollReceipts/…` (0089+) | only on first split |
 | `coverExpense?` / `splitGroup?` / `splitIndex?` / `splitTotal?` | — | as expenses |
+| `pettyCashBy?` | uuid | `petty_cash_by` (0122) — the staff buyer whose petty cash paid this row; null = not petty cash. Every split row carries it. Kept in `pur_cash_spends` by triggers |
 | `clientSubmissionId?` | uuid | `client_submission_id` — one id per Save press; unique with `split_index` (0089), so a retry cannot duplicate |
 | `createdAt` | ts | |
 
@@ -288,6 +289,7 @@ PM admin and let one team's cleanup break the other team's dropdown.
 | `0006` | `folderId` — which job a project-scope cost belongs to |
 | `0025` | `scope` (`'company'` \| `'project'`), `expenseName`, `supplier`, `invoiceNumber`, `receiptUrl`, `status`, `notes`, `history` (jsonb, append-only), `deletedAt`, `updatedAt`, `createdBy` |
 | `0073` | `billingPeriodId` — optional attribution to one billing period (see above) |
+| `0122` | `pettyCashBy` — the staff buyer whose petty cash paid it (the main owner picks it); null = not petty cash. Kept in `pur_cash_spends` by triggers; a soft delete voids it |
 
 - **Every read filters `!deletedAt`.** Deletes are soft.
 - A NULL `scope` is **inferred** from `folderId` (set ⇒ project). Do not backfill it to
@@ -1163,6 +1165,19 @@ Every table has RLS on, **no policies** and every privilege revoked: the screens
 | Main-owner reads and writes | `pur_cash_give`, `pur_cash_clear_dispute`, `pur_cash_void_issue`, `pur_cash_decide_return`, `pur_cash_void_return`, `pur_cash_count`, `pur_cash_void_count`, `pur_set_own_money`, `pur_accept_own_money`, `pur_repay_buyer`, `pur_void_repayment`, `pur_resolve_overpaid`, `pur_void_refund`, `pur_void_credit`, `pur_cash_tracker`, `pur_cash_buyer(buyer)`, `pur_overpaid` (with a suggested split: the latest payments first), `pur_cash_report(buyer, from, to)` (≤ 92 days; voided entries listed apart) |
 | `pettyCash/<company>/<yyyy-mm>/<id>.jpg` (storage, R13) | A return photo. `uploads_can_read` (0097's, plus this branch first): only the main owner and the buyer who uploaded it (`pur_petty_reader`, by the upload ledger); written by buyers of the company; never overwritten. Ledger kind `petty_cash`. Payment proofs stay in `purchases/` |
 | `pur_payment_badges()` | Owner accounts only: `{line or charge id: state}` for Project Control's Unpaid / Partially paid / Paid / Overpaid badge |
+
+## Petty cash for Labor and Overhead (0122)
+
+A payroll row or overhead expense may be paid from a staff buyer's petty cash. **Outside the money model:** the entry counts once in Labor / Overhead and Spent as before; petty cash only says how it was paid. Spec: `docs/superpowers/specs/2026-11-25-petty-cash-labor-overhead-design.md`.
+
+| Table / object | Columns and rules |
+|---|---|
+| `payroll.petty_cash_by`, `overhead_expenses.petty_cash_by` (uuid → profiles) | Whose petty cash paid. Set by that staff buyer (their own) or the main owner (anyone's); refused otherwise (`NOT_A_BUYER`, `PERSON_NOT_ALLOWED`). Needs a past day (`PETTY_CASH_DATE` — payroll's day is the first 10 characters of `payment_date`) and an amount > 0 (`BAD_AMOUNT`). Correcting the amount or day keeps the person with no caller check |
+| `pur_cash_spends` (`buyer_id`, `amount`, `spent_on`, `kind` `payroll`/`overhead`, `payroll_id` / `overhead_id` (no foreign key: outlives the entry), `split_group`, `label`, `place` (snapshots), `created_by`, `voided_at` / `voided_by` / `void_reason`) | One live row per entry (partial unique indexes). Never deleted, voided once (`HISTORY_IMMUTABLE`). RLS on, no policies, every privilege revoked |
+| Triggers `payroll_petty_check`, `overhead_petty_check` (before) and `payroll_petty_sync`, `overhead_petty_sync` (after) | When the person, day or amount changes: void the live spend (`Payroll entry changed` / `Overhead entry changed`) and write the new one. Delete (cascades too) or overhead soft delete: void (`… deleted`). Other edits touch nothing |
+| `pur_cash_raw` (0122, redefined) | Also − live spends, counted like petty-cash payments (a void counts from the day it is made) |
+| `pur_cash_detail` (0122, redefined) | Adds `spends` (90 days): the buyer card and My cash |
+| `pur_cash_report` (0122, redefined) | Each day adds `spends`; their voids appear in `reversals` as "Paid labor" / "Paid overhead" |
 
 ## Stock (0104) — WorkMate Stage 2B-a
 

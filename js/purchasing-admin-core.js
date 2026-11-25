@@ -636,6 +636,22 @@
     // Balances below zero read ₱0 with the shortfall beside them. An entry
     // voided later stays on its own day, marked; its reversal is a row on the
     // day it was voided (R7), so a past day's closing never changes.
+    // 0122: labor and overhead paid from petty cash. Rows of one split payroll
+    // entry (same split_group, same day, same void state) read as one line.
+    const SPEND_LABEL = { payroll: 'Paid labor', overhead: 'Paid overhead' };
+    function groupSpends(spends) {
+        const out = [], byKey = {};
+        (spends || []).forEach(s => {
+            const key = s.split_group
+                ? [s.kind, s.split_group, s.spent_on || '', s.voided_on || s.voided_at || '', s.void_reason || ''].join('|')
+                : 'id:' + s.id;
+            if (byKey[key]) { byKey[key].amount = round2(byKey[key].amount + Number(s.amount)); byKey[key].ids.push(s.id); return; }
+            const g = { kind: s.kind, amount: round2(s.amount), label: s.label || '', place: s.place || '', spent_on: s.spent_on || null,
+                        voided_at: s.voided_at || null, voided_on: s.voided_on || null, void_reason: s.void_reason || null, ids: [s.id] };
+            byKey[key] = g; out.push(g);
+        });
+        return out;
+    }
     function reportRows(rep) {
         const rows = [];
         const bal = (v) => Math.max(0, Number(v));
@@ -650,6 +666,8 @@
             (d.payments || []).forEach(x => rows.push({ day: d.day, what: 'Paid to supplier', detail: (x.supplier || 'No supplier') + ' — ' +
                 (x.items || []).join(', ') + ' · ' + ((x.projects || []).concat(x.warehouse ? ['Warehouse'] : [])).join(', ') +
                 (x.purchase_status === 'void' ? ' (purchase voided)' : '') + voided(x), amountIn: '', amountOut: Number(x.amount) }));
+            groupSpends(d.spends).forEach(x => rows.push({ day: d.day, what: SPEND_LABEL[x.kind] || x.kind,
+                detail: [x.label, x.place].filter(Boolean).join(' · ') + voided(x), amountIn: '', amountOut: Number(x.amount) }));
             (d.returns || []).forEach(x => rows.push({ day: d.day, what: 'Returned to the owner', detail: 'handed over ' + x.handed_on +
                 (x.handed_to ? ' to ' + x.handed_to : '') + voided(x), amountIn: '', amountOut: Number(x.amount) }));
             // The server calls a voided issue "Petty cash given"; name it as its entry row does.
@@ -780,7 +798,7 @@
                    chargesOf, recordAgainState,
                    PAY_STATE, payLabel, PAY_SOURCE, PAY_METHOD, methodOf, localDay, paymentProblems, paymentBody, cashWarning,
                    paidNowPayments, paidNowProblems, REFUND_ROUTES, routeLabel, defaultResolution, resolutionProblems,
-                   cashFigures, reportRows, reportCsv };
+                   cashFigures, reportRows, reportCsv, SPEND_LABEL, groupSpends };
 
     if (typeof module !== 'undefined' && module.exports) {
         module.exports = pure;

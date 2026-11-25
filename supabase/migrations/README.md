@@ -6,8 +6,8 @@
 one-offs — that habit is why `0020_schema_drift_catchup.sql`, `0025` and the drift they
 capture exist. Write the migration, apply the migration, commit the migration.
 
-- **Next number = highest existing + 1** (**0117** — highest on disk is
-  `0116_pm_billing_documents.sql`). Sort the folder before you pick; don't
+- **Next number = highest existing + 1** (**0123** — highest on disk is
+  `0122_petty_cash_labor_overhead.sql`; 0117–0121 are taken too). Sort the folder before you pick; don't
   trust this line if it looks stale. Duplicate numbers are how we got into trouble. **0109** (WorkMate Stage 4) was reserved before 0110 and is applied live after it.
 - **`0075` and `0076` are TAKEN but not on `main`.** They belong to the abandoned
   project cost-plan branch (`project_cost_plans`, then its `%` columns) and **both
@@ -217,6 +217,8 @@ file creates the policy only when it is missing, so applying it live changes not
 **0115 (WorkMate Agreements: no payroll breakdown on the phone)** redefines `ll_my_agreements()` without the `payments` list (owner decision 17 Nov 2026): the worker still gets agreed / paid / balance, computed exactly as 0113 does, but never a payment's date, amount or method. No table, column or other function changes; the office side is untouched. Run after 0113. Live check: `supabase/tests/0115_verify.sql` (read-only), before and after.
 
 **0116 (Project Management: Billing Request, saved Acknowledgement Receipts, payment photo)** adds `pm_billing_receipts` (owner accounts read it; only the `pmar_*` functions write it, and a row can only be voided, through 0114's guard) and `pm_billing_receipt_parties` (no direct access), the column `payment_requests.proof_url`, and the functions `pmar_state`, `pmar_issue` and `pmar_reissue`. Receipt numbers come from 0114's `billing_receipt_counters`, so Project Control and Project Management share one AR series. It adds no storage rule: payment photos go to `paymentReceipts/`, which 0110's general office rule (owner / staff) already covers, the same access as the payment rows. 0114's tables and functions are not redefined; nothing it does touches an expense, payroll row, invoice, bill or budget. Run after 0114. **Apply it before the web code that uses it goes live.**
+
+**0122 (Petty cash for Labor and Overhead)** adds `payroll.petty_cash_by` and `overhead_expenses.petty_cash_by` (the staff buyer whose petty cash paid; null = not petty cash) and the append-only `pur_cash_spends` (one live row per such entry; never deleted, voided once — `HISTORY_IMMUTABLE`). Triggers `payroll_petty_check` / `overhead_petty_check` refuse `NOT_A_BUYER`, `PERSON_NOT_ALLOWED` (only that buyer or the main owner), `PETTY_CASH_DATE`, `BAD_AMOUNT`; `payroll_petty_sync` / `overhead_petty_sync` void and re-write the spend when the person, day or amount changes, and void it on delete (cascades too) or overhead soft delete. Redefines `pur_cash_raw` (less live spends), `pur_cash_detail` (+ `spends`) and `pur_cash_report` (+ each day's `spends`; voids as "Paid labor" / "Paid overhead"). Needs 0102/0103; does not depend on 0121. **Built 25 Nov 2026, not applied — apply it BEFORE pushing the web code that sends `pettyCashBy`.** Taking petty cash off a row needs that buyer or the main owner too; both checks run whenever the column changes, a soft-deleted overhead row included. Tests: `supabase/tests/pc_petty_cash_spends.pglite.mjs`.
 
 Get the truth before relying on this line:
 

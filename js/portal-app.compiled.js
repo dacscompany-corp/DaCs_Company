@@ -237,6 +237,9 @@ function classifyLabor(role, name) {
   if (INDIRECT_KEYWORDS.some((k) => s.includes(k))) return "indirect";
   return "direct";
 }
+// "Petty cash" (· the buyer's name when known) for a row paid from a staff
+// buyer's petty cash (0122). A label only: no amount, never in a money sum.
+function _pcTag(uid) { return window.DacsPettyCash ? window.DacsPettyCash.tag(uid) : "Petty cash"; }
 function mapPayrollDoc(d) {
   const type = d.laborType === "direct" || d.laborType === "indirect" || d.laborType === "liability" ? d.laborType : classifyLabor(d.role, d.workerName);
   const dateTime = (d.paymentDate || "").toString();
@@ -256,6 +259,7 @@ function mapPayrollDoc(d) {
     contractId: d.contractId || null,
     payMilestone: d.payMilestone || "",
     paymentMethod: (d.paymentMethod || "").toString(),
+    pettyCashBy: d.pettyCashBy || null,
     ref: shortRef("PAY", d.id)
   };
 }
@@ -2249,6 +2253,17 @@ function OverheadDrill({ project, onBack, overheadTx, indirectTx, folderId, chil
   const [receiptFile, setReceiptFile] = React.useState(null);   // staged until save
   // Set while editing an existing row — the same modal serves add and edit.
   const [editingId, setEditingId] = React.useState(null);
+  // Paid from (0122): only the main owner may say a staff buyer's petty cash paid
+  // it. Sent only when the choice is shown and changed (an add sends it only for
+  // petty cash), so an edit by anyone else never clears it; the server checks it
+  // again. It still counts once in Overhead.
+  // The buyer list is read each time the form opens (Add / Edit), never on mount.
+  const [pcBuyers, setPcBuyers] = React.useState([]);
+  const loadPcBuyers = () => { if (window.DacsPettyCash) window.DacsPettyCash.loadBuyers().then((b) => setPcBuyers(b)); };
+  const pcOpts = window.DacsPettyCash
+    ? window.DacsPettyCash.choices({ role: window.currentUserRole, mainOwner: !!window.currentStockMainOwner, canBuy: !!window.currentCanBuy, buyers: pcBuyers, overhead: true })
+    : [];
+  const pcShown = pcOpts.length > 1;
   const closeModal = () => { setAdding(false); setEditingId(null); setReceiptFile(null); };
   const OVHD_PALETTE = ["#157a52", "#c8a45a", "#7f9cb0", "#9fb98a", "#b0907f", "#8a7fb0", "#5e9d80", "#c0564a"];
   const catColor = (name) => { let n = 0; const x = String(name || ""); for (let i = 0; i < x.length; i++) n = (n * 31 + x.charCodeAt(i)) >>> 0; return OVHD_PALETTE[n % OVHD_PALETTE.length]; };
@@ -2262,7 +2277,8 @@ function OverheadDrill({ project, onBack, overheadTx, indirectTx, folderId, chil
     amount: Number(p.amount) || 0,
     date: p.date || "",
     description: p.name || "",
-    fromPayroll: true
+    fromPayroll: true,
+    pettyCashBy: p.pettyCashBy || null
   }));
   const allTx = [...indirectRows, ...overheadTx].sort((a, b) => (b.date || "").localeCompare(a.date || ""));
   // Suggestions = site operating-cost presets + every category already used on this
@@ -2283,6 +2299,10 @@ function OverheadDrill({ project, onBack, overheadTx, indirectTx, folderId, chil
     if (isNaN(amt) || amt <= 0) { alert("Please enter a valid amount."); return; }
     if (!form.date) { alert("Please select a date."); return; }
     if (!folderId) { alert("Open a project first."); return; }
+    const _pcChoice = pcShown ? (form.paidFrom || "company") : "company";
+    const _pcHolder = pcShown && window.DacsPettyCash ? window.DacsPettyCash.holderFor(_pcChoice, form.pettyPerson || "", null) : null;
+    const _pcProblem = pcShown && window.DacsPettyCash ? window.DacsPettyCash.problem(_pcChoice, _pcHolder, form.date) : "";
+    if (_pcProblem) { alert(_pcProblem); return; }
     setSaving(true);
     try {
       const uid = window.currentDataUserId || (firebase.auth().currentUser && firebase.auth().currentUser.uid) || null;
@@ -2303,7 +2323,8 @@ function OverheadDrill({ project, onBack, overheadTx, indirectTx, folderId, chil
       if (editingId) {
         // Edit: never blank an existing receipt just because no new file was
         // staged, and leave userId / scope / createdAt as they were.
-        const patch = { category, amount: amt, date: form.date, description: form.description || "", billingPeriodId: savedBillingPeriodId };
+        const patch = { category, amount: amt, date: form.date, description: form.description || "", billingPeriodId: savedBillingPeriodId, ...(pcShown && _pcHolder !== (form.pcOpened || null) && { pettyCashBy: _pcHolder }) };
+        if (_pcHolder) patch.status = "paid";
         const existing = overheadTx.find(x => x.id === editingId);
         const history = Array.isArray(existing?.history) ? existing.history.slice() : [];
         if ((existing?.billingPeriodId || null) !== savedBillingPeriodId) {
@@ -2316,11 +2337,13 @@ function OverheadDrill({ project, onBack, overheadTx, indirectTx, folderId, chil
         await db.collection("overheadExpenses").add({
           userId: uid,
           // scope is explicit so the admin Overhead page doesn't have to infer it.
-          // status is deliberately NOT set: the drill never asks whether the bill was
-          // paid, so it defaults to 'pending' and is settled on the Overhead page.
+          // status is NOT set for a company payment: the drill never asks whether the bill
+          // was paid, so it defaults to 'pending' and is settled on the Overhead page.
+          // Paid from petty cash (0122) means it was paid: status 'paid'.
           folderId, scope: "project", billingPeriodId: savedBillingPeriodId,
           category, amount: amt, date: form.date, description: form.description || "",
           receiptUrl,
+          ...(_pcHolder && { pettyCashBy: _pcHolder, status: "paid" }),
           createdAt: firebase.firestore.FieldValue.serverTimestamp()
         });
       }
@@ -2328,7 +2351,7 @@ function OverheadDrill({ project, onBack, overheadTx, indirectTx, folderId, chil
       setEditingId(null);
       setForm({ category: "", amount: "", date: _ovhdLocalToday(), description: "", billingPeriodId: defaultPeriodId });
       setReceiptFile(null);
-    } catch (err) { alert("Save failed: " + (err.message || err)); }
+    } catch (err) { alert("Save failed: " + (window.DacsPettyCash && window.DacsPettyCash.errorText(err) || err.message || err)); }
     setSaving(false);
   };
   const _rowBtn = { border: 0, background: "#f1efea", color: "#57534e", borderRadius: 8, padding: "6px 9px", cursor: "pointer", marginRight: 6 };
@@ -2351,8 +2374,10 @@ function OverheadDrill({ project, onBack, overheadTx, indirectTx, folderId, chil
       amount: String(x.amount == null ? "" : x.amount),
       date: x.date || _ovhdLocalToday(),
       description: x.description || "",
-      billingPeriodId: periods.some(p => p.id === x.billingPeriodId) ? x.billingPeriodId : ""
+      billingPeriodId: periods.some(p => p.id === x.billingPeriodId) ? x.billingPeriodId : "",
+      paidFrom: x.pettyCashBy ? "petty_cash" : "company", pettyPerson: x.pettyCashBy || "", pcOpened: x.pettyCashBy || null
     });
+    loadPcBuyers();
     setReceiptFile(null);
     setPeriodOpen(false);
     setEditingId(x.id);
@@ -2452,7 +2477,8 @@ function OverheadDrill({ project, onBack, overheadTx, indirectTx, folderId, chil
         h("td", { style: { padding: "12px 16px" } }, h("span", { style: { display: "inline-flex", alignItems: "center", gap: 7 } },
           h("span", { style: { width: 9, height: 9, borderRadius: 3, background: catColor(x.category) } }), esc(x.category),
           x.fromPayroll ? h("span", { title: "Recorded in Payroll as Overhead / Indirect Labor", style: { font: "600 9.5px 'IBM Plex Sans'", letterSpacing: ".05em", textTransform: "uppercase", color: "#7f9cb0", border: "1px solid #dbe3e9", borderRadius: 5, padding: "1px 5px" } }, "Payroll") : null)),
-        h("td", { style: { padding: "12px 16px", color: "#6b7280" } }, x.description ? esc(x.description) : "\u2014"),
+        h("td", { style: { padding: "12px 16px", color: "#6b7280" } }, x.description ? esc(x.description) : "\u2014",
+          x.pettyCashBy ? h("span", { className: "lc2-mile lc2-petty", title: "Paid from a staff buyer's petty cash", style: { marginLeft: 6 } }, _pcTag(x.pettyCashBy)) : null),
         h("td", { style: { padding: "12px 16px", fontWeight: 600 } }, _staff() ? share(x.amount) : "\u20B1 " + peso(x.amount)),
         h("td", { style: { padding: "12px 16px", textAlign: "right", whiteSpace: "nowrap" } },
           !_staff() && x.receiptUrl ? h("a", {
@@ -2507,6 +2533,10 @@ function OverheadDrill({ project, onBack, overheadTx, indirectTx, folderId, chil
           "Type any category \u2014 new ones are remembered and suggested next time. Coordinator, site supervision and procurement pay belongs in Expenses \u2192 Payroll (Overhead / Indirect Labor), not here.")
       )),
       field("Amount (\u20B1)", h("input", { type: "number", value: form.amount, onChange: (ev) => setForm({ ...form, amount: ev.target.value }), placeholder: "0.00", style: inStyle })),
+      pcShown && field("Paid from", h("select", { id: "ovhdDrillPaidFrom", value: form.paidFrom || "company", onChange: (ev) => setForm({ ...form, paidFrom: ev.target.value, pettyPerson: form.pettyPerson || (pcBuyers[0] ? pcBuyers[0].buyer_id : "") }), style: inStyle },
+        pcOpts.map((o) => h("option", { key: o.value, value: o.value }, o.label)))),
+      pcShown && form.paidFrom === "petty_cash" && field("Whose petty cash", h("select", { id: "ovhdDrillPaidPerson", value: form.pettyPerson || "", onChange: (ev) => setForm({ ...form, pettyPerson: ev.target.value }), style: inStyle },
+        pcBuyers.map((b) => h("option", { key: b.buyer_id, value: b.buyer_id }, b.name)))),
       field("Date", h("input", { type: "date", value: form.date, onChange: (ev) => setForm({ ...form, date: ev.target.value }), style: inStyle })),
       field("Description (optional)", h("input", { type: "text", value: form.description, onChange: (ev) => setForm({ ...form, description: ev.target.value }), placeholder: "e.g. June electricity bill", style: inStyle })),
       // Receipt: accept="image/*,.pdf" + capture lets a phone offer the camera directly,
@@ -2531,7 +2561,7 @@ function OverheadDrill({ project, onBack, overheadTx, indirectTx, folderId, chil
       h("div", { className: "eyebrow", style: { marginBottom: 10 } }, "Overhead Cost \xB7 Project Operating Costs"),
       h("h2", null, "Overhead Expenses"),
       h("div", { className: "sub" }, esc(project && project.name), project && project.code ? " \xB7 " + project.code : "")),
-    !_staff() && h("button", { onClick: () => { if (_staff()) return; setEditingId(null); setReceiptFile(null); setForm({ category: "", amount: "", date: _ovhdLocalToday(), description: "", billingPeriodId: defaultPeriodId }); setPeriodOpen(false); setAdding(true); }, style: { display: "inline-flex", alignItems: "center", gap: 8, background: "var(--brand-green)", color: "#fff", border: 0, borderRadius: 10, padding: "11px 20px", font: "700 13px 'IBM Plex Sans'", cursor:"pointer", whiteSpace: "nowrap", flex: "none" } }, "+ Add Expense"));
+    !_staff() && h("button", { onClick: () => { if (_staff()) return; loadPcBuyers(); setEditingId(null); setReceiptFile(null); setForm({ category: "", amount: "", date: _ovhdLocalToday(), description: "", billingPeriodId: defaultPeriodId }); setPeriodOpen(false); setAdding(true); }, style: { display: "inline-flex", alignItems: "center", gap: 8, background: "var(--brand-green)", color: "#fff", border: 0, borderRadius: 10, padding: "11px 20px", font: "700 13px 'IBM Plex Sans'", cursor:"pointer", whiteSpace: "nowrap", flex: "none" } }, "+ Add Expense"));
 
   return h("section", { className: "drill" },
     h("button", { className: "back-btn", onClick: onBack, title: "Go back to Project Control" }, Ico.arrowL, " Back to Project Control"),
@@ -3128,7 +3158,8 @@ function _lcFirstName(n) {
       )),
       rc("tbody", null, sorted.map((p, i) => rc("tr", { key: p.id || i },
         rc("td", null, fmtDateTime(p.dateTime || p.date)),
-        rc("td", null, rc("span", { className: "lc2-mile" }, p.payMilestone ? (p.payMilestone.charAt(0).toUpperCase() + p.payMilestone.slice(1)) : "Payment")),
+        rc("td", null, rc("span", { className: "lc2-mile" }, p.payMilestone ? (p.payMilestone.charAt(0).toUpperCase() + p.payMilestone.slice(1)) : "Payment"),
+          p.pettyCashBy ? rc("span", { className: "lc2-mile lc2-petty", title: "Paid from a staff buyer's petty cash" }, _pcTag(p.pettyCashBy)) : null),
         rc("td", { className: "r amt" }, "\u20B1 " + peso(Number(p.amount) || 0)),
         rc("td", { className: "r" },
           !_staff() && rc("button", { className: "lc2-rowbtn", title: "Receipt / Invoice", onClick: _pcMoneyAction(() => window.printSinglePayrollInvoice && window.printSinglePayrollInvoice(p.id)) }, Ico.receipt || "\u{1F9FE}"),
@@ -4284,7 +4315,7 @@ function PortalApp() {
   // ALL-TIME overhead and report a nonsense margin.
   const overheadRowsTx = React.useMemo(() => filterByPeriod(overheadRows, period), [overheadRows, period]);
   const overheadTx = React.useMemo(
-    () => overheadRowsTx.map((e) => ({ id: e.id, folderId: e.folderId, billingPeriodId: e.billingPeriodId || null, history: e.history, category: e.category || "Uncategorized", amount: Number(e.amount) || 0, date: (e.date || "").toString().slice(0, 10), description: e.description || "", receiptUrl: e.receiptUrl || "" })).sort((a, b) => (b.date || "").localeCompare(a.date || "")),
+    () => overheadRowsTx.map((e) => ({ id: e.id, folderId: e.folderId, billingPeriodId: e.billingPeriodId || null, history: e.history, category: e.category || "Uncategorized", amount: Number(e.amount) || 0, date: (e.date || "").toString().slice(0, 10), description: e.description || "", receiptUrl: e.receiptUrl || "", pettyCashBy: e.pettyCashBy || null })).sort((a, b) => (b.date || "").localeCompare(a.date || "")),
     [overheadRowsTx]
   );
   const childFolders = React.useMemo(

@@ -4588,7 +4588,7 @@
                         <div class="aer-row" id="expPaidFromRow" style="display:none;margin-bottom:14px;">
                             <div>
                                 <label class="aer-lbl" for="expPaidFrom">Paid from</label>
-                                <div class="aer-selwrap"><select id="expPaidFrom"></select><svg class="aer-chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></div>
+                                <div class="aer-selwrap"><select id="expPaidFrom" onchange="expTogglePaidNow()"></select><svg class="aer-chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></div>
                             </div>
                             <div>
                                 <label class="aer-lbl" for="expPaidHow">How</label>
@@ -4603,6 +4603,12 @@
                                     <svg class="aer-chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
                                 </div>
                             </div>
+                        </div>
+                        <!-- Whose petty cash / own money: the main owner only (0102 — the server
+                             refuses anyone else); filled by _expSetupPaidNow, empty for everyone else. -->
+                        <div class="aer-fg" id="expPaidPersonRow" style="display:none;">
+                            <label class="aer-lbl" for="expPaidPerson">Whose money</label>
+                            <div class="aer-selwrap"><select id="expPaidPerson"></select><svg class="aer-chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></div>
                         </div>
                         <div class="aer-fg">
                             <label class="aer-lbl" for="expSupplier">Supplier <small>— optional</small></label>
@@ -4784,6 +4790,22 @@
                             <option value="cheque">Cheque</option>
                         </select>
                         <svg class="apr-chev" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                    </div>
+                </div>
+                <!-- Paid from (0122): a staff buyer's own petty cash, or the main owner picks whose; filled by
+                     _paySetupPettyCash (expenses-module.js) and hidden for everyone else. -->
+                <div id="payPaidFromRow" style="display:none;margin-bottom:16px;">
+                    <label class="apr-lbl" for="payPaidFrom">Paid from</label>
+                    <div class="apr-selwrap">
+                        <select id="payPaidFrom" onchange="payTogglePettyCash('pay')"></select>
+                        <svg class="apr-chev" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                    </div>
+                    <div id="payPaidPersonRow" style="display:none;margin-top:10px;">
+                        <label class="apr-lbl" for="payPaidPerson">Whose petty cash</label>
+                        <div class="apr-selwrap">
+                            <select id="payPaidPerson"></select>
+                            <svg class="apr-chev" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                        </div>
                     </div>
                 </div>
                 <label class="apr-lbl">Labor category <small>— where this cost is counted</small></label>
@@ -5152,6 +5174,23 @@
                         <svg class="apr-chev" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
                     </div>
                 </div>
+                <!-- Paid from (0122): a staff buyer's own petty cash, or the main owner picks whose; filled by
+                     _paySetupPettyCash (expenses-module.js) and hidden for everyone else. -->
+                <div id="editPayPaidFromRow" style="display:none;margin-bottom:16px;">
+                    <label class="apr-lbl" for="editPayPaidFrom">Paid from</label>
+                    <div class="apr-selwrap">
+                        <select id="editPayPaidFrom" onchange="payTogglePettyCash('editPay')"></select>
+                        <svg class="apr-chev" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                    </div>
+                    <div id="editPayPaidPersonRow" style="display:none;margin-top:10px;">
+                        <label class="apr-lbl" for="editPayPaidPerson">Whose petty cash</label>
+                        <div class="apr-selwrap">
+                            <select id="editPayPaidPerson"></select>
+                            <svg class="apr-chev" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                        </div>
+                    </div>
+                </div>
+                <p id="editPayPettyNote" style="display:none;font-size:12px;color:#6b7280;margin:-8px 2px 14px;"></p>
                 <label class="apr-lbl">Labor category <small>— where this cost is counted</small></label>
                 <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px;">
                     <label class="apr-cat"><input type="radio" name="editPayLaborType" value="direct" checked onchange="payToggleContractForType('edit')"><span class="apr-badge">D</span><div><div class="apr-cat-t">Direct</div><div class="apr-cat-s">On-site workers — mason, carpenter, laborer, painter</div></div></label>
@@ -5497,6 +5536,18 @@
                         <input type="text" id="ovhdExpInvoice" placeholder="e.g. INV-00123">
                     </div>
                 </div>
+                <!-- Paid from (0122): the main owner may say a staff buyer's petty cash paid it (that makes it Paid);
+                     filled by _ovhdSetupPettyCash (overhead-module.js), hidden for everyone else. -->
+                <div class="exp-form-row" id="ovhdPaidFromRow" style="display:none;">
+                    <div class="exp-form-group">
+                        <label for="ovhdPaidFrom">Paid from</label>
+                        <select id="ovhdPaidFrom" onchange="ovhdTogglePettyCash()"></select>
+                    </div>
+                    <div class="exp-form-group" id="ovhdPaidPersonRow" style="display:none;">
+                        <label for="ovhdPaidPerson">Whose petty cash</label>
+                        <select id="ovhdPaidPerson"></select>
+                    </div>
+                </div>
                 <div class="exp-form-row">
                     <div class="exp-form-group">
                         <label for="ovhdExpStatus">Status</label>
@@ -5542,8 +5593,9 @@
 <script src="js/expense-split-rows.js?v=20261028a"></script>
 <script src="js/expense-pending-save.js?v=20261031a"></script>
 <script src="js/linked-labor.js?v=20261117a"></script>
-<script src="js/expenses-module.js?v=20261114b"></script>
-<script src="js/overhead-module.js?v=20261104b"></script>
+<script src="js/petty-cash-pick.js?v=20261126a"></script>
+<script src="js/expenses-module.js?v=20261126a"></script>
+<script src="js/overhead-module.js?v=20261126a"></script>
 <script src="js/reimbursement-module.js"></script>
 <script src="js/construction-module.js"></script>
 <script src="js/boq-module.js"></script>
@@ -5558,12 +5610,12 @@
 <script src="js/requests-admin-setup.js?v=20261116b"></script>
 <script src="js/requests-admin-history.js?v=20261116b"></script>
 <script src="js/requests-admin-gallery.js?v=20261116b"></script>
-<script src="js/purchasing-admin-core.js?v=20261116b"></script>
+<script src="js/purchasing-admin-core.js?v=20261126a"></script>
 <script src="js/purchasing-admin-list.js?v=20261125b"></script>
 <script src="js/purchasing-admin-record.js?v=20261116b"></script>
 <script src="js/purchasing-admin-purchases.js?v=20261125c"></script>
 <script src="js/purchasing-admin-pay.js?v=20261125b"></script>
-<script src="js/purchasing-admin-cash.js?v=20261125b"></script>
+<script src="js/purchasing-admin-cash.js?v=20261126a"></script>
 <script src="js/stock-admin.js?v=20261116b"></script>
 <script src="js/stock-cost-admin.js?v=20261125b"></script>
 <script src="js/reconciliation-admin.js?v=20261125b"></script>
@@ -5577,7 +5629,7 @@
 <script src="js/user-navigator.js?v=20261104a"></script>
 <script src="js/client-accounts.js"></script>
 <script src="js/payment-requests.js"></script>
-<script src="js/invoice-module.js?v=20261108a"></script>
+<script src="js/invoice-module.js?v=20261126a"></script>
 <script src="js/labor-invoice-module.js"></script>
 <script src="js/billing-receipts.js?v=20261118b"></script>
 <!-- PM Billing Request + Acknowledgement Receipts (0116). After billing-receipts.js, whose page and dialogs it reuses. -->
