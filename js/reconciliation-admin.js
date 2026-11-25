@@ -145,62 +145,9 @@
         return (...args) => fn(opId, ...args);
     }
     function pill(text, tone) { return '<span class="att-pill att-pill--' + tone + '">' + esc(text) + '</span>'; }
-    function section(id, title, sub, inner) {
-        return '<section id="' + id + '" class="rec-section" style="margin-bottom:28px"><h3 class="pur-h3">' + esc(title) + '</h3>' +
-            (sub ? '<p class="req-muted">' + esc(sub) + '</p>' : '') + inner + '</section>';
-    }
     const when = (ts) => ts ? RA.formatManila(ts) : '';
 
     // ── Waiting (Q5) ────────────────────────────────────────────────
-    function waitingHtml(w) {
-        const items = waitingItems(w);
-        if (!items.length) return '<div class="att-empty">Nothing is waiting.</div>';
-        return '<div class="rec-waiting">' + items.map((it, i) =>
-            '<button type="button" class="att-btn att-btn--sm" data-go="' + i + '">' + esc(it.label) + ' →</button>').join(' ') + '</div>';
-    }
-    function go(target, host) {
-        if (target.anchor) {
-            const el = host.querySelector('#' + target.anchor);
-            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            return;
-        }
-        if (target.tab) { PA.ui.tab = target.tab; root.switchView('reqPurchasing'); return; }
-        if (target.view) root.switchView(target.view);
-    }
-
-    // ── Where every purchase peso is (Q4) ───────────────────────────
-    function placesHtml(d) {
-        const t = d.totals || {};
-        const ok = !Number(t.with_difference);
-        const num = (v) => '<td style="text-align:right">' + esc(peso(v)) + '</td>';
-        return '<div class="att-toolbar" style="align-items:flex-end">' +
-              '<label class="att-label">From<input class="att-input" type="date" data-from value="' + esc(ui.from) + '"></label>' +
-              '<label class="att-label">To<input class="att-input" type="date" data-to value="' + esc(ui.to) + '"></label>' +
-              '<button type="button" class="att-btn att-btn--sm" data-show>Show</button>' +
-              '<button type="button" class="att-btn att-btn--sm" data-print>Print</button>' +
-              '<button type="button" class="att-btn att-btn--sm" data-csv>CSV</button>' +
-            '</div>' +
-            '<div class="att-info' + (ok ? '' : ' att-info--warn') + '"><i data-lucide="' + (ok ? 'check-circle' : 'alert-triangle') + '"></i><div><strong>' +
-              esc(addsUpText(t)) + '</strong> ' + esc(t.purchases + ' purchase' + (Number(t.purchases) === 1 ? '' : 's') + ', ' + peso(t.recorded) +
-              ': ' + peso(t.own) + ' in their own projects, ' + peso(t.other) + ' in other projects, ' + peso(t.company) + ' company stock, ' +
-              peso(t.loss) + ' company stock loss.') + '</div></div>' +
-            ((d.purchases || []).length
-                ? '<div class="att-card"><div class="att-card-body" style="padding:0"><div class="req-table-wrap"><table class="att-table req-table"><thead><tr>' +
-                  '<th>Date</th><th>Ref</th><th>What · where</th><th style="text-align:right">Recorded</th><th style="text-align:right">Own project</th>' +
-                  '<th style="text-align:right">Other projects</th><th style="text-align:right">Company stock</th><th style="text-align:right">Stock loss</th>' +
-                  '<th style="text-align:right">Difference</th></tr></thead><tbody>' +
-                  d.purchases.map(p => '<tr class="req-row" tabindex="0" data-purchase="' + esc(p.id) + '"' +
-                      (Number(p.difference) ? ' style="background:#fff4f2"' : '') + '><td style="white-space:nowrap">' + esc(RA.formatDay(p.purchase_date)) + '</td><td><code>' + esc(p.ref) +
-                      '</code></td><td>' + esc(p.what) + '<div class="req-muted">' + esc(p.projects) + (p.supplier ? ' · ' + esc(p.supplier) : '') + '</div></td>' +
-                      num(p.recorded) + num(p.own) + num(p.other) + num(p.company) + num(p.loss) +
-                      '<td style="text-align:right"><strong>' + esc(Number(p.difference) ? peso(p.difference) : '✓') + '</strong></td></tr>').join('') +
-                  '</tbody></table></div></div></div>'
-                : '<div class="att-empty">No purchases in these days.</div>') +
-            ((d.voided || []).length
-                ? '<p class="req-muted">Voided in these days (counted nowhere): ' + d.voided.map(v => esc(v.ref + ' ' + RA.formatDay(v.purchase_date) + ' ' +
-                    peso(v.recorded) + (v.reason ? ' — ' + v.reason : ''))).join(' · ') + '</p>'
-                : '');
-    }
     function printPlaces(d) {
         const w = root.open('', '_blank');
         if (!w) return PA.notice('Allow pop-ups for this site to print.');
@@ -229,25 +176,6 @@
     }
 
     // ── Waiting for a billing period (Q6) ───────────────────────────
-    function reviewHtml(r) {
-        const wait = r.waiting || [];
-        const marks = r.marks || [];
-        return (wait.length ? wait.map(l => '<div class="att-card" data-line="' + esc(l.purchase_id + ':' + l.line_no) + '"><div class="att-card-body">' +
-                '<div><strong>' + esc(l.item) + '</strong> · ' + esc(l.project) + ' · <strong>' + esc(peso(l.amount)) + '</strong> ' + pill('Office review', 'working') + '</div>' +
-                '<div class="req-muted">Ref <code>' + esc(l.ref) + '</code> · bought ' + esc(RA.formatDay(l.purchase_date)) + ' · waiting ' + esc(l.days) +
-                  ' day' + (Number(l.days) === 1 ? '' : 's') + ' · on ' + (l.rows || []).map(x => esc(x.period + (x.cover ? ' (Cover)' : '') + ' ' + peso(x.amount))).join(', ') + '</div>' +
-                (l.period_now ? '<div class="att-info"><i data-lucide="info"></i><div>A billing period for that month exists now. To charge it there, open the row in ' +
-                  'Project Control and save it again.</div></div>' : '') +
-                '<div class="att-actions-row" style="margin-top:10px"><button type="button" class="att-btn att-btn--sm" data-cover>Cover is right…</button></div>' +
-              '</div></div>').join('')
-            : '<div class="att-empty">No line is waiting for a billing period.</div>') +
-            (marks.length ? '<h4 class="pur-h4">"Cover is right" marks</h4><ul class="pur-history">' + marks.map(m => '<li data-mark="' + esc(m.id) + '">' +
-                esc(m.item + ' · ' + m.project + ' · ' + peso(m.amount) + ' (ref ' + m.ref + ', bought ' + RA.formatDay(m.purchase_date) + ')') + ' — "' + esc(m.reason) + '" · ' +
-                esc(m.marked_by + ', ' + when(m.marked_at)) + ' ' +
-                (m.withdrawn_at ? pill('Withdrawn', 'abandoned') + ' <span class="req-muted">' + esc(m.withdrawn_by + ', ' + when(m.withdrawn_at) + ': ' + m.withdraw_reason) + '</span>'
-                  : m.current ? pill('Applies', 'done') + ' <button type="button" class="att-btn att-btn--sm" data-withdraw>Withdraw…</button>'
-                  : pill('No longer applies (the line changed)', 'abandoned')) + '</li>').join('') + '</ul>' : '');
-    }
     function openCover(line, onDone) {
         const send = sendOnce((opId, reason) => RA.rpc('rec_accept_cover', { p_op: opId, p_purchase: line.purchase_id, p_line_no: line.line_no, p_reason: reason }));
         RA.modal({
@@ -282,40 +210,6 @@
     }
 
     // ── Money still out (Q9) ────────────────────────────────────────
-    function moneyHtml(m) {
-        const owed = m.owed || [];
-        const total = owed.reduce((s, x) => s + Number(x.balance || 0), 0);
-        const nt = m.not_tracked || {};
-        return (owed.length
-                ? '<div class="att-card"><div class="att-card-body" style="padding:0"><table class="att-table req-table"><thead><tr><th>Supplier</th>' +
-                  '<th style="text-align:right">Purchases</th><th style="text-align:right">Still owed</th></tr></thead><tbody>' +
-                  owed.map(x => '<tr><td>' + esc(x.supplier) + '</td><td style="text-align:right">' + esc(x.purchases) +
-                      (Number(x.partly_paid) ? ' <span class="req-muted">(' + esc(x.partly_paid) + ' partly paid)</span>' : '') + '</td><td style="text-align:right"><strong>' +
-                      esc(peso(x.balance)) + '</strong></td></tr>').join('') +
-                  '<tr><td><strong>Total</strong></td><td></td><td style="text-align:right"><strong>' + esc(peso(total)) + '</strong></td></tr></tbody></table></div></div>'
-                : '<div class="att-empty">Nothing Unpaid or Partly paid.</div>') +
-            (Number(nt.purchases) ? '<p class="req-muted">' + esc(nt.purchases + ' purchase' + (Number(nt.purchases) === 1 ? '' : 's') + ' (' + peso(nt.total) +
-                ') recorded before payments were tracked — never counted as owed.') + '</p>' : '') +
-            ((m.credits || []).length ? '<p><strong>Supplier credit left:</strong> ' + m.credits.map(c => esc(c.supplier + ' ' + peso(c.left))).join(' · ') + '</p>' : '') +
-            (m.overpaid && Number(m.overpaid.purchases) ? '<p><strong>Overpaid:</strong> ' + esc(m.overpaid.purchases + ' purchase' +
-                (Number(m.overpaid.purchases) === 1 ? '' : 's') + ', ' + peso(m.overpaid.amount) + ' to refund or keep as credit') + ' (Cash tab).</p>' : '') +
-            ((m.buyers || []).length ? '<p><strong>Buyers:</strong> ' + m.buyers.map(b => esc(b.name + ' — holds ' + peso(b.cash_held) +
-                (Number(b.shortfall) ? ', shortfall ' + peso(b.shortfall) : '') + (Number(b.owed_to_buyer) ? ', company owes ' + peso(b.owed_to_buyer) : '') +
-                (Number(b.own_money_to_review) ? ', ' + peso(b.own_money_to_review) + ' own money to review' : ''))).join(' · ') + '</p>' : '') +
-            '<p class="req-muted">Payments never change Spent. Paying, refunds and credits are recorded on each purchase and in the Cash tab.</p>';
-    }
-
-    // ── Bills to check (Q10) ────────────────────────────────────────
-    function billsHtml(list) {
-        if (!list.length) return '<div class="att-empty">No stock cost move has changed a project\'s months yet.</div>';
-        return list.map((b, i) => '<div class="att-card" data-bill="' + i + '"><div class="att-card-body">' +
-            '<div>' + (b.checked ? pill('Bill checked', 'done') : pill('To check', 'working')) + ' <strong>' + esc(b.change === 'reversed' ? 'Reversed' : 'Approved') +
-              '</strong> ' + esc(when(b.at)) + ' · ' + esc(b.item + ' ' + (b.quantity || '') + ' ' + (b.unit || '') + ': ' + b.from + ' → ' + b.to + ' · ' + peso(b.value)) + '</div>' +
-            '<ul class="req-muted">' + (b.sides || []).map(s => '<li>' + esc(sideText(s)) + '</li>').join('') + '</ul>' +
-            (b.checked && b.note ? '<div class="req-muted">"' + esc(b.note) + '" — ' + esc(b.checked_by + ', ' + when(b.checked_at)) + '</div>' : '') +
-            '<div class="att-actions-row" style="margin-top:10px"><button type="button" class="att-btn att-btn--sm" data-tick>' + (b.checked ? 'Un-tick…' : 'Bill checked…') + '</button></div>' +
-            '</div></div>').join('');
-    }
     function openTick(b, onDone) {
         const checked = !b.checked;
         const send = sendOnce((opId, note) => RA.rpc('rec_bill_check', { p_op: opId, p_cost_move: b.cost_move_id, p_group: b.group,
@@ -333,57 +227,247 @@
     }
 
     // ── The tab ─────────────────────────────────────────────────────
-    async function render(body) {
+    // Office v5: every section is a group of cards, each opening in the
+    // pop-up — Waiting, Where every purchase peso is, Waiting for a billing
+    // period (and the "Cover is right" marks), Money still out, Bills to check.
+    const rui = { sel: null };
+    async function render(host, me, opts) {
+        const SV = root.SplitView;
         if (!ui.from) Object.assign(ui, monthRange());
-        body.innerHTML = '<div class="att-empty">Loading…</div>';
         let places, waiting, review, bills, money;
         try {
             [places, waiting, review, bills, money] = await Promise.all([
                 RA.rpc('rec_purchase_places', { p_from: ui.from, p_to: ui.to }), RA.rpc('rec_waiting'), RA.rpc('rec_review_lines'),
                 RA.rpc('rec_bills'), RA.rpc('rec_money_out')]);
         } catch (e) {
-            body.innerHTML = '<div class="att-empty">' + esc(errorMessage(e)) + '</div>';
+            host.innerHTML = '<div class="sv"><div class="sv-empty">' + esc(errorMessage(e)) + '</div></div>';
             return;
         }
+        if (PA.ui.tab !== 'reconcile') return;   // another tab was chosen while this loaded
         bills = bills || [];
-        const again = () => render(body);
-        // After a mark or its withdrawal, Project Control's and Expenses' "Office review" marks follow at once.
-        const afterMark = () => { if (root.expPurReloadFlags) root.expPurReloadFlags(); render(body); };
-        body.innerHTML =
-            '<p class="req-muted">Checks, not a ledger: nothing here moves a peso or changes a bill. Owner accounts only.</p>' +
-            section('rec-waiting', 'Waiting', 'What needs someone, and where it is decided.', waitingHtml(waiting)) +
-            section('rec-places', 'Where every purchase peso is', 'For the purchases made in these days, where their pesos sit today. ' +
-                'The two sides come from different records, so they must agree.', placesHtml(places)) +
-            section('rec-review', 'Waiting for a billing period', 'Charged to Cover because the purchase month had no billing period. ' +
-                'Add the period and save the row again, or mark it "Cover is right".', reviewHtml(review)) +
-            section('rec-money', 'Money still out', '', moneyHtml(money || {})) +
-            section('rec-bills', 'Bills to check', 'Each approved or reversed stock cost move changed these months. Client bills are never changed ' +
-                'automatically: decide by hand, then tick.', billsHtml(bills));
+        review = review || {};
+        money = money || {};
+        const again = () => render(host, me, { refreshPanel: true });
+        const afterMark = () => { if (root.expPurReloadFlags) root.expPurReloadFlags(); render(host, me, { refreshPanel: true }); };
         const items = waitingItems(waiting);
-        body.querySelectorAll('[data-go]').forEach(b => b.addEventListener('click', () => go(items[Number(b.dataset.go)].go, body)));
-        body.querySelector('[data-show]').addEventListener('click', () => {
-            ui.from = body.querySelector('[data-from]').value; ui.to = body.querySelector('[data-to]').value;
-            again();
-        });
-        body.querySelector('[data-print]').addEventListener('click', () => printPlaces(places));
-        body.querySelector('[data-csv]').addEventListener('click', () => downloadCsv(places));
-        body.querySelectorAll('[data-purchase]').forEach(tr => tr.addEventListener('click', () => PA.openPurchase(tr.dataset.purchase)));
-        body.querySelectorAll('[data-line]').forEach(card => {
-            const l = (review.waiting || []).find(x => x.purchase_id + ':' + x.line_no === card.dataset.line);
-            card.querySelector('[data-cover]').addEventListener('click', () => openCover(l, afterMark));
-        });
-        body.querySelectorAll('[data-mark] [data-withdraw]').forEach(btn => {
-            const m = (review.marks || []).find(x => x.id === btn.closest('[data-mark]').dataset.mark);
-            btn.addEventListener('click', () => openWithdraw(m, afterMark));
-        });
-        body.querySelectorAll('[data-bill]').forEach(card => {
-            card.querySelector('[data-tick]').addEventListener('click', () => openTick(bills[Number(card.dataset.bill)], again));
-        });
-        RA.icons();
+        const total = items.reduce((n, it) => n + it.count, 0);
+        const t = places.totals || {};
+        const ok = !Number(t.with_difference);
+        const wait = review.waiting || [];
+        const marks = review.marks || [];
+        const owed = money.owed || [];
+        const owedTotal = owed.reduce((n, x) => n + Number(x.balance || 0), 0);
+        const lineKey = l => 'w:' + l.purchase_id + ':' + l.line_no;
+
+        const groups = [
+            { title: 'Waiting', tone: total ? 'gold' : 'muted', meta: esc('What needs someone, and where it is decided.'),
+              rows: [{ id: 'waiting', title: total ? total + ' waiting' : 'Nothing is waiting.',
+                       sub: items.map(it => it.label).slice(0, 3).join(' · ') + (items.length > 3 ? ' · …' : ''),
+                       pill: total ? { text: items.length + (items.length === 1 ? ' kind' : ' kinds'), tone: 'gold' } : { text: 'Clear', tone: 'done' } }] },
+            { title: 'Where every purchase peso is', tone: 'ink',
+              meta: esc('For the purchases made in these days, where their pesos sit today. The two sides come from different records, so they must agree.') +
+                    ' <span class="req-muted">' + esc(RA.formatDay(ui.from) + ' – ' + RA.formatDay(ui.to)) + '</span>',
+              rows: [{ id: 'places', title: peso(t.recorded) + ' recorded',
+                       sub: 'In own projects ' + peso(t.own) + ' · other projects ' + peso(t.other) + ' · company stock ' + peso(t.company) + ' · company stock loss ' + peso(t.loss),
+                       meta: (t.purchases || 0) + ' purchase' + (Number(t.purchases) === 1 ? '' : 's'),
+                       pill: ok ? { text: 'Adds up ✓', tone: 'done' } : { text: 'Difference', tone: 'red' } }] },
+            { title: 'Waiting for a billing period', tone: wait.length ? 'gold' : 'muted',
+              meta: esc('Charged to Cover because the purchase month had no billing period. Add the period and save the row again, or mark it "Cover is right".'),
+              empty: 'No line is waiting for a billing period.',
+              rows: wait.map(l => ({ id: lineKey(l), title: l.item + ' · ' + l.project,
+                  sub: 'Ref ' + l.ref + ' · bought ' + RA.formatDay(l.purchase_date) + ' · waiting ' + l.days + ' day' + (Number(l.days) === 1 ? '' : 's') +
+                       ' · on ' + (l.rows || []).map(x => x.period + (x.cover ? ' (Cover)' : '') + ' ' + peso(x.amount)).join(', '),
+                  right: peso(l.amount), pill: { text: 'Office review', tone: 'gold' }, nextLabel: 'Cover is right…' }))
+                .concat(marks.length ? [{ id: 'marks', title: '"Cover is right" marks', sub: marks.length + ' mark' + (marks.length === 1 ? '' : 's'),
+                    pill: { text: marks.filter(m => m.current && !m.withdrawn_at).length + ' apply', tone: 'done' } }] : []) },
+            { title: 'Money still out', tone: owed.length ? 'gold' : 'muted', meta: esc('Payments never change Spent.'),
+              rows: [{ id: 'money', title: owed.length ? 'Still owed ' + peso(owedTotal) : 'Nothing Unpaid or Partly paid.',
+                       sub: owed.reduce((n, x) => n + Number(x.purchases || 0), 0) + ' purchase(s) · ' + owed.reduce((n, x) => n + Number(x.partly_paid || 0), 0) + ' partly paid',
+                       right: owed.length ? peso(owedTotal) : '', pill: owed.length ? { text: 'Owed', tone: 'gold' } : { text: 'Clear', tone: 'done' } }] },
+            { title: 'Bills to check', tone: bills.some(b => !b.checked) ? 'gold' : 'muted',
+              meta: esc('Each approved or reversed stock cost move changed these months. Client bills are never changed automatically: decide by hand, then tick.'),
+              empty: 'No stock cost move has changed a project\'s months yet.',
+              rows: bills.map((b, i) => ({ id: 'bill:' + i, title: 'Stock cost move · ' + b.item + ' · ' + b.from + ' → ' + b.to,
+                  sub: (b.change === 'reversed' ? 'Reversed' : 'Approved') + ' ' + when(b.at) + ' · ' + peso(b.value),
+                  meta: (b.sides || []).map(sideText).join(' · '),
+                  pill: b.checked ? { text: 'Bill checked', tone: 'done' } : { text: 'To check', tone: 'gold' },
+                  dim: !!b.checked, nextLabel: b.checked ? '' : 'Bill checked…' })) },
+        ];
+        const toolbar =
+            '<label class="att-label">From<input class="att-input" type="date" data-from value="' + esc(ui.from) + '"></label>' +
+            '<label class="att-label">To<input class="att-input" type="date" data-to value="' + esc(ui.to) + '"></label>' +
+            '<button type="button" class="att-btn" data-show>Show</button>' +
+            '<button type="button" class="att-btn" data-print>Print</button>' +
+            '<button type="button" class="att-btn" data-csv>CSV</button>';
+
+        function wire(panel, handlers) {
+            panel.onclick = e => {
+                const tr = e.target.closest('[data-open-purchase]');
+                if (tr) { PA.openPurchase(tr.dataset.openPurchase); return; }
+                const b = e.target.closest('button');
+                if (!b || b.disabled) return;
+                for (const [attr, fn] of handlers) if (b.hasAttribute(attr)) { fn(b); return; }
+            };
+        }
+        function goTo(target) {
+            // In this tab: open the first card of that section.
+            if (target.anchor === 'rec-review') { if (wait.length) SV.open('reqPurchasing', lineKey(wait[0])); return; }
+            if (target.anchor === 'rec-bills') { const i = bills.findIndex(b => !b.checked); if (i >= 0) SV.open('reqPurchasing', 'bill:' + i); return; }
+            SV.closePop();
+            if (target.tab) { PA.ui.tab = target.tab; root.switchView('reqPurchasing'); return; }
+            if (target.view) root.switchView(target.view);
+        }
+
+        const panels = {
+            waiting: panel => {
+                SV.fill(panel, SV.panelHtml({
+                    kicker: 'Reconciliation · Waiting', title: 'What needs someone, and where it is decided',
+                    sections: [SV.section('Waiting', SV.lines(items.map((it, i) => ({ t: it.label, acts: SV.lbtn('Go →', 'data-go="' + i + '"') })), 'Nothing is waiting.'))],
+                    nextLabel: 'Next',
+                }));
+                wire(panel, [['data-go', b => goTo(items[Number(b.dataset.go)].go)]]);
+            },
+            places: panel => {
+                const body = SV.page(panel, { kicker: 'Reconciliation', title: 'Where every purchase peso is', wide: true,
+                    sub: RA.formatDay(ui.from) + ' – ' + RA.formatDay(ui.to),
+                    pills: [ok ? { text: 'Adds up ✓', tone: 'done' } : { text: 'Difference', tone: 'red' }],
+                    actions: SV.lbtn('Print', 'data-print') + SV.lbtn('CSV', 'data-csv'), nextLabel: 'Next' });
+                body.innerHTML = '<div class="sv-page-secs">' +
+                    SV.notice(ok ? 'green' : 'red', ok ? 'check-circle' : 'alert-triangle', addsUpText(t),
+                        esc(t.purchases + ' purchase' + (Number(t.purchases) === 1 ? '' : 's') + ', ' + peso(t.recorded) +
+                        ': ' + peso(t.own) + ' in their own projects, ' + peso(t.other) + ' in other projects, ' + peso(t.company) + ' company stock, ' +
+                        peso(t.loss) + ' company stock loss.')) +
+                    ((places.purchases || []).length
+                        ? SV.table(['Date', 'Ref', 'What · where', 'Recorded', 'Own project', 'Other projects', 'Company stock', 'Stock loss', 'Difference'],
+                            places.purchases.map(p => [esc(RA.formatDay(p.purchase_date)), '<code>' + esc(p.ref) + '</code>',
+                                esc(p.what) + '<div class="req-muted">' + esc(p.projects) + (p.supplier ? ' · ' + esc(p.supplier) : '') + '</div>',
+                                esc(peso(p.recorded)), esc(peso(p.own)), esc(peso(p.other)), esc(peso(p.company)), esc(peso(p.loss)),
+                                '<strong>' + esc(Number(p.difference) ? peso(p.difference) : '✓') + '</strong>']),
+                            { num: [3, 4, 5, 6, 7, 8], rowAttrs: i => 'data-open-purchase="' + esc(places.purchases[i].id) + '"' +
+                                (Number(places.purchases[i].difference) ? ' style="background:#fff4f2"' : '') })
+                        : '<div class="sv-empty-inline">No purchases in these days.</div>') +
+                    ((places.voided || []).length
+                        ? SV.note('Voided in these days (counted nowhere): ' + places.voided.map(v => esc(v.ref + ' ' + RA.formatDay(v.purchase_date) + ' ' +
+                            peso(v.recorded) + (v.reason ? ' — ' + v.reason : ''))).join(' · ')) : '') +
+                    '</div>';
+                wire(panel, [['data-print', () => printPlaces(places)], ['data-csv', () => downloadCsv(places)]]);
+            },
+            marks: panel => {
+                SV.fill(panel, SV.panelHtml({
+                    kicker: 'Waiting for a billing period', title: '"Cover is right" marks',
+                    sections: [SV.section('', SV.lines(marks.map(m => ({
+                        t: m.item + ' · ' + m.project + ' · ' + peso(m.amount),
+                        s: '(ref ' + m.ref + ', bought ' + RA.formatDay(m.purchase_date) + ') — "' + m.reason + '" · ' + m.marked_by + ', ' + when(m.marked_at) +
+                           (m.withdrawn_at ? ' · ' + m.withdrawn_by + ', ' + when(m.withdrawn_at) + ': ' + m.withdraw_reason : ''),
+                        pills: [m.withdrawn_at ? { text: 'Withdrawn', tone: 'red' } : m.current ? { text: 'Applies', tone: 'done' }
+                                               : { text: 'No longer applies (the line changed)', tone: 'red' }],
+                        acts: !m.withdrawn_at && m.current ? SV.lbtn('Withdraw…', 'data-withdraw="' + esc(m.id) + '"') : '',
+                    }))))],
+                    nextLabel: 'Next',
+                }));
+                wire(panel, [['data-withdraw', b => { const m = marks.find(x => x.id === b.dataset.withdraw); if (m) openWithdraw(m, afterMark); }]]);
+            },
+            money: panel => {
+                const nt = money.not_tracked || {};
+                SV.fill(panel, SV.panelHtml({
+                    kicker: 'Reconciliation', title: 'Money still out',
+                    sections: [
+                        SV.section('Purchases', owed.length
+                            ? SV.table(['Supplier', 'Purchases', 'Still owed'], owed.map(x => [esc(x.supplier),
+                                esc(x.purchases) + (Number(x.partly_paid) ? ' <span class="req-muted">(' + esc(x.partly_paid) + ' partly paid)</span>' : ''),
+                                '<strong>' + esc(peso(x.balance)) + '</strong>']).concat([['<strong>Total</strong>', '', '<strong>' + esc(peso(owedTotal)) + '</strong>']]),
+                                { num: [1, 2] })
+                            : '<div class="sv-empty-inline">Nothing Unpaid or Partly paid.</div>'),
+                        (Number(nt.purchases) ? SV.note(esc(nt.purchases + ' purchase' + (Number(nt.purchases) === 1 ? '' : 's') + ' (' + peso(nt.total) +
+                            ') recorded before payments were tracked — never counted as owed.')) : ''),
+                        SV.section('Credit and overpaid', SV.facts([
+                            ['Credit', (money.credits || []).length ? '<strong>Supplier credit left:</strong> ' + money.credits.map(c => esc(c.supplier + ' ' + peso(c.left))).join(' · ') : ''],
+                            ['Overpaid', money.overpaid && Number(money.overpaid.purchases) ? esc(money.overpaid.purchases + ' purchase' +
+                                (Number(money.overpaid.purchases) === 1 ? '' : 's') + ', ' + peso(money.overpaid.amount) + ' to refund or keep as credit') + ' (Cash tab).' : ''],
+                        ])),
+                        SV.section('Buyers', SV.lines((money.buyers || []).map(b => ({ t: b.name, s: b.name + ' — holds ' + peso(b.cash_held) +
+                            (Number(b.shortfall) ? ', shortfall ' + peso(b.shortfall) : '') + (Number(b.owed_to_buyer) ? ', company owes ' + peso(b.owed_to_buyer) : '') +
+                            (Number(b.own_money_to_review) ? ', ' + peso(b.own_money_to_review) + ' own money to review' : ''), facts: [
+                            ['Holds', esc(peso(b.cash_held))], ['Shortfall', Number(b.shortfall) ? esc(peso(b.shortfall)) : ''],
+                            ['Company owes', Number(b.owed_to_buyer) ? esc(peso(b.owed_to_buyer)) : ''],
+                            ['Own money to review', Number(b.own_money_to_review) ? esc(peso(b.own_money_to_review)) : ''],
+                        ] })), 'None.')),
+                        SV.note(esc('Payments never change Spent. Paying, refunds and credits are recorded on each purchase and in the Cash tab.')),
+                    ],
+                    nextLabel: 'Next',
+                }));
+                wire(panel, []);
+            },
+        };
+        function reviewPanel(panel, l, o) {
+            SV.fill(panel, SV.panelHtml({
+                kicker: 'Waiting for a billing period', title: l.item, pills: [{ text: 'Office review', tone: 'gold' }],
+                sub: l.project + ' · ' + peso(l.amount) + ' · Ref ' + l.ref,
+                step: SV.nextStep('Charged to Cover because the purchase month had no billing period. Add the period and save the row again, or mark it "Cover is right".',
+                    '<button type="button" class="att-btn att-btn--primary" data-cover>Cover is right…</button>'),
+                sections: [
+                    (l.period_now ? SV.notice('grey', 'info', 'Already possible', 'A billing period for that month exists now. To charge it there, open the row in ' +
+                        'Project Control and save it again.') : ''),
+                    SV.section('Line', SV.facts([['Bought', esc(RA.formatDay(l.purchase_date))], ['Waiting', esc(l.days + ' day' + (Number(l.days) === 1 ? '' : 's'))],
+                        ['On', (l.rows || []).map(x => esc(x.period + (x.cover ? ' (Cover)' : '') + ' ' + peso(x.amount))).join(', ')]])),
+                ],
+                actions: SV.lbtn('Open purchase', 'data-open-purchase="' + esc(l.purchase_id) + '"'),
+                nextLabel: 'Next',
+            }));
+            wire(panel, [['data-cover', () => openCover(l, afterMark)]]);
+            if (o && o.start) { const go = panel.querySelector('[data-cover]'); if (go) go.click(); }
+        }
+        function billPanel(panel, b, o) {
+            SV.fill(panel, SV.panelHtml({
+                kicker: 'Bills to check', title: 'Stock cost move · ' + b.item,
+                pills: [b.checked ? { text: 'Bill checked', tone: 'done' } : { text: 'To check', tone: 'gold' }],
+                sub: (b.change === 'reversed' ? 'Reversed' : 'Approved') + ' ' + when(b.at),
+                step: b.checked ? '' : SV.nextStep('Each approved or reversed stock cost move changed these months. Client bills are never changed automatically: decide by hand, then tick.',
+                    '<button type="button" class="att-btn att-btn--primary" data-tick>Bill checked…</button>'),
+                sections: [
+                    SV.section('Cost move', SV.facts([['State', b.change === 'reversed' ? 'Reversed' : 'Approved'],
+                        ['What', esc(b.item + ' ' + (b.quantity || '') + ' ' + (b.unit || '') + ': ' + b.from + ' → ' + b.to)], ['Value', esc(peso(b.value))],
+                        ['Note', b.checked && b.note ? '"' + esc(b.note) + '" — ' + esc(b.checked_by + ', ' + when(b.checked_at)) : '']])),
+                    SV.section('Months changed', SV.lines((b.sides || []).map(x => ({ t: sideText(x) })), 'None.')),
+                ],
+                actions: b.checked ? SV.lbtn('Un-tick…', 'data-tick') : '',
+                nextLabel: 'Next',
+            }));
+            wire(panel, [['data-tick', () => openTick(b, again)]]);
+            if (o && o.start) { const go = panel.querySelector('.sv-step [data-tick]'); if (go) go.click(); }
+        }
+
+        root.SplitView.render(host, PA.frame(host, me, {
+            lede: 'Checks, not a ledger: nothing here moves a peso or changes a bill. Owner accounts only.',
+            search: false,
+            toolbar: toolbar,
+            onToolbar: el => {
+                el.querySelector('[data-show]').addEventListener('click', () => {
+                    ui.from = el.querySelector('[data-from]').value; ui.to = el.querySelector('[data-to]').value;
+                    again();
+                });
+                el.querySelector('[data-print]').addEventListener('click', () => printPlaces(places));
+                el.querySelector('[data-csv]').addEventListener('click', () => downloadCsv(places));
+            },
+            groups: groups,
+            selectedId: rui.sel,
+            refreshPanel: !!(opts && opts.refreshPanel),
+            onSelect: (id, panel, o) => {
+                rui.sel = id;
+                if (panels[id]) return panels[id](panel);
+                if (id.indexOf('w:') === 0) {
+                    const l = wait.find(x => lineKey(x) === id);
+                    return l ? reviewPanel(panel, l, o) : SV.error(panel, ERRORS.NOT_WAITING);
+                }
+                if (id.indexOf('bill:') === 0) {
+                    const b = bills[Number(id.slice(5))];
+                    return b ? billPanel(panel, b, o) : SV.error(panel, ERRORS.NOT_FOUND);
+                }
+            },
+            onClose: () => { rui.sel = null; },
+        }));
     }
 
-    // Project Control's Reports note (Q11) reads the same list: every approval
-    // and reversal of a stock cost move with the months it changed. Owner accounts.
     function costChanges() { return RA.rpc('rec_bills'); }
 
     root.ReconciliationAdmin = Object.assign({}, pure, { render, costChanges });

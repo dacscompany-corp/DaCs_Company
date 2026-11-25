@@ -303,7 +303,8 @@ test('Item history is wired into the Requests section', () => {
   ok(/reqHistory:\s*'Item history'/.test(html), 'title');
   const core = html.indexOf('js/requests-admin-core.js'), hist = html.indexOf('js/requests-admin-history.js');
   ok(core > 0 && hist > core, 'the history script loads after the core');
-  ok(html.includes('css/requests-admin.css?v=20261114c') && html.includes('js/requests-admin-history.js?v=20261116b'), 'cache-busted');
+  // requests-admin.css changed again by the Requests Queue update (PR #48, 25 Nov 2026).
+  ok(html.includes('css/requests-admin.css?v=20261125a') && html.includes('js/requests-admin-history.js?v=20261116b'), 'cache-busted');
   const start = nav.indexOf("id: 'requests'");
   const block = nav.slice(start, nav.indexOf(']', start));
   ok(block.includes("{ view: 'reqHistory'"), 'PRIMARY_NAV Requests lists reqHistory');

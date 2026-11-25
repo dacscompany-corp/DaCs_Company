@@ -28,17 +28,23 @@
     const peso = (v) => esc(PA.peso(v));
     const newOp = () => root.DacsReceipts.newId();
 
-    async function renderCash(body, me) {
-        body.innerHTML = '<div class="att-empty">Loading…</div>';
+    const SV = root.SplitView;
+    const NO_BUYER = 'No staff buyer yet. Turn a staff member\'s Buyer switch on in Users.';
+    const REPORT = '__report';
+    const cui = { sel: null };
+
+    // Office v5: Cash is cards in groups, each opening in the pop-up. The
+    // main owner sees every buyer; a buyer sees My cash.
+    async function renderCash(host, me, opts) {
         let t;
         try {
             t = await RA.rpc('pur_cash_tracker');
         } catch (e) {
-            if (/OWNER_ONLY|NOT_ALLOWED/.test(String((e && (e.message || e.code)) || ''))) return renderMyCash(body, me);
-            RA.fail(body, e);
+            if (/OWNER_ONLY|NOT_ALLOWED/.test(String((e && (e.message || e.code)) || ''))) return renderMyCash(host, me, opts);
+            RA.fail(host, e);
             return;
         }
-        return renderTracker(body, me, t);
+        return renderTracker(host, me, t, opts);
     }
     PA.renderCash = renderCash;
 
@@ -50,115 +56,217 @@
         return n <= 0 ? 'today' : n === 1 ? 'yesterday' : n + ' days ago';
     }
 
-    async function renderTracker(body, me, t) {
+    async function renderTracker(host, me, t, opts) {
         let overpaid = [], credits = [];
         try {
             [overpaid, credits] = await Promise.all([RA.rpc('pur_overpaid'), RA.rpc('pur_credits', { p_supplier: null })]);
-        } catch (e) { RA.fail(body, e); return; }
+        } catch (e) { RA.fail(host, e); return; }
+        if (PA.ui.tab !== 'cash') return;   // another tab was chosen while this loaded
         const buyers = t.buyers || [];
         // Accept / reject / resolve change Project Control's payment tags too (F4).
-        const reload = () => { if (root.expPurReloadFlags) root.expPurReloadFlags(); renderCash(body, me); };
+        const reload = () => { if (root.expPurReloadFlags) root.expPurReloadFlags(); renderCash(host, me, { refreshPanel: true }); };
         const openCredits = (credits || []).filter(c => !c.voided_at);
-        body.innerHTML =
-            '<div class="att-info"><i data-lucide="wallet"></i><div>Petty cash, a buyer\'s own money, refunds and supplier credit say who holds or is owed company money. ' +
-              '<strong>None of it changes Spent or Profit</strong> — a purchase counted once, when it was recorded.</div></div>' +
-            '<div class="att-toolbar">' +
-              '<button type="button" class="att-btn att-btn--primary" data-give>Give petty cash…</button>' +
-              '<button type="button" class="att-btn" data-report>Daily report…</button>' +
-            '</div>' +
-            '<div data-report-host></div>' +
-            '<div class="att-card"><div class="att-card-body" style="padding:0"><div class="req-table-wrap"><table class="att-table req-table">' +
-              '<thead><tr><th>Buyer</th><th>Cash held</th><th>Returns waiting</th><th>Company owes</th><th>May use own money</th><th>Last given</th><th>Last count</th><th></th></tr></thead><tbody>' +
-              (buyers.length ? buyers.map(b => {
-                  const f = PA.cashFigures(b);
-                  const lc = b.last_count;
-                  const diff = lc ? PA.round2(Number(lc.counted) - Number(lc.recorded)) : 0;
-                  return '<tr>' +
-                    '<td><strong>' + esc(b.name) + '</strong>' + (b.can_buy ? '' : '<div class="req-muted">Buyer switch off</div>') + '</td>' +
-                    '<td><strong>' + peso(f.held) + '</strong>' + (f.shortfall > 0 ? '<div>' + PA.pill('Unreconciled shortfall ' + PA.peso(f.shortfall), 'abandoned') + '</div>' : '') +
-                      (Number(b.open_disputes) > 0 ? '<div>' + PA.pill('Not-received flag', 'working') + '</div>' : '') + '</td>' +
-                    '<td>' + (f.pending > 0 ? peso(f.pending) : '—') + '</td>' +
-                    '<td>' + (f.owes > 0 ? peso(f.owes) : '—') + (f.toReview > 0 ? '<div>' + PA.pill(PA.peso(f.toReview) + ' to review', 'working') + '</div>' : '') + '</td>' +
-                    '<td><label class="att-switch"><input type="checkbox" data-own="' + esc(b.buyer_id) + '"' + (b.own_money ? ' checked' : '') + '> ' +
-                      (b.own_money ? 'Allowed' : 'Off') + '</label></td>' +
-                    '<td>' + (b.last_given_on ? esc(b.last_given_on) + '<div class="req-muted">' + esc(daysAgo(b.last_given_on, t.today)) + '</div>' : '—') + '</td>' +
-                    '<td>' + (lc ? esc(lc.counted_on) + ': ' + peso(lc.counted) + '<div class="req-muted">' +
-                      (diff === 0 ? 'matched' : diff < 0 ? 'short ' + esc(PA.peso(-diff)) : 'over ' + esc(PA.peso(diff))) + '</div>' : '—') + '</td>' +
-                    '<td><button type="button" class="att-btn att-btn--sm" data-buyer="' + esc(b.buyer_id) + '">Details…</button></td>' +
-                  '</tr>';
-              }).join('') : '<tr><td colspan="8" class="att-empty">No staff buyer yet. Turn a staff member\'s Buyer switch on in Users.</td></tr>') +
-            '</tbody></table></div></div></div>' +
-            '<div data-buyer-host></div>' +
-            section('Returns waiting for you', 'The buyer says they handed this back. It lowers their cash held only when you confirm it, on the day you confirm.',
-              (t.pending_returns || []).map(r => '<li><strong>' + esc(r.name) + '</strong> — ' + peso(r.amount) + ', handed over ' + esc(r.handed_on) +
-                (r.handed_to ? ' to ' + esc(r.handed_to) : '') + (r.note ? ' — ' + esc(r.note) : '') +
-                photoLink(r.photo_url) +
-                ' <button type="button" class="att-btn att-btn--sm att-btn--primary" data-confirm="' + esc(r.id) + '">Confirm received</button>' +
-                ' <button type="button" class="att-btn att-btn--sm" data-reject="' + esc(r.id) + '">Reject…</button></li>')) +
-            section('"I did not receive this"', 'A buyer says petty cash you recorded never reached them. Their balance is unchanged until you settle it.',
-              (t.disputes || []).map(i => '<li><strong>' + esc(i.name) + '</strong> — ' + peso(i.amount) + ' given ' + esc(i.issued_on) + ': "' + esc(i.dispute_note) + '"' +
-                ' <button type="button" class="att-btn att-btn--sm" data-clear="' + esc(i.id) + '">It was handed over…</button>' +
-                ' <button type="button" class="att-btn att-btn--sm att-btn--warn" data-void-issue="' + esc(i.id) + '">Void the entry…</button></li>')) +
-            section('Own money to review', 'Paid with a buyer\'s own money while "May use own money" was off. Kept as a real payment. ' +
-                'Accept it and the company owes it; reject it, with a reason, and it is never owed (R9).',
-              (t.to_review || []).map(p => '<li><strong>' + esc(p.person_name) + '</strong> — ' + peso(p.amount) + ' on ' + esc(p.paid_on) +
-                (p.note ? ' — ' + esc(p.note) : '') + ' <a class="att-link" href="#" data-open="' + esc(p.purchase_id) + '">purchase</a>' +
-                ' <button type="button" class="att-btn att-btn--sm att-btn--primary" data-accept="' + esc(p.id) + '">Accept</button>' +
-                ' <button type="button" class="att-btn att-btn--sm" data-reject-own="' + esc(p.id) + '">Reject…</button></li>')) +
-            section('Overpaid', 'More was paid than the purchase now costs (or it was voided after it was paid). Refund it to the money that paid it, or keep it as supplier credit.',
-              (overpaid || []).map(o => '<li><strong>' + esc(o.supplier || 'No supplier') + '</strong> · ' + esc(RA.formatDay(o.purchase_date)) + ' · ' +
-                (PA.payPill ? PA.payPill(o.pay) : '') +
-                (Number(o.pay && o.pay.over_resolved) > 0 ? ' ' + PA.pill('Refunded ' + PA.peso(o.pay.over_resolved) + ' more than is over — check', 'abandoned') : '') +
-                ' <a class="att-link" href="#" data-open="' + esc(o.id) + '">open</a>' +
-                (Number(o.pay && o.pay.unresolved) > 0 ? ' <button type="button" class="att-btn att-btn--sm att-btn--primary" data-resolve="' + esc(o.id) + '">Resolve…</button>' : '') +
-                '</li>')) +
-            section('Supplier credit', 'A balance with one supplier, used in parts when paying that supplier, until it is gone. Not cash.',
-              openCredits.map(c => '<li><strong>' + esc(c.supplier || 'Supplier') + '</strong> — ' + peso(c.left) + ' left of ' + peso(c.amount) +
-                (c.note ? ' — ' + esc(c.note) : '') + ' <a class="att-link" href="#" data-open="' + esc(c.purchase_id) + '">from this purchase</a>' +
-                (Number(c.left) === Number(c.amount) ? ' <button type="button" class="att-btn att-btn--sm" data-void-credit="' + esc(c.id) + '">Void…</button>' : '') + '</li>'));
+        const help = (text) => esc(text);
 
-        body.querySelector('[data-give]').addEventListener('click', () => giveModal(buyers, reload));
-        body.querySelector('[data-report]').addEventListener('click', () => reportPanel(body.querySelector('[data-report-host]'), buyers, t.today));
-        if (ui.report) reportPanel(body.querySelector('[data-report-host]'), buyers, t.today, ui.report);
-        body.querySelectorAll('[data-own]').forEach(el => el.addEventListener('change', async () => {
-            try { await RA.rpc('pur_set_own_money', { p_buyer: el.dataset.own, p_on: el.checked }); } catch (e) { PA.notice(e); }
-            reload();
+        const buyerCard = b => {
+            const f = PA.cashFigures(b);
+            const lc = b.last_count;
+            const chips = [];
+            if (f.shortfall > 0) chips.push({ text: 'Unreconciled shortfall ' + PA.peso(f.shortfall), tone: 'red' });
+            if (Number(b.open_disputes) > 0) chips.push({ text: 'Not-received flag', tone: 'red' });
+            if (f.toReview > 0) chips.push({ text: PA.peso(f.toReview) + ' to review', tone: 'gold' });
+            return {
+                id: 'b:' + b.buyer_id,
+                title: b.name,
+                sub: 'Cash held ' + PA.peso(f.held) + (f.pending > 0 ? ' · Returns waiting ' + PA.peso(f.pending) : ''),
+                meta: (f.owes > 0 ? 'Company owes ' + PA.peso(f.owes) + ' · ' : '') +
+                      'Last given ' + (b.last_given_on ? b.last_given_on + ' (' + daysAgo(b.last_given_on, t.today) + ')' : '—') +
+                      ' · Last count ' + (lc ? lc.counted_on : '—') + (b.can_buy ? '' : ' · Buyer switch off'),
+                right: PA.peso(f.held),
+                pill: b.can_buy ? (b.own_money ? { text: 'May use own money', tone: 'none' } : null) : { text: 'Buyer switch off', tone: 'none' },
+                chips: chips,
+            };
+        };
+        const groups = [
+            { title: 'Buyers', tone: 'ink', rows: buyers.map(buyerCard) },
+            { title: 'Returns waiting for you', tone: 'gold',
+              meta: help('The buyer says they handed this back. It lowers their cash held only when you confirm it, on the day you confirm.'),
+              rows: (t.pending_returns || []).map(r => ({ id: 'r:' + r.id, title: r.name + ' returned ' + PA.peso(r.amount),
+                  sub: 'Handed over ' + r.handed_on + (r.handed_to ? ' to ' + r.handed_to : '') + (r.note ? ' — ' + r.note : ''),
+                  right: PA.peso(r.amount), pill: { text: 'To confirm', tone: 'gold' }, nextLabel: 'Confirm received' })) },
+            { title: '"I did not receive this"', tone: 'red',
+              meta: help('A buyer says petty cash you recorded never reached them. Their balance is unchanged until you settle it.'),
+              rows: (t.disputes || []).map(i => ({ id: 'd:' + i.id, title: PA.peso(i.amount) + ' given ' + i.issued_on, sub: i.name,
+                  meta: '"' + i.dispute_note + '"', right: PA.peso(i.amount), pill: { text: 'Flagged', tone: 'red' }, nextLabel: 'It was handed over…' })) },
+            { title: 'Own money to review', tone: 'gold',
+              meta: help('Paid with a buyer\'s own money while "May use own money" was off. Kept as a real payment. ' +
+                  'Accept it and the company owes it; reject it, with a reason, and it is never owed (R9).'),
+              rows: (t.to_review || []).map(p => ({ id: 'o:' + p.id, title: PA.peso(p.amount) + ' paid by ' + p.person_name,
+                  sub: 'on ' + p.paid_on + (p.note ? ' — ' + p.note : ''), right: PA.peso(p.amount), pill: { text: 'To review', tone: 'gold' }, nextLabel: 'Accept' })) },
+            { title: 'Overpaid', tone: 'red',
+              meta: help('More was paid than the purchase now costs (or it was voided after it was paid). Refund it to the money that paid it, or keep it as supplier credit.'),
+              rows: (overpaid || []).map(o => {
+                  const pl = PA.payLabel(o.pay);
+                  return { id: 'p:' + o.id, title: (o.supplier || 'No supplier') + ' · ' + RA.formatDay(o.purchase_date),
+                      sub: pl ? pl.text + (pl.detail ? ' · ' + pl.detail : '') : '',
+                      right: PA.peso(o.pay && o.pay.unresolved), pill: { text: 'Overpaid', tone: 'red' },
+                      chips: Number(o.pay && o.pay.over_resolved) > 0 ? [{ text: 'Refunded ' + PA.peso(o.pay.over_resolved) + ' more than is over — check', tone: 'red' }] : [],
+                      nextLabel: Number(o.pay && o.pay.unresolved) > 0 ? 'Resolve…' : '' };
+              }) },
+            { title: 'Supplier credit', tone: 'ink',
+              meta: help('A balance with one supplier, used in parts when paying that supplier, until it is gone. Not cash.'),
+              rows: openCredits.map(c => ({ id: 'c:' + c.id, title: c.supplier || 'Supplier', sub: PA.peso(c.left) + ' left of ' + PA.peso(c.amount),
+                  meta: c.note || '', right: PA.peso(c.left), pill: { text: 'Credit', tone: 'none' } })) },
+        ];
+        const toolbar = '<button type="button" class="att-btn att-btn--primary" data-give>Give petty cash…</button>' +
+                        '<button type="button" class="att-btn" data-report>Daily report…</button>';
+
+        root.SplitView.render(host, PA.frame(host, me, {
+            strips: ['Petty cash, a buyer\'s own money, refunds and supplier credit say who holds or is owed company money. ' +
+                     'None of it changes Spent or Profit — a purchase counted once, when it was recorded.'],
+            notice: buyers.length ? '' : SV.notice('grey', 'users', NO_BUYER, ''),
+            search: false,
+            toolbar: toolbar,
+            onToolbar: el => {
+                el.querySelector('[data-give]').addEventListener('click', () => giveModal(buyers, reload));
+                el.querySelector('[data-report]').addEventListener('click', () => SV.open('reqPurchasing', REPORT));
+            },
+            groups: groups,
+            empty: buyers.length ? 'Nothing here.' : NO_BUYER,
+            selectedId: cui.sel,
+            refreshPanel: !!(opts && opts.refreshPanel),
+            onSelect: (id, panel, o) => {
+                cui.sel = id;
+                const [kind, key] = [id.slice(0, 2), id.slice(2)];
+                if (id === REPORT) {
+                    const body = SV.page(panel, { kicker: 'Cash', title: 'Daily report', wide: true });
+                    return reportPanel(body, buyers, t.today, ui.report);
+                }
+                if (kind === 'b:') return buyerPanel(panel, buyers.find(x => x.buyer_id === key), t.today, reload, o);
+                if (kind === 'r:') return returnPanel(panel, (t.pending_returns || []).find(x => x.id === key), reload, o);
+                if (kind === 'd:') return disputePanel(panel, (t.disputes || []).find(x => x.id === key), reload, o);
+                if (kind === 'o:') return ownMoneyPanel(panel, (t.to_review || []).find(x => x.id === key), reload, o);
+                if (kind === 'p:') return overpaidPanel(panel, (overpaid || []).find(x => x.id === key), reload, o);
+                if (kind === 'c:') return creditPanel(panel, openCredits.find(x => x.id === key), reload);
+            },
+            onClose: was => { cui.sel = null; if (was === REPORT) ui.report = null; },
         }));
-        body.querySelectorAll('[data-buyer]').forEach(b => b.addEventListener('click', () =>
-            buyerPanel(body.querySelector('[data-buyer-host]'), buyers.find(x => x.buyer_id === b.dataset.buyer), t.today, reload)));
-        body.querySelectorAll('[data-confirm]').forEach(b => b.addEventListener('click', async () => {
-            b.disabled = true;
-            try { await RA.rpc('pur_cash_decide_return', { p_op: newOp(), p_return: b.dataset.confirm, p_confirm: true, p_note: null }); } catch (e) { PA.notice(e); }
-            reload();
-        }));
-        body.querySelectorAll('[data-reject]').forEach(b => b.addEventListener('click', () => noteModal('Reject this return?',
-            'The buyer\'s cash held stays as it is. Say why — they see it.', 'Reject', 'pur_cash_decide_return',
-            { p_return: b.dataset.reject, p_confirm: false }, 'p_note', reload)));
-        body.querySelectorAll('[data-clear]').forEach(b => b.addEventListener('click', () => noteModal('The cash was handed over',
-            'The flag is cleared and the entry stays. If it was NOT handed over, void the entry instead.', 'Clear the flag', 'pur_cash_clear_dispute',
-            { p_issue: b.dataset.clear }, 'p_note', reload)));
-        body.querySelectorAll('[data-void-issue]').forEach(b => b.addEventListener('click', () =>
-            PA.voidModal('Void this petty cash entry?', 'It leaves the buyer\'s balance and stays in the history, marked void.', 'pur_cash_void_issue', { p_issue: b.dataset.voidIssue }, reload)));
-        body.querySelectorAll('[data-accept]').forEach(b => b.addEventListener('click', async () => {
-            b.disabled = true;
-            try { await RA.rpc('pur_accept_own_money', { p_op: newOp(), p_payment: b.dataset.accept }); } catch (e) { PA.notice(e); }
-            reload();
-        }));
-        body.querySelectorAll('[data-reject-own]').forEach(b => b.addEventListener('click', () => noteModal('Reject this own-money claim?',
-            'The payment stays (the supplier was paid), but the company will not owe it. The buyer sees your reason.', 'Reject',
-            'pur_reject_own_money', { p_payment: b.dataset.rejectOwn }, 'p_reason', reload)));
-        body.querySelectorAll('[data-resolve]').forEach(b => b.addEventListener('click', () =>
-            PA.openResolve((overpaid || []).find(o => o.id === b.dataset.resolve), reload)));
-        body.querySelectorAll('[data-void-credit]').forEach(b => b.addEventListener('click', () =>
-            PA.voidModal('Void this supplier credit?', 'Only a credit nothing has used yet can be voided.', 'pur_void_credit', { p_credit: b.dataset.voidCredit }, reload)));
-        body.querySelectorAll('[data-open]').forEach(a => a.addEventListener('click', (e) => { e.preventDefault(); PA.openPurchase(a.dataset.open); }));
-        body.querySelectorAll('[data-photo]').forEach(a => a.addEventListener('click', (e) => { e.preventDefault(); root.open(a.dataset.photo, '_blank'); }));
-        RA.icons();
     }
 
-    function section(title, help, items) {
-        return '<div class="att-card"><div class="att-card-body"><h3 class="pur-h3">' + esc(title) + '</h3><p class="req-muted">' + esc(help) + '</p>' +
-            (items.length ? '<ul class="pur-history">' + items.join('') + '</ul>' : '<p class="req-muted">Nothing here.</p>') + '</div></div>';
+    // The links every Cash pop-up shares: a purchase, a photo.
+    function wire(panel, handlers) {
+        panel.onclick = e => {
+            const a = e.target.closest('[data-open]');
+            if (a) { e.preventDefault(); PA.openPurchase(a.dataset.open); return; }
+            const ph = e.target.closest('[data-photo]');
+            if (ph) { e.preventDefault(); root.open(ph.dataset.photo, '_blank'); return; }
+            const b = e.target.closest('button');
+            if (!b || b.disabled) return;
+            for (const [attr, fn] of handlers) if (b.hasAttribute(attr)) { fn(b); return; }
+        };
+    }
+    function start(panel, o) {
+        if (o && o.start) { const go = panel.querySelector('.sv-step button'); if (go) go.click(); }
+    }
+    const missing = panel => SV.error(panel, 'This is no longer waiting. Reload the page.');
+    const primary = (label, attrs) => '<button type="button" class="att-btn att-btn--primary" ' + attrs + '>' + esc(label) + '</button>';
+
+    function returnPanel(panel, r, reload, o) {
+        if (!r) return missing(panel);
+        SV.fill(panel, SV.panelHtml({
+            kicker: 'Return waiting for you', title: PA.peso(r.amount) + ' from ' + r.name, pills: [{ text: 'To confirm', tone: 'gold' }],
+            step: SV.nextStep('The buyer says they handed this back. Confirm once you have the cash.', primary('Confirm received', 'data-confirm="' + esc(r.id) + '"')),
+            sections: [SV.section('Return', SV.facts([['Amount', peso(r.amount)], ['Handed over on', esc(r.handed_on)], ['To whom', esc(r.handed_to || '')],
+                ['Note', esc(r.note || '')], ['Photo', r.photo_url ? photoLink(r.photo_url).trim() : '']]))],
+            actions: SV.lbtn('Reject…', 'data-reject="' + esc(r.id) + '"', 'warn'),
+            nextLabel: 'Next',
+        }));
+        wire(panel, [
+            ['data-confirm', async b => { b.disabled = true;
+                try { await RA.rpc('pur_cash_decide_return', { p_op: newOp(), p_return: b.dataset.confirm, p_confirm: true, p_note: null }); SV.toast('Return confirmed'); } catch (e) { PA.notice(e); }
+                reload(); }],
+            ['data-reject', b => noteModal('Reject this return?', 'The buyer\'s cash held stays as it is. Say why — they see it.', 'Reject', 'pur_cash_decide_return',
+                { p_return: b.dataset.reject, p_confirm: false }, 'p_note', reload)],
+        ]);
+        start(panel, o);
+    }
+
+    function disputePanel(panel, i, reload, o) {
+        if (!i) return missing(panel);
+        SV.fill(panel, SV.panelHtml({
+            kicker: '"I did not receive this"', title: PA.peso(i.amount) + ' given ' + i.issued_on, pills: [{ text: 'Flagged', tone: 'red' }],
+            sub: i.name,
+            step: SV.nextStep('A buyer says petty cash you recorded never reached them. Their balance is unchanged until you settle it.',
+                primary('It was handed over…', 'data-clear="' + esc(i.id) + '"')),
+            sections: [SV.section('Note from the buyer', '<p class="sv-text">' + esc(i.dispute_note) + '</p>')],
+            actions: SV.lbtn('Void the entry…', 'data-void-issue="' + esc(i.id) + '"', 'danger'),
+            nextLabel: 'Next',
+        }));
+        wire(panel, [
+            ['data-clear', b => noteModal('The cash was handed over',
+                'The flag is cleared and the entry stays. If it was NOT handed over, void the entry instead.', 'Clear the flag', 'pur_cash_clear_dispute',
+                { p_issue: b.dataset.clear }, 'p_note', reload)],
+            ['data-void-issue', b => PA.voidModal('Void this petty cash entry?', 'It leaves the buyer\'s balance and stays in the history, marked void.',
+                'pur_cash_void_issue', { p_issue: b.dataset.voidIssue }, reload)],
+        ]);
+        start(panel, o);
+    }
+
+    function ownMoneyPanel(panel, p, reload, o) {
+        if (!p) return missing(panel);
+        SV.fill(panel, SV.panelHtml({
+            kicker: 'Own money to review', title: PA.peso(p.amount) + ' paid by ' + p.person_name, pills: [{ text: 'To review', tone: 'gold' }],
+            sub: 'Paid with a buyer\'s own money while "May use own money" was off. Kept as a real payment.',
+            step: SV.nextStep('Accept it and the company owes it; reject it, with a reason, and it is never owed (R9).', primary('Accept', 'data-accept="' + esc(p.id) + '"')),
+            sections: [SV.section('Payment', SV.facts([['Amount', peso(p.amount)], ['Paid on', esc(p.paid_on)], ['Note', esc(p.note || '')]]))],
+            actions: SV.lbtn('Reject…', 'data-reject-own="' + esc(p.id) + '"', 'warn') + SV.lbtn('Open purchase', 'data-open="' + esc(p.purchase_id) + '"'),
+            nextLabel: 'Next',
+        }));
+        wire(panel, [
+            ['data-accept', async b => { b.disabled = true;
+                try { await RA.rpc('pur_accept_own_money', { p_op: newOp(), p_payment: b.dataset.accept }); SV.toast('Accepted — the company owes it'); } catch (e) { PA.notice(e); }
+                reload(); }],
+            ['data-reject-own', b => noteModal('Reject this own-money claim?',
+                'The payment stays (the supplier was paid), but the company will not owe it. The buyer sees your reason.', 'Reject',
+                'pur_reject_own_money', { p_payment: b.dataset.rejectOwn }, 'p_reason', reload)],
+        ]);
+        start(panel, o);
+    }
+
+    function overpaidPanel(panel, row, reload, o) {
+        if (!row) return missing(panel);
+        const pay = row.pay || {};
+        SV.fill(panel, SV.panelHtml({
+            kicker: 'Overpaid', title: PA.peso(pay.unresolved) + ' over', pills: [{ text: 'Overpaid', tone: 'red' }],
+            sub: (row.supplier || 'No supplier') + ' · ' + RA.formatDay(row.purchase_date),
+            step: Number(pay.unresolved) > 0 ? SV.nextStep('More was paid than the purchase now costs. Refund it to the money that paid it, or keep it as supplier credit.',
+                primary('Resolve…', 'data-resolve="' + esc(row.id) + '"')) : '',
+            sections: [
+                (Number(pay.over_resolved) > 0 ? SV.notice('red', 'alert-triangle', 'Refunded ' + PA.peso(pay.over_resolved) + ' more than is over — check', '') : ''),
+                SV.section('Purchase', SV.facts([['Purchase', esc((row.supplier || 'No supplier') + ' · ' + RA.formatDay(row.purchase_date))],
+                    ['Payment status', PA.payPill ? PA.payPill(pay) : ''], ['Over', peso(pay.unresolved)]])),
+            ],
+            actions: SV.lbtn('Open purchase', 'data-open="' + esc(row.id) + '"'),
+            nextLabel: 'Next',
+        }));
+        wire(panel, [['data-resolve', () => PA.openResolve(row, reload)]]);
+        start(panel, o);
+    }
+
+    function creditPanel(panel, c, reload) {
+        if (!c) return missing(panel);
+        SV.fill(panel, SV.panelHtml({
+            kicker: 'Supplier credit', title: (c.supplier || 'Supplier') + ' · ' + PA.peso(c.left) + ' left',
+            sections: [
+                SV.note(esc('A balance with one supplier, used in parts when paying that supplier, until it is gone. Not cash.')),
+                SV.section('Credit', SV.facts([['Left', peso(c.left)], ['Of', peso(c.amount)], ['Note', esc(c.note || '')]])),
+            ],
+            actions: (Number(c.left) === Number(c.amount) ? SV.lbtn('Void…', 'data-void-credit="' + esc(c.id) + '"', 'danger') : '') +
+                     SV.lbtn('From this purchase', 'data-open="' + esc(c.purchase_id) + '"'),
+            nextLabel: 'Next',
+        }));
+        wire(panel, [['data-void-credit', b => PA.voidModal('Void this supplier credit?', 'Only a credit nothing has used yet can be voided.',
+            'pur_void_credit', { p_credit: b.dataset.voidCredit }, reload)]]);
     }
 
     // A decision that needs a note (reject, clear a flag), sent once.
@@ -204,59 +312,82 @@
         });
     }
 
-    // One buyer's entries (90 days), with counts and repayments — voids live here.
-    async function buyerPanel(host, b, today, reload) {
-        host.innerHTML = '<div class="att-card"><div class="att-card-body"><div class="att-empty">Loading…</div></div></div>';
+    // One buyer's details in the pop-up (90 days), with counts and
+    // repayments — voids live here; "May use own money" is its switch.
+    async function buyerPanel(panel, b, today, reload, o) {
+        if (!b) return missing(panel);
+        const mine = panel.dataset.svId;
+        if (!panel.dataset.svRestore) panel.innerHTML = '<div class="sv-panel-empty">Loading…</div>';
         let d;
-        try { d = await RA.rpc('pur_cash_buyer', { p_buyer: b.buyer_id }); } catch (e) { RA.fail(host, e); return; }
+        try { d = await RA.rpc('pur_cash_buyer', { p_buyer: b.buyer_id }); } catch (e) { SV.error(panel, PA.errorMessage(e)); return; }
+        if (!panel.isConnected || panel.dataset.svId !== mine) return;
         const f = PA.cashFigures(d);
-        const voidBtn = (attr, id) => ' <button type="button" class="att-btn att-btn--sm" ' + attr + '="' + esc(id) + '">Void…</button>';
-        host.innerHTML =
-            '<div class="att-card"><div class="att-card-body">' +
-              '<div class="pur-pay-head"><h3 class="pur-h3">' + esc(d.name) + '</h3><button type="button" class="att-btn att-btn--sm" data-close-buyer>Close</button></div>' +
-              '<div class="pur-pay-figs"><span>Cash held <strong>' + peso(f.held) + '</strong></span>' +
-                (f.shortfall > 0 ? '<span>Unreconciled shortfall <strong>' + peso(f.shortfall) + '</strong></span>' : '') +
-                '<span>Company owes <strong>' + peso(f.owes) + '</strong></span>' +
-                (f.toReview > 0 ? '<span>To review <strong>' + peso(f.toReview) + '</strong></span>' : '') + '</div>' +
-              '<div class="pur-pay-actions">' +
-                '<button type="button" class="att-btn" data-count>Count cash…</button>' +
-                (f.owes > 0 ? '<button type="button" class="att-btn" data-repay>Repay own money…</button>' : '') +
-              '</div>' +
-              '<h4 class="pur-h4">Petty cash given (90 days)</h4><ul class="pur-history">' +
-                ((d.issues || []).map(i => '<li' + (i.voided_at ? ' class="is-void"' : '') + '>' + esc(i.issued_on) + ' — ' + peso(i.amount) + ' ' +
-                  esc(PA.PAY_METHOD[i.method] || i.method) + (i.note ? ' — ' + esc(i.note) : '') +
-                  (i.disputed_at && !i.dispute_cleared_at ? ' ' + PA.pill('Not-received flag', 'working') : '') +
-                  (i.voided_at ? ' — voided: ' + esc(i.void_reason) : voidBtn('data-void-issue', i.id)) + '</li>').join('') || '<li class="req-muted">None.</li>') + '</ul>' +
-              '<h4 class="pur-h4">Returns (90 days)</h4><ul class="pur-history">' +
-                ((d.returns || []).map(r => '<li' + (r.voided_at ? ' class="is-void"' : '') + '>' + esc(r.handed_on) + ' — ' + peso(r.amount) + ' — ' +
-                  esc({ reported: 'waiting for you', withdrawn: 'withdrawn by the buyer', confirmed: 'confirmed', rejected: 'rejected' }[r.status] || r.status) +
-                  (r.decision_note ? ': ' + esc(r.decision_note) : '') + photoLink(r.photo_url) +
-                  (r.voided_at ? ' — voided' : r.status === 'confirmed' ? voidBtn('data-void-return', r.id) : '') + '</li>').join('') ||
-                  '<li class="req-muted">None.</li>') + '</ul>' +
-              '<h4 class="pur-h4">Cash counts</h4><ul class="pur-history">' +
-                ((d.counts || []).map(k => '<li' + (k.voided_at ? ' class="is-void"' : '') + '>' + esc(k.counted_on) + ' — counted ' + peso(k.counted) +
-                  ', recorded ' + peso(Math.max(0, Number(k.recorded))) + (k.note ? ' — ' + esc(k.note) : '') +
-                  (k.voided_at ? ' — voided' : voidBtn('data-void-count', k.id)) + '</li>').join('') || '<li class="req-muted">None.</li>') + '</ul>' +
-              '<h4 class="pur-h4">Repayments of own money</h4><ul class="pur-history">' +
-                ((d.repayments || []).map(x => '<li' + (x.voided_at ? ' class="is-void"' : '') + '>' + esc(x.paid_on) + ' — ' + peso(x.amount) + ' ' +
-                  esc(PA.PAY_METHOD[x.method] || x.method) + (x.voided_at ? ' — voided' : voidBtn('data-void-repay', x.id)) + '</li>').join('') ||
-                  '<li class="req-muted">None.</li>') + '</ul>' +
-            '</div></div>';
+        const lc = b.last_count;
+        const diff = lc ? PA.round2(Number(lc.counted) - Number(lc.recorded)) : 0;
+        const voidBtn = (attr, id) => SV.lbtn('Void…', attr + '="' + esc(id) + '"');
+        const RET = { reported: 'waiting for you', withdrawn: 'withdrawn by the buyer', confirmed: 'confirmed', rejected: 'rejected' };
+        SV.fill(panel, SV.panelHtml({
+            kicker: 'Buyer details',
+            title: d.name,
+            pills: [].concat(f.shortfall > 0 ? [{ text: 'Unreconciled shortfall', tone: 'red' }] : [],
+                Number(b.open_disputes) > 0 ? [{ text: 'Not-received flag', tone: 'red' }] : [],
+                f.toReview > 0 ? [{ text: PA.peso(f.toReview) + ' to review', tone: 'gold' }] : [],
+                b.can_buy ? [] : [{ text: 'Buyer switch off', tone: 'none' }]),
+            sub: b.can_buy ? 'Staff buyer' : 'Buyer switch off',
+            sections: [
+                SV.section('Now', SV.facts([
+                    ['Cash held', peso(f.held)],
+                    ['Unreconciled shortfall', f.shortfall > 0 ? peso(f.shortfall) : ''],
+                    ['Returns waiting', f.pending > 0 ? peso(f.pending) : ''],
+                    ['Company owes', peso(f.owes)],
+                    ['To review', f.toReview > 0 ? peso(f.toReview) : ''],
+                    ['Last given', b.last_given_on ? esc(b.last_given_on) + ' <span class="req-muted">' + esc(daysAgo(b.last_given_on, today)) + '</span>' : '—'],
+                    ['Last count', lc ? esc(lc.counted_on) + ': ' + peso(lc.counted) + ' <span class="req-muted">' +
+                        (diff === 0 ? 'matched' : diff < 0 ? 'short ' + esc(PA.peso(-diff)) : 'over ' + esc(PA.peso(diff))) + '</span>' : '—'],
+                ])),
+                '<div class="sv-switch-row"><div><div class="sv-switch-label">May use own money</div>' +
+                  '<div class="sv-switch-help">Allowed / Off. While off, own-money payments wait for you to accept or reject.</div></div>' +
+                  '<label class="att-switch"><input type="checkbox" data-own="' + esc(b.buyer_id) + '"' + (b.own_money ? ' checked' : '') + '> ' +
+                    (b.own_money ? 'Allowed' : 'Off') + '</label></div>',
+                SV.section('Petty cash given (90 days)', SV.lines((d.issues || []).map(i => ({
+                    t: PA.peso(i.amount) + ' · ' + (PA.PAY_METHOD[i.method] || i.method), s: 'Given on ' + i.issued_on + (i.note ? ' — ' + i.note : '') +
+                        (i.voided_at ? ' — voided: ' + i.void_reason : ''),
+                    dim: !!i.voided_at,
+                    pills: [].concat(i.disputed_at && !i.dispute_cleared_at ? [{ text: 'Not-received flag', tone: 'gold' }] : [], i.voided_at ? [{ text: 'Voided', tone: 'red' }] : []),
+                    acts: i.voided_at ? '' : voidBtn('data-void-issue', i.id) })), 'None.')),
+                SV.section('Returns (90 days)', SV.lines((d.returns || []).map(r => ({
+                    t: PA.peso(r.amount), s: 'Handed over ' + r.handed_on + (r.decision_note ? ' · ' + r.decision_note : ''),
+                    dim: !!r.voided_at,
+                    pills: [{ text: r.voided_at ? 'voided' : (RET[r.status] || r.status), tone: r.voided_at ? 'red' : r.status === 'reported' ? 'gold' : r.status === 'confirmed' ? 'done' : 'none' }],
+                    note: '', facts: r.photo_url ? [['Photo', photoLink(r.photo_url).trim()]] : [],
+                    acts: !r.voided_at && r.status === 'confirmed' ? voidBtn('data-void-return', r.id) : '' })), 'None.')),
+                SV.section('Cash counts', SV.lines((d.counts || []).map(k => ({
+                    t: 'Counted ' + PA.peso(k.counted), s: k.counted_on + ' — counted ' + PA.peso(k.counted) + ', recorded ' + PA.peso(Math.max(0, Number(k.recorded))) +
+                        (k.note ? ' — ' + k.note : '') + ' · A record only',
+                    dim: !!k.voided_at, pills: k.voided_at ? [{ text: 'Voided', tone: 'red' }] : [],
+                    acts: k.voided_at ? '' : voidBtn('data-void-count', k.id) })), 'None.')),
+                SV.section('Repayments of own money', SV.lines((d.repayments || []).map(x => ({
+                    t: PA.peso(x.amount) + ' · ' + (PA.PAY_METHOD[x.method] || x.method), s: 'Paid on ' + x.paid_on,
+                    dim: !!x.voided_at, pills: x.voided_at ? [{ text: 'Voided', tone: 'red' }] : [],
+                    acts: x.voided_at ? '' : voidBtn('data-void-repay', x.id) })), 'None.')),
+            ],
+            actions: SV.lbtn('Count cash…', 'data-count') + (f.owes > 0 ? SV.lbtn('Repay own money…', 'data-repay') : ''),
+            nextLabel: 'Next',
+        }));
         const again = () => { reload(); };
-        host.querySelector('[data-close-buyer]').addEventListener('click', () => { host.innerHTML = ''; });
-        host.querySelectorAll('[data-photo]').forEach(a => a.addEventListener('click', (e) => { e.preventDefault(); root.open(a.dataset.photo, '_blank'); }));
-        host.querySelector('[data-count]').addEventListener('click', () => countModal(b, again));
-        const rp = host.querySelector('[data-repay]');
-        if (rp) rp.addEventListener('click', () => repayModal(b, f.owes, again));
-        host.querySelectorAll('[data-void-issue]').forEach(x => x.addEventListener('click', () =>
-            PA.voidModal('Void this petty cash entry?', 'It leaves the buyer\'s balance and stays in the history, marked void.', 'pur_cash_void_issue', { p_issue: x.dataset.voidIssue }, again)));
-        host.querySelectorAll('[data-void-return]').forEach(x => x.addEventListener('click', () =>
-            PA.voidModal('Void this confirmed return?', 'The amount goes back on the buyer\'s balance.', 'pur_cash_void_return', { p_return: x.dataset.voidReturn }, again)));
-        host.querySelectorAll('[data-void-count]').forEach(x => x.addEventListener('click', () =>
-            PA.voidModal('Void this cash count?', 'A count is a record only; voiding it changes no balance.', 'pur_cash_void_count', { p_count: x.dataset.voidCount }, again)));
-        host.querySelectorAll('[data-void-repay]').forEach(x => x.addEventListener('click', () =>
-            PA.voidModal('Void this repayment?', 'The company owes the buyer that amount again.', 'pur_void_repayment', { p_repayment: x.dataset.voidRepay }, again)));
-        host.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        const own = panel.querySelector('[data-own]');
+        if (own) own.addEventListener('change', async () => {
+            try { await RA.rpc('pur_set_own_money', { p_buyer: own.dataset.own, p_on: own.checked }); } catch (e) { PA.notice(e); }
+            reload();
+        });
+        wire(panel, [
+            ['data-count', () => countModal(b, again)],
+            ['data-repay', () => repayModal(b, f.owes, again)],
+            ['data-void-issue', x => PA.voidModal('Void this petty cash entry?', 'It leaves the buyer\'s balance and stays in the history, marked void.', 'pur_cash_void_issue', { p_issue: x.dataset.voidIssue }, again)],
+            ['data-void-return', x => PA.voidModal('Void this confirmed return?', 'The amount goes back on the buyer\'s balance.', 'pur_cash_void_return', { p_return: x.dataset.voidReturn }, again)],
+            ['data-void-count', x => PA.voidModal('Void this cash count?', 'A count is a record only; voiding it changes no balance.', 'pur_cash_void_count', { p_count: x.dataset.voidCount }, again)],
+            ['data-void-repay', x => PA.voidModal('Void this repayment?', 'The company owes the buyer that amount again.', 'pur_void_repayment', { p_repayment: x.dataset.voidRepay }, again)],
+        ]);
     }
 
     function countModal(b, onDone) {
@@ -308,8 +439,7 @@
         const st = keep || { buyer: (buyers.find(b => b.can_buy) || buyers[0] || {}).buyer_id || '', from: today.slice(0, 8) + '01', to: today };
         ui.report = st;
         host.innerHTML =
-            '<div class="att-card"><div class="att-card-body">' +
-              '<div class="pur-pay-head"><h3 class="pur-h3">Daily report</h3><button type="button" class="att-btn att-btn--sm" data-close-report>Close</button></div>' +
+            '<div class="pur-report">' +
               '<div class="att-toolbar">' +
                 '<label class="att-label">Buyer<select class="att-input" data-r="buyer">' + buyerOptions(buyers.concat([]), st.buyer) +
                   buyers.filter(b => !b.can_buy && b.buyer_id !== st.buyer).map(b => '<option value="' + esc(b.buyer_id) + '">' + esc(b.name) + '</option>').join('') + '</select></label>' +
@@ -318,8 +448,7 @@
                 '<button type="button" class="att-btn" data-print disabled>Print</button>' +
                 '<button type="button" class="att-btn" data-csv disabled>CSV</button>' +
               '</div><div data-r-body><div class="att-empty">Loading…</div></div>' +
-            '</div></div>';
-        host.querySelector('[data-close-report]').addEventListener('click', () => { ui.report = null; host.innerHTML = ''; });
+            '</div>';
         host.querySelectorAll('[data-r]').forEach(el => el.addEventListener('change', () => { st[el.dataset.r] = el.value; reportPanel(host, buyers, today, st); }));
         if (!st.buyer) { host.querySelector('[data-r-body]').innerHTML = '<div class="att-empty">No buyer.</div>'; return; }
         let rep;
@@ -367,51 +496,80 @@
 
     // ── A buyer: My cash ─────────────────────────────────────────────
 
-    async function renderMyCash(body, me) {
+    // A buyer (office v5): one "Your cash" card; its pop-up holds the
+    // balance, what was given, returns and repayments, and Report a return….
+    async function renderMyCash(host, me, opts) {
         let d;
-        try { d = await RA.rpc('pur_my_cash'); } catch (e) { RA.fail(body, e); return; }
-        const reload = () => renderCash(body, me);
-        if (!d.holder) {
-            body.innerHTML = '<div class="att-empty">Petty cash is held by staff buyers. Nothing to show for this account.</div>';
-            return;
-        }
-        const f = PA.cashFigures(d);
-        body.innerHTML =
-            '<div class="att-info"><i data-lucide="wallet"></i><div>Company money you hold for purchases, and what the company owes you for your own money. ' +
-              'None of it changes a project\'s costs.</div></div>' +
-            '<div class="pur-pay-figs pur-cash-cards">' +
-              '<span>Cash held <strong>' + peso(f.held) + '</strong></span>' +
-              (f.shortfall > 0 ? '<span>Unreconciled shortfall <strong>' + peso(f.shortfall) + '</strong><small>You paid more than the petty cash on record — the owner will check it.</small></span>' : '') +
-              (f.pending > 0 ? '<span>Return waiting <strong>' + peso(f.pending) + '</strong><small>Counts once the owner confirms it.</small></span>' : '') +
-              '<span>Company owes you <strong>' + peso(f.owes) + '</strong>' + (f.toReview > 0 ? '<small>' + peso(f.toReview) + ' waiting for the owner\'s OK.</small>' : '') + '</span>' +
-            '</div>' +
-            '<div class="att-toolbar"><button type="button" class="att-btn att-btn--primary" data-return>Report a return…</button>' +
-              '<span class="req-muted">' + (d.own_money ? 'You may use your own money when petty cash runs short.' : 'Ask the owner before using your own money.') + '</span></div>' +
-            section('Petty cash you were given (90 days)', 'If an entry never reached you, say so — the owner checks it.',
-              (d.issues || []).map(i => '<li' + (i.voided_at ? ' class="is-void"' : '') + '>' + esc(i.issued_on) + ' — ' + peso(i.amount) + ' ' +
-                esc(PA.PAY_METHOD[i.method] || i.method) + (i.note ? ' — ' + esc(i.note) : '') +
-                (i.voided_at ? ' — voided: ' + esc(i.void_reason) :
-                  i.disputed_at && !i.dispute_cleared_at ? ' ' + PA.pill('You said not received', 'working') :
-                  ' <button type="button" class="att-btn att-btn--sm" data-dispute="' + esc(i.id) + '">I did not receive this…</button>') +
-                (i.dispute_cleared_at ? ' <span class="req-muted">Owner: ' + esc(i.dispute_cleared_note || '') + '</span>' : '') + '</li>')) +
-            section('Returns', 'Reported returns wait for the owner.',
-              (d.returns || []).map(r => '<li>' + esc(r.handed_on) + ' — ' + peso(r.amount) + ' — ' +
-                esc({ reported: 'waiting for the owner', withdrawn: 'withdrawn', confirmed: 'confirmed', rejected: 'rejected' }[r.status] || r.status) +
-                (r.decision_note ? ': ' + esc(r.decision_note) : '') + (r.voided_at ? ' — voided by the owner' : '') + photoLink(r.photo_url) +
-                (r.status === 'reported' ? ' <button type="button" class="att-btn att-btn--sm" data-withdraw="' + esc(r.id) + '">Withdraw</button>' : '') + '</li>')) +
-            section('Repaid to you (90 days)', 'What the company paid back for your own money.',
-              (d.repayments || []).map(x => '<li' + (x.voided_at ? ' class="is-void"' : '') + '>' + esc(x.paid_on) + ' — ' + peso(x.amount) +
-                (x.voided_at ? ' — voided' : '') + '</li>'));
-        body.querySelector('[data-return]').addEventListener('click', () => returnModal(f.held, reload));
-        body.querySelectorAll('[data-photo]').forEach(a => a.addEventListener('click', (e) => { e.preventDefault(); root.open(a.dataset.photo, '_blank'); }));
-        body.querySelectorAll('[data-dispute]').forEach(b => b.addEventListener('click', () => noteModal('I did not receive this',
-            'The owner sees your note. Your balance does not change until they settle it.', 'Send', 'pur_cash_dispute', { p_issue: b.dataset.dispute }, 'p_note', reload)));
-        body.querySelectorAll('[data-withdraw]').forEach(b => b.addEventListener('click', async () => {
-            b.disabled = true;
-            try { await RA.rpc('pur_cash_withdraw_return', { p_op: newOp(), p_return: b.dataset.withdraw }); } catch (e) { PA.notice(e); }
-            reload();
+        try { d = await RA.rpc('pur_my_cash'); } catch (e) { RA.fail(host, e); return; }
+        if (PA.ui.tab !== 'cash') return;
+        const reload = () => renderCash(host, me, { refreshPanel: true });
+        const f = d.holder ? PA.cashFigures(d) : null;
+        const card = d.holder ? {
+            id: 'me',
+            title: 'Company money you hold',
+            sub: 'Company money you hold for purchases, and what the company owes you for your own money. None of it changes a project\'s costs.',
+            meta: 'Company owes you ' + PA.peso(f.owes),
+            right: PA.peso(f.held),
+            pill: f.pending > 0 ? { text: 'Return waiting', tone: 'gold' } : null,
+            chips: f.shortfall > 0 ? [{ text: 'Unreconciled shortfall', tone: 'red' }] : [],
+            nextLabel: 'Report a return…',
+        } : null;
+        root.SplitView.render(host, PA.frame(host, me, {
+            search: false,
+            groups: [{ title: 'Your cash', tone: 'ink', rows: card ? [card] : [] }],
+            empty: 'Petty cash is held by staff buyers. Nothing to show for this account.',
+            selectedId: cui.sel,
+            refreshPanel: !!(opts && opts.refreshPanel),
+            onSelect: (id, panel, o) => {
+                cui.sel = id;
+                SV.fill(panel, SV.panelHtml({
+                    kicker: 'Your cash',
+                    title: 'Company money you hold',
+                    sub: 'None of it changes a project\'s costs.',
+                    sections: [
+                        (f.shortfall > 0 ? SV.notice('gold', 'alert-triangle', 'Unreconciled shortfall ' + PA.peso(f.shortfall),
+                            'You paid more than the petty cash on record — the owner will check it.') : ''),
+                        SV.notice('grey', 'info', d.own_money ? 'You may use your own money when petty cash runs short.' : 'Ask the owner before using your own money.', ''),
+                        SV.section('Now', SV.facts([
+                            ['Cash held', peso(f.held)],
+                            ['Return waiting', f.pending > 0 ? peso(f.pending) + ' <span class="req-muted">Counts once the owner confirms it.</span>' : ''],
+                            ['Company owes you', peso(f.owes) + (f.toReview > 0 ? ' <span class="req-muted">' + peso(f.toReview) + ' waiting for the owner\'s OK.</span>' : '')],
+                        ])),
+                        SV.section('Petty cash you were given (90 days)', SV.note(esc('If an entry never reached you, say so — the owner checks it.')) +
+                          SV.lines((d.issues || []).map(i => ({
+                            t: PA.peso(i.amount) + ' · ' + (PA.PAY_METHOD[i.method] || i.method), s: 'Given ' + i.issued_on + (i.note ? ' — ' + i.note : '') +
+                                (i.voided_at ? ' — voided: ' + i.void_reason : '') +
+                                (i.dispute_cleared_at ? ' · Owner: ' + (i.dispute_cleared_note || '') : ''),
+                            dim: !!i.voided_at,
+                            pills: !i.voided_at && i.disputed_at && !i.dispute_cleared_at ? [{ text: 'You said not received', tone: 'gold' }] : [],
+                            acts: !i.voided_at && !(i.disputed_at && !i.dispute_cleared_at) ? SV.lbtn('I did not receive this…', 'data-dispute="' + esc(i.id) + '"') : '',
+                          })), 'Nothing here.')),
+                        SV.section('Returns', SV.note(esc('Reported returns wait for the owner.')) + SV.lines((d.returns || []).map(r => ({
+                            t: PA.peso(r.amount), s: 'Handed over ' + r.handed_on + (r.decision_note ? ' · ' + r.decision_note : '') + (r.voided_at ? ' — voided by the owner' : ''),
+                            pills: [{ text: { reported: 'waiting for the owner', withdrawn: 'withdrawn', confirmed: 'confirmed', rejected: 'rejected' }[r.status] || r.status,
+                                      tone: r.status === 'reported' ? 'gold' : r.status === 'confirmed' ? 'done' : 'none' }],
+                            facts: r.photo_url ? [['Photo', photoLink(r.photo_url).trim()]] : [],
+                            acts: r.status === 'reported' ? SV.lbtn('Withdraw', 'data-withdraw="' + esc(r.id) + '"') : '',
+                          })), 'Nothing here.')),
+                        SV.section('Repaid to you (90 days)', SV.note(esc('What the company paid back for your own money.')) + SV.lines((d.repayments || []).map(x => ({
+                            t: PA.peso(x.amount), s: x.paid_on + (x.voided_at ? ' — voided' : ''), dim: !!x.voided_at,
+                          })), 'Nothing here.')),
+                    ],
+                    actions: SV.lbtn('Report a return…', 'data-return', 'primary'),
+                    nextLabel: '',
+                }));
+                wire(panel, [
+                    ['data-return', () => returnModal(f.held, reload)],
+                    ['data-dispute', b => noteModal('I did not receive this',
+                        'The owner sees your note. Your balance does not change until they settle it.', 'Send', 'pur_cash_dispute', { p_issue: b.dataset.dispute }, 'p_note', reload)],
+                    ['data-withdraw', async b => { b.disabled = true;
+                        try { await RA.rpc('pur_cash_withdraw_return', { p_op: newOp(), p_return: b.dataset.withdraw }); } catch (e) { PA.notice(e); }
+                        reload(); }],
+                ]);
+                if (o && o.start) returnModal(f.held, reload);
+            },
+            onClose: () => { cui.sel = null; },
         }));
-        RA.icons();
     }
 
     function returnModal(held, onDone) {

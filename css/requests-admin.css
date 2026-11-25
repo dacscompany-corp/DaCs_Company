@@ -649,3 +649,49 @@
 }
 .req-prow.is-inactive td:not(.req-pact) { opacity: .6; }
 .req-prow:hover td { background: var(--att-line-soft); }
+/* ── One request, v5 "lines" (design: Dacs Web Office v5 → Requests →
+   Queue → pop-up). Each item, then each of its weekly portions, is a
+   small card: title + sub-line, pills on the right, a red note for an
+   offline edit, "Label: value" facts and small buttons. ───────────── */
+.req-lines { display: flex; flex-direction: column; gap: 8px; }
+.req-line {
+    border: 1px solid #E5E5E5; border-radius: 10px; padding: 12px 14px; background: #fff;
+    display: flex; flex-direction: column; gap: 8px; font-family: var(--att-sans, 'Barlow', sans-serif);
+}
+.req-line.is-cancelled { opacity: .7; }
+.req-line-head { display: flex; gap: 10px; align-items: flex-start; flex-wrap: wrap; }
+.req-line-title { flex: 1; min-width: 180px; }
+.req-line-t { font-size: 15px; font-weight: 600; line-height: 1.35; color: #1C1C1E; }
+.req-line-s { font-size: 13.5px; color: #6C6C70; margin-top: 2px; line-height: 1.45; }
+.req-line-tags { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.req-line-tags .att-pill { font-size: 12px; padding: 3px 10px; }
+.req-line-note {
+    background: #FBEDEB; border-radius: 8px; padding: 9px 12px;
+    font-size: 14px; line-height: 1.5; color: #8E2A20;
+}
+.req-line-facts {
+    margin: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 6px 16px;
+}
+.req-line-facts > div { font-size: 13.5px; line-height: 1.4; }
+.req-line-facts dt { display: inline; color: #6C6C70; font-weight: 400; }
+.req-line-facts dt::after { content: ': '; }
+.req-line-facts dd { display: inline; margin: 0; font-weight: 500; color: #1C1C1E; }
+.req-line-acts { display: flex; gap: 8px; flex-wrap: wrap; }
+.req-lbtn {
+    height: 36px; border: 1px solid #D8D8D6; background: #fff; color: #1C1C1E; border-radius: 9px;
+    padding: 0 13px; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; white-space: nowrap;
+}
+.req-lbtn:hover { border-color: #1A5C3A; }
+.req-lbtn:focus-visible { outline: 2px solid #1A5C3A; outline-offset: 2px; }
+.req-lbtn:disabled { opacity: .5; cursor: not-allowed; }
+.req-lbtn--primary { background: #1A5C3A; border-color: #1A5C3A; color: #fff; }
+.req-lbtn--primary:hover { background: #134428; }
+.req-lbtn--warn { background: #F5EFE2; border-color: #E6D9BD; color: #7C5E2A; }
+.req-lbtn--warn:hover { border-color: #7C5E2A; }
+.req-line .req-photos { margin: 0; }
+.req-line--portion .req-line-facts > div { grid-column: 1 / -1; }
+@media (max-width: 720px) {
+    .req-line-head { flex-direction: column; }
+    .req-line-facts { grid-template-columns: minmax(0, 1fr); }
+    .req-lbtn { height: 44px; }
+}

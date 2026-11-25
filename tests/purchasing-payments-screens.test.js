@@ -284,7 +284,8 @@ test('F4: the owner\'s payment tags are re-read after every payment action and w
   const pay = read('js/purchasing-admin-pay.js');
   ok(/const reload = \(\) => \{ if \(root\.expPurReloadFlags\) root\.expPurReloadFlags\(\);/.test(pay), 'the Payments card re-reads the tags');
   const cash = read('js/purchasing-admin-cash.js');
-  ok(/const reload = \(\) => \{ if \(root\.expPurReloadFlags\) root\.expPurReloadFlags\(\); renderCash\(body, me\); \};/.test(cash),
+  // Cards layout (PR #48): the redraw also refreshes the open pop-up.
+  ok(/const reload = \(\) => \{ if \(root\.expPurReloadFlags\) root\.expPurReloadFlags\(\); renderCash\(host, me, \{ refreshPanel: true \}\); \};/.test(cash),
     'the owner\'s Cash tab re-reads the tags (accept, reject, resolve)');
   const portal = read('js/portal-app.compiled.js');
   const eff = portal.slice(portal.indexOf('const [, setReviewTick] = React.useState(0);'), portal.indexOf('const purchaseTags = (m) =>'));
@@ -298,12 +299,19 @@ test('F4: the owner\'s payment tags are re-read after every payment action and w
 test('F3 (0103): the buyer\'s own Returns and the owner\'s one-buyer view link the return photo, opened as a download', () => {
   const cash = read('js/purchasing-admin-cash.js');
   ok(/const photoLink = \(url\) => \(url \? ' <a class="att-link" href="#" data-photo="' \+ esc\(url\) \+ '">photo<\/a>' : ''\);/.test(cash), 'one photo link');
-  const buyer = cash.slice(cash.indexOf("section('Returns', 'Reported returns wait for the owner.'"), cash.indexOf("section('Repaid to you"));
+  // Cards layout (PR #48): each list shows the link as a "Photo" fact, and one shared
+  // click handler (wire) opens it for every pop-up.
+  const buyer = cash.slice(cash.indexOf("SV.section('Returns', SV.note(esc('Reported returns wait for the owner.'))"), cash.indexOf("SV.section('Repaid to you"));
   ok(/photoLink\(r\.photo_url\)/.test(buyer), 'the buyer\'s own Returns list');
-  const panel = cash.slice(cash.indexOf('<h4 class="pur-h4">Returns (90 days)</h4>'), cash.indexOf('<h4 class="pur-h4">Cash counts</h4>'));
+  const panel = cash.slice(cash.indexOf("SV.section('Returns (90 days)'"), cash.indexOf("SV.section('Cash counts'"));
   ok(/photoLink\(r\.photo_url\)/.test(panel), 'the owner\'s one-buyer view');
-  const opens = cash.match(/querySelectorAll\('\[data-photo\]'\)\.forEach\(a => a\.addEventListener\('click', \(e\) => \{ e\.preventDefault\(\); root\.open\(a\.dataset\.photo, '_blank'\); \}\)\);/g) || [];
-  eq(opens.length, 3, 'tracker, one-buyer view and the buyer\'s own cash each open it through the shim (pettyCash/ downloads, F2)');
+  const opens = cash.match(/const ph = e\.target\.closest\('\[data-photo\]'\);\s*if \(ph\) \{ e\.preventDefault\(\); root\.open\(ph\.dataset\.photo, '_blank'\); return; \}/g) || [];
+  eq(opens.length, 1, 'one shared handler opens it through the shim (pettyCash/ downloads, F2)');
+  for (const fn of ['function returnPanel(', 'async function buyerPanel(', 'async function renderMyCash(']) {
+    const at = cash.indexOf(fn), body = at < 0 ? '' : cash.slice(at, cash.indexOf('\n    }\n', at));
+    ok(/photoLink\(r\.photo_url\)/.test(body) && /\bwire\(panel, \[/.test(body),
+      fn + ' — tracker, one-buyer view and the buyer\'s own cash each show the photo and wire the shared handler');
+  }
   ok(!/dacsMaybeSignUrl|createSignedUrl/.test(cash), 'never a signed link');
 });
 test('R4 and R9 on the Payments card: a carried-over payment and a rejected claim say so', () => {
